@@ -61,4 +61,19 @@ function M.get_shell_command(cmd_and_args)
     return table.concat(parts, " ")
 end
 
+---@param errors string[]|nil
+---@return string[]
+function M.indent_errors(errors, parent_msg)
+    errors = errors or {}
+    errors = vim.tbl_map(function(v)
+        if type(v) == 'string' then
+            return '  ' .. v
+        else
+            return '  ' .. vim.inspect(v)
+        end
+    end, errors or {})
+    table.insert(errors, 1, parent_msg)
+    return errors
+end
+
 return M

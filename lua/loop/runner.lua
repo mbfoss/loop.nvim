@@ -2,6 +2,7 @@ local M = {}
 
 local vartools = require('loop.tools.vars')
 local TermProc = require('loop.job.TermProc')
+local LuaFunc = require('loop.job.LuaFunc')
 local quickfix = require('loop.tools.quickfix')
 local strtools = require('loop.tools.strtools')
 local window = require("loop.window")
@@ -114,19 +115,35 @@ local function _start_one_task(task, on_exit_handler)
             return nil, err
         end
         return job, nil
+    elseif tasktype == "lua" then
+        ---@type loop.LuaFunc.StartArgs
+        local args = {
+            command = task.command,
+            on_exit_handler = on_exit_handler
+        }
+        local job = LuaFunc:new()
+        local ok, err = job:start(args)
+        if not ok then
+            return nil, err
+        end
+        return job, nil
     end
 
     return nil, "Unhandled task type: " .. tasktype
 end
 
 ---@param tasks loop.Task[]
-local function _start_task_chain(tasks)
+---@param on_complete fun()|nil
+function M.start_task_chain(tasks, on_complete)
     ---@param chain loop.runner.TaskChain
     local function next_job(chain)
         if #chain.tasks == 0 then
             chain.active_job = nil
             if _current_task_chain == chain then
                 _current_task_chain = nil
+                if on_complete then
+                    on_complete()
+                end
             end
             return
         end
@@ -165,7 +182,14 @@ local function _start_task_chain(tasks)
         end
     end
 
-    if not tasks or #tasks == 0 then
+    if not tasks then
+        return
+    end
+
+    if #tasks == 0 then
+        if on_complete then
+            on_complete()
+        end
         return
     end
 
@@ -217,7 +241,7 @@ function M.start_task_with_deps(all_tasks, main, proj_dir)
         return
     end
 
-    _start_task_chain(chain)
+    M.start_task_chain(chain)
 end
 
 return M

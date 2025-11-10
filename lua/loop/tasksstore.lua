@@ -15,7 +15,7 @@
 
 ---@alias loop.task.ProblemMatcher loop.task.KnownProblemMatcher | loop.task.CustomProblemMatcher
 
----@alias loop.TaskType "build"|"run"|"test"|"test:junit"|"debug"|"debug:launch"|"debug:attach"
+---@alias loop.TaskType "build"|"run"|"test"|"test:junit"|"debug"|"debug:launch"|"debug:attach"|"lua"
 ---@
 ---@class loop.Task
 ---@field name string # non-empty task name (supports ${VAR} templates)
@@ -31,6 +31,7 @@ local M = {}
 local jsontools = require('loop.tools.json')
 local filetools = require('loop.tools.file')
 local buftools = require('loop.tools.buffer')
+local strtools = require('loop.tools.strtools')
 local validate = require('loop.schema.validate')
 
 ---@param content string
@@ -134,12 +135,7 @@ function M.load_tasks(config_dir)
     local filepath = vim.fs.joinpath(config_dir, "tasks.json")
     local tasks, errors = _load_tasks_file(filepath)
     if not tasks then
-        errors = errors or {}
-        for idx, err in ipairs(errors) do
-            errors[idx] = '  ' .. err
-        end
-        table.insert(errors, 1, "error(s) in: " .. filepath)
-        return nil, errors
+        return nil, strtools.indent_errors(errors, "error(s) in: " .. filepath)
     end
 
     local byname = {}

@@ -2,6 +2,9 @@
 local uv = require('luv')
 
 local class = require('loop.tools.class')
+
+---@class loop.dap.Process 
+---@field new fun(self: loop.dap.Process ) : loop.dap.Process 
 local Process = class()
 
 ---@class loop.dap.Process.Opts

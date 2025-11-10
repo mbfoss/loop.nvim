@@ -13,6 +13,10 @@ return [[
           "type": "string",
           "pattern": "^.+$"
         },
+        "ctest_path": {
+          "type": "string",
+          "pattern": "^.+$"
+        },
         "profiles": {
           "type": "array",
           "items": {

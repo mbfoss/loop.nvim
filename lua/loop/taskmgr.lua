@@ -3,6 +3,7 @@ local M = {}
 local filetools = require('loop.tools.file')
 local jsontools = require('loop.tools.json')
 local buftools = require('loop.tools.buffer')
+local strtools = require('loop.tools.strtools')
 local tasksstore = require("loop.tasksstore")
 local runner = require("loop.runner")
 local cmake = require("loop.cmake")
@@ -15,7 +16,7 @@ function M.create_cmake_config(config_dir)
         if path == '/' then
             return { "$schema", "name" }
         elseif path == '/config/' then
-            return { "cmake_path" }
+            return { "cmake_path", "ctest_path" }
         elseif path == '/config/profiles/[]/' then
             return { "name", "build_type", "source_dir", "build_dir", "configure_args", "build_tool_args", "prob_matcher" }
         end
@@ -74,7 +75,6 @@ function M.add_task(config_dir)
                 errors = errors or {}
                 table.insert(errors, 1, "Failed to add task:")
                 window.add_events(errors, "error")
-                window.show_events()
                 return
             end
         end
@@ -117,24 +117,27 @@ end
 
 ---@param project_dir string
 ---@param config_dir string
+---@param mode "task"|"repeat"
 ---@param name string|nil
----@param repeat_last boolean
-local function _run_task(project_dir, config_dir, name, repeat_last)
+local function _run_task(project_dir, config_dir, mode, name)
     local tasks, errors = tasksstore.load_tasks(config_dir)
     if not tasks or errors then
-        errors = errors or {}
-        for i, _ in ipairs(errors) do
-            errors[i] = '  ' .. errors[i]
-        end
-        table.insert(errors, 1, "Errors while loading tasks")
-        window.add_events(errors, "error")
+        window.add_events(strtools.indent_errors(errors, "Errors while loading tasks"), "error")
     end
-    
+
     if not tasks then
         return
     end
 
-    if name then
+    if mode == "repeat" then
+        local loaded, task = tasksstore.load_last_task(config_dir)
+        if loaded then
+            runner.start_task_with_deps(tasks, task, project_dir)
+            return
+        end
+    end
+
+    if name and name ~= "" then
         local task = vim.iter(tasks):find(function(t) return t.name == name end)
         if not task then
             window.add_events({ "No task found with name: " .. name }, "error")
@@ -144,18 +147,10 @@ local function _run_task(project_dir, config_dir, name, repeat_last)
         return
     end
 
-    if repeat_last then
-        local loaded, task = tasksstore.load_last_task(config_dir)
-        if loaded then
-            runner.start_task_with_deps(tasks, task, project_dir)
-            return
-        end
-    end
-
     if #tasks == 0 then
         return
     end
-    
+
     ---@type loop.SelectTaskArgs
     local select_args = {
         tasks = tasks,
@@ -170,72 +165,73 @@ end
 
 ---@param project_dir string
 ---@param config_dir string
+---@param mode "configure"|"task"|"repeat"
 ---@param name string|nil
----@param repeat_last boolean
-local function _run_cmake_task(project_dir, config_dir, name, repeat_last)
-    
-    local tasks, errors = cmake.get_cmake_tasks(project_dir, config_dir)
-    if not tasks or errors then
-        errors = errors or {}
-        for i, _ in ipairs(errors) do
-            errors[i] = '  ' .. errors[i]
-        end
-        table.insert(errors, 1, "Errors while generating CMake tasks")
-        window.add_events(errors, "error")
+local function _run_cmake_task(project_dir, config_dir, mode, name)
+    local ingore_configured = mode ~= "configure"
+    local configure_tasks, configure_errors = cmake.get_configure_tasks(project_dir, config_dir, ingore_configured)
+    if not configure_tasks or configure_errors then
+        window.add_events(strtools.indent_errors(configure_errors, "Errors while generating CMake tasks"), "error")
     end
-    
-    if not tasks then
+    if not configure_tasks then
         return
     end
-
-    if name then
-        local task = vim.iter(tasks):find(function(t) return t.name == name end)
-        if not task then
-            window.add_events({ "No CMake task found with name: " .. name }, "error")
+    runner.start_task_chain(configure_tasks, function()
+        if mode == "configure" then
             return
         end
-        runner.start_task_with_deps(tasks, task, project_dir)
-        return
-    end
-    
-    if repeat_last then
-        local loaded, task = tasksstore.load_last_cmake_task(config_dir)
-        if loaded then
+        local tasks, errors = cmake.get_tasks(project_dir, config_dir)
+        if not tasks or errors then
+            window.add_events(strtools.indent_errors(errors, "Errors while generating CMake tasks"), "error")
+        end
+        if not tasks then
+            return
+        end
+        if mode == "repeat" then
+            local loaded, task = tasksstore.load_last_cmake_task(config_dir)
+            if loaded then
+                runner.start_task_with_deps(tasks, task, project_dir)
+                return
+            end
+        end        
+        if name and name ~= "" then
+            local task = vim.iter(tasks):find(function(t) return t.name == name end)
+            if not task then
+                window.add_events({ "No CMake task found with name: " .. name }, "error")
+                return
+            end
             runner.start_task_with_deps(tasks, task, project_dir)
             return
         end
-    end
-
-    if #tasks == 0 then
-        return
-    end
-
-    ---@type loop.SelectTaskArgs
-    local select_args = {
-        tasks = tasks,
-        prompt = "Select CMake task",
-        project_dir = project_dir
-    }
-    _select_task(select_args, function(task)
-        tasksstore.save_last_cmake_task(task, config_dir)
-        runner.start_task_with_deps(tasks, task, project_dir)
+        if #tasks > 0 then
+            ---@type loop.SelectTaskArgs
+            local select_args = {
+                tasks = tasks,
+                prompt = "Select CMake task",
+                project_dir = project_dir
+            }
+            _select_task(select_args, function(task)
+                tasksstore.save_last_cmake_task(task, config_dir)
+                runner.start_task_with_deps(tasks, task, project_dir)
+            end)
+        end
     end)
 end
 
 ---@param project_dir string
 ---@param config_dir string
+---@param mode "task"|"repeat"
 ---@param name string|nil
----@param repeat_last boolean
-function M.run_task(project_dir, config_dir, name, repeat_last)
-    _run_task(project_dir, config_dir, name, repeat_last)
+function M.run_task(project_dir, config_dir, mode, name)
+    _run_task(project_dir, config_dir, mode, name)
 end
 
 ---@param project_dir string
 ---@param config_dir string
+---@param mode "configure"|"task"|"repeat"
 ---@param name string|nil
----@param repeat_last boolean
-function M.run_cmake_task(project_dir, config_dir, name, repeat_last)
-    _run_cmake_task(project_dir, config_dir, name, repeat_last)
+function M.run_cmake_task(project_dir, config_dir, mode, name)
+    _run_cmake_task(project_dir, config_dir, mode, name)
 end
 
 return M

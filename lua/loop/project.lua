@@ -165,6 +165,16 @@ function M.repeat_task()
     taskmgr.run_task(proj_dir, config_dir, nil, true)
 end
 
+function M.run_cmake_configure()
+    assert(_setup_done)
+   local proj_dir = _get_proj_dir_or_warn()
+    if not proj_dir then
+        return
+    end
+    local config_dir = _get_config_dir(proj_dir)    
+    taskmgr.run_cmake_task(proj_dir, config_dir, "configure")
+end
+
 ---@param name string|nil
 function M.run_cmake_task(name)
     assert(_setup_done)
@@ -173,7 +183,7 @@ function M.run_cmake_task(name)
         return
     end
     local config_dir = _get_config_dir(proj_dir)    
-    taskmgr.run_cmake_task(proj_dir, config_dir, name, false)
+    taskmgr.run_cmake_task(proj_dir, config_dir, "task", name)
 end
 
 function M.repeat_cmake_task()
@@ -183,7 +193,7 @@ function M.repeat_cmake_task()
         return
     end
     local config_dir = _get_config_dir(proj_dir)    
-    taskmgr.run_cmake_task(proj_dir, config_dir, nil, true)    
+    taskmgr.run_cmake_task(proj_dir, config_dir, "repeat")    
 end
 
 function M.show_window()

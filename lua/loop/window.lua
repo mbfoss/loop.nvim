@@ -14,12 +14,12 @@ local loop_win = -1
 ---@field label string
 ---@field active_buf number
 ---@field follow boolean
----@field visible boolean
 
 ---@type loop.TabInfo[]
 local tabs_data = {
-    { filetype = "loop-events", label = "Events", active_buf = -1, follow = true, visible = true },
-    { filetype = "loop-tasks",  label = "Tasks",  active_buf = -1, follow = true, visible = false },
+    { filetype = "loop-events",      label = "Events",      active_buf = -1, follow = true },
+    { filetype = "loop-tasks",       label = "Tasks",       active_buf = -1, follow = true },
+    { filetype = "loop-breakpoints", label = "Breakpoints", active_buf = -1, follow = false },
 }
 
 ---@type loop.TabInfo
@@ -79,7 +79,7 @@ local function set_keymaps(buf, set_active_tab)
     local modes = { "n", "t" }
     local idx = 0
     for _, tab in ipairs(tabs_data) do
-        if tab.visible then
+        if tab.active_buf ~= -1 then
             idx = idx + 1
             local key = tostring(idx)
             for _, mode in ipairs(modes) do
@@ -102,7 +102,6 @@ local function get_or_create_tab_buff(tab, set_active_tab)
         return tab.active_buf, false
     end
 
-    tab.visible = true
     tab.active_buf = vim.api.nvim_create_buf(false, true)
 
     log:log('buffer created for ' .. tab.filetype)
@@ -150,12 +149,11 @@ local function set_active_tab(req_tab)
         log:log({ "no active window" })
         return
     end
-    req_tab.visible = true
     local win = loop_win
     local winbar_parts = { "%#LoopPluginInactiveTab#" }
     local tabidx = 0
     for _, tab in ipairs(tabs_data) do
-        if tab.visible then
+        if tab.active_buf ~= -1 then
             tabidx = tabidx + 1
             if tabidx ~= 1 then table.insert(winbar_parts, '|') end
             local active = false
@@ -288,6 +286,9 @@ end
 function M.add_events(lines, level)
     assert(setup_done)
     _add_events(lines, level)
+    if level == "error" then
+        M.show_events()
+    end
 end
 
 function M.show_window()
