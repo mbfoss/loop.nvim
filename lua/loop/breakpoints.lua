@@ -37,6 +37,10 @@ local sign_for_breakpoint = "loopplugin_bp_sign"
 -- Internal utility functions
 -- ----------------------------------------------------------------------
 
+local function _sign_id(bufnr, line)
+    return bufnr * 1000000 + line -- 1M per buffer
+end
+
 --- Remove all signs from a given buffer.
 ---@param bufnr integer Buffer number
 local function _remove_buf_signs(bufnr)
@@ -50,10 +54,10 @@ end
 local function _add_buf_sign(bufnr, line)
     log:log('adding buffer sign ' .. line)
     vim.fn.sign_place(
-        line,                -- sign ID (using line as ID for simplicity)
-        signs_group,         -- sign group name
-        sign_for_breakpoint, -- sign type name
-        bufnr,               -- buffer handle
+        _sign_id(bufnr, line), -- sign ID
+        signs_group,           -- sign group name
+        sign_for_breakpoint,   -- sign type name
+        bufnr,                 -- buffer handle
         { lnum = line, priority = 10 }
     )
 end
@@ -65,7 +69,7 @@ local function _add_buf_signs(bufnr)
     local file = vim.fn.fnamemodify(name, ":p")
     local bps = _breakpoints[file]
     if bps then
-        for _, v in pairs(bps) do
+        for _, v in ipairs(bps) do
             _add_buf_sign(bufnr, v.line)
         end
     end
@@ -89,7 +93,7 @@ local function _remove_file_sign(file, line)
     local bufnr = _get_loaded_bufnr(file)
     if bufnr >= 0 then
         log:log('removing buffer sign ' .. line)
-        vim.fn.sign_unplace(signs_group, { buffer = bufnr, id = line })
+        vim.fn.sign_unplace(signs_group, { buffer = bufnr, id = _sign_id(bufnr, line), })
     end
 end
 
@@ -122,7 +126,7 @@ local function _have_file_breakpoint(file, line)
     if not bps then
         return false
     end
-    for _, v in pairs(bps) do
+    for _, v in ipairs(bps) do
         if line == v.line then
             return true
         end
@@ -164,7 +168,7 @@ local function _remove_file_breakpoint(file, line)
         return false
     end
     local new_bps = {}
-    for _, v in pairs(bps) do
+    for _, v in ipairs(bps) do
         if v.line ~= line then
             table.insert(new_bps, v)
         end
@@ -190,13 +194,14 @@ local function _remove_breakpoint(path, line)
 end
 
 --- Remove all breakpoints and their signs from all files.
-local function _remove_all_breakpoints()
-    for file, btps in pairs(_breakpoints) do
-        for _, b in ipairs(btps) do
+local function _clear_breakpoints()
+    for file, bps in pairs(_breakpoints) do
+        for _, b in ipairs(bps) do
             _remove_file_sign(file, b.line)
         end
     end
     _breakpoints = {}
+    _need_saving = true
 end
 
 --- Add a new breakpoint and display its sign.
@@ -224,17 +229,22 @@ function M.toggle_breakpoint()
     if file == "" then
         return
     end
-    _need_saving = true
     local lnum = vim.api.nvim_win_get_cursor(0)[1]
     if not _remove_breakpoint(file, lnum) then
         _add_breakpoint(file, lnum)
     end
 end
 
+function M.get_breakpoint(file, line)
+    local bps = _breakpoints[file] or {}
+    for _, bp in ipairs(bps) do
+        if bp.line == line then return bp end
+    end
+end
+
 --- Reset (clear) all breakpoints.
 function M.reset()
-    _need_saving = true
-    _remove_all_breakpoints()
+    _clear_breakpoints()
 end
 
 --- Load breakpoints from a JSON file in the given project config directory.
@@ -249,6 +259,16 @@ function M.load_breakpoints(proj_config_dir)
     local loaded, data = json.load_from_file(breakpoints_file)
     if not loaded or type(data) ~= "table" then
         return false, data
+    end
+    for file, bps in pairs(data) do
+        if type(file) ~= "string" or type(bps) ~= "table" then
+            return false, "invalid file or breakpoint list"
+        end
+        for i, bp in ipairs(bps) do
+            if type(bp.line) ~= "number" or bp.line < 1 then
+                return false, "invalid line number at index " .. i
+            end
+        end
     end
     _breakpoints = data
     _refresh_all_signs()
@@ -265,14 +285,19 @@ function M.save_breakpoints(proj_config_dir)
     if not _need_saving then
         return true
     end
-    if proj_config_dir and type(proj_config_dir) == 'string' and vim.fn.isdirectory(proj_config_dir) == 1 then
-        local breakpoints_file = vim.fs.joinpath(proj_config_dir, 'breakpoints.json')
-        return json.save_to_file(breakpoints_file, _breakpoints)
+    if type(proj_config_dir) ~= 'string' or vim.fn.isdirectory(proj_config_dir) == 0 then
+        return false, "Invalid argument"
+    end
+    local breakpoints_file = vim.fs.joinpath(proj_config_dir, 'breakpoints.json')
+    local ok, err = json.save_to_file(breakpoints_file, _breakpoints)
+    if not ok then
+        return false, err
     end
     _need_saving = false
-    return true, nil
+    return true
 end
 
+---@return table<string, integer[]> 
 function M.get_breakpoints()
     return vim.deepcopy(_breakpoints)
 end
@@ -298,7 +323,6 @@ function M.setup(opts)
             _add_buf_signs(args.buf)
         end,
     })
-
 end
 
 return M

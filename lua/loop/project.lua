@@ -54,6 +54,7 @@ local function _close_project()
     end
     _save_breakpoints()
     breakpoints.reset()
+    window.update_breakpoints(breakpoints.get_breakpoints())
     window.add_events({ "Project closed" })
     _project_dir = nil
 end
@@ -76,6 +77,8 @@ local function _load_project(dir)
     local config_dir = _get_config_dir(proj_dir)
 
     breakpoints.load_breakpoints(config_dir)
+    window.update_breakpoints(breakpoints.get_breakpoints())
+
 
     if not _save_timer then
         -- Create and start the repeating timer
@@ -108,7 +111,7 @@ function M.create_project(dir)
 
     local config_dir = _get_config_dir(dir)
     vim.fn.mkdir(config_dir, "p")
-    
+
     _load_project(dir)
     window.add_events({ "Project created in " .. dir })
     window.show_events()
@@ -147,11 +150,11 @@ end
 
 function M.repeat_task()
     assert(_setup_done)
-   local proj_dir = _get_proj_dir_or_warn()
+    local proj_dir = _get_proj_dir_or_warn()
     if not proj_dir then
         return
     end
-    local config_dir = _get_config_dir(proj_dir)      
+    local config_dir = _get_config_dir(proj_dir)
     taskmgr.run_task(proj_dir, config_dir, "repeat")
 end
 
@@ -173,8 +176,8 @@ function M.extension_config(ext_name)
     local proj_dir = _get_proj_dir_or_warn()
     if not proj_dir then
         return
-    end    
-    local config_dir = _get_config_dir(proj_dir)    
+    end
+    local config_dir = _get_config_dir(proj_dir)
     taskmgr.create_extension_config(config_dir, ext_name)
 end
 
@@ -208,6 +211,7 @@ end
 function M.toggle_breakpoint()
     assert(_setup_done)
     breakpoints.toggle_breakpoint()
+    window.update_breakpoints(breakpoints.get_breakpoints())
 end
 
 function M.setup(config)

@@ -3,6 +3,7 @@ local log = require('loop.tools.Logger').create_logger("window")
 local Page = require('loop.pages.Page')
 local EventsPage = require('loop.pages.EventsPage')
 local TaskPage = require('loop.pages.TaskPage')
+local BreakpointsPage = require('loop.pages.BreakpointsPage')
 
 local buftools = require('loop.tools.buffer')
 
@@ -142,6 +143,15 @@ function M.add_events(lines, level)
     end
 end
 
+---@param breakpoints table<string, integer[]> 
+function M.update_breakpoints(breakpoints)
+    ---@type loop.pages.BreakpointsPage
+    local page = breakpoints_tab.page
+    assert(getmetatable(page) == BreakpointsPage)
+    page:setlist(breakpoints)
+    set_active_tab(breakpoints_tab)
+end
+
 ---@return string[]
 function M.tab_names()
     local arr = {}
@@ -209,7 +219,6 @@ function M.create_task_buffer(label)
 end
 
 local function _on_buf_enter(page)
-    log:log("buf enter: win = " .. tostring(vim.api.nvim_get_current_win()) .. " buf " .. tostring(buf))
     --- don't set keymaps if outside loop_win
     if vim.api.nvim_get_current_win() ~= loop_win then
         return
@@ -242,7 +251,7 @@ function M.setup(config)
     do
         events_tab.page      = EventsPage:new("loop-events", _on_buf_enter)
         tasks_tab.page       = TaskPage:new("loop-tasks", _on_buf_enter)
-        breakpoints_tab.page = Page:new("loop-breakpoints", _on_buf_enter)
+        breakpoints_tab.page = BreakpointsPage:new("loop-breakpoints", _on_buf_enter)
     end
 
     do
