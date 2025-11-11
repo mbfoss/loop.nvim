@@ -287,13 +287,33 @@ function M.add_events(lines, level)
     assert(setup_done)
     _add_events(lines, level)
     if level == "error" then
-        M.show_events()
     end
 end
 
-function M.show_window()
+---@return string[]
+function M.tab_names()
+    local arr = {}
+    for _,t in ipairs(tabs_data) do
+        if t.active_buf ~= -1 then
+            table.insert(arr, t.label)
+        end
+    end
+    return arr
+end
+
+---@param tabname string|nil
+function M.show_window(tabname)
     assert(setup_done)
-    create_window(nil)
+    local tab = nil
+    if tabname then
+        for _,t in ipairs(tabs_data) do
+            if t.active_buf ~= -1 and tabname == t.label then
+                tab = t
+                break
+            end
+        end
+    end
+    create_window(tab)
 end
 
 function M.hide_window()

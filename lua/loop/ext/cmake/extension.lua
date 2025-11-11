@@ -38,16 +38,12 @@ function _check_params(cfg)
     return #errors == 0, errors
 end
 
----@param args string[]
----@return boolean,string|nil
-function M.init_cmake_api(args)
-    for _, build_dir in ipairs(args) do
-        if type(build_dir) ~= "string" then
-            return false, "Invalid argument"
-        end
+---@param config loop.ext.cmake.CMakeConfig
+function _init_cmake_api(config)
+    for _, prof in ipairs(config.profiles or {}) do
+        local build_dir = realpath(prof.build_dir) or prof.build_dir
         generator.ensure_cmake_api_query(build_dir)
     end
-    return true
 end
 
 function M.get_config_schema()
@@ -66,6 +62,7 @@ function _get_configure_tasks(config, ingore_configured)
     if not params_ok then
         return nil, strtools.indent_errors(params_errors, "Invalid cmake config")
     end
+    _init_cmake_api(config)
     local tasks = {}
     for _, prof in ipairs(config.profiles or {}) do
         local build_type = prof.build_type
@@ -86,27 +83,11 @@ function _get_configure_tasks(config, ingore_configured)
                     name = "[" .. profile_name .. "] Configure",
                     type = "build",
                     command = cmd,
-                    cwd = src_root,
-                    depends_on = { "Init CMake API" }
+                    cwd = src_root
                 }
                 table.insert(tasks, task)
             end
         end
-    end
-    if #tasks > 0 then
-        ---@type loop.Task
-        local task = {
-            name = "Init CMake API",
-            type = "lua",
-            command = { "loop.ext.cmake.extension.init_cmake_api" },
-            cwd = src_root,
-        }
-        for _, prof in ipairs(config.profiles or {}) do
-            local build_dir = realpath(prof.build_dir) or prof.build_dir
-            ---@diagnostic disable-next-line: param-type-mismatch
-            table.insert(task.command, build_dir)
-        end
-        table.insert(tasks, 1, task)
     end
 
     return tasks
@@ -128,7 +109,7 @@ function M.get_tasks(config)
     if not params_ok then
         return nil, strtools.indent_errors(params_errors, "Invalid cmake config")
     end
-
+    _init_cmake_api(config)
     local tasks, configure_tasks_errs = _get_configure_tasks(config, false)
     if not tasks then
         return nil, configure_tasks_errs
@@ -145,7 +126,7 @@ function M.get_tasks(config)
         for _, t in ipairs(tasks) do
             table.insert(task.depends_on, t.name)
         end
-        table.insert(tasks, 2, task)
+        table.insert(tasks, 1, task)
     end
 
     local all_errors = {}

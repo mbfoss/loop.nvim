@@ -1,6 +1,8 @@
 ---@class MyModule
 local M = {}
 
+local project = require('loop.project')
+
 ---@class Config
 local config = {
     debuggers = {
@@ -36,6 +38,8 @@ local function setup_user_command(calls)
         elseif #args == 3 then
             if args[2] == 'ext' or args[2] == 'configure_ext' then
                 return require('loop.ext.extensions').ext_names()
+            elseif args[2] == 'show' then
+                return project.tab_names()
             end
         end
         return {}
@@ -80,7 +84,6 @@ M.setup = function(args)
     end
 
     M.config = vim.tbl_deep_extend("force", M.config, args or {})
-    local project = require('loop.project')
     project.setup(M.config)
 
     LoopProject =
@@ -93,7 +96,6 @@ M.setup = function(args)
         redo = project.repeat_task,
         ext = project.extension_task,
         configure_ext = project.extension_config,
-        events = project.show_events,
         toggle = project.toggle_window,
         show = project.show_window,
         hide = project.hide_window,

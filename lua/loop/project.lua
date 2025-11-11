@@ -178,9 +178,16 @@ function M.extension_config(ext_name)
     taskmgr.create_extension_config(config_dir, ext_name)
 end
 
-function M.show_window()
+---@return string[]
+function M.tab_names()
     assert(_setup_done)
-    window.show_window()
+    return window.tab_names()
+end
+
+---@param tabname string
+function M.show_window(tabname)
+    assert(_setup_done)
+    window.show_window(tabname)
 end
 
 function M.hide_window()
@@ -191,11 +198,6 @@ end
 function M.toggle_window()
     assert(_setup_done)
     window.toggle_window()
-end
-
-function M.show_events()
-    assert(_setup_done)
-    window.show_events()
 end
 
 function M.winbar_click(id, clicks, button, mods)

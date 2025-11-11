@@ -155,9 +155,7 @@ function _start_task_chain(tasks, on_complete)
                 window.add_events({ "Task ended: " .. task.name })
             else
                 local action = chain.interrupted and "interrupted" or "failed"
-                local level = chain.interrupted and "warn" or "error"
-                window.add_events({ "Task " .. action .. ": " .. task.name .. ', exit code: ' .. tostring(exit_code) },
-                    level)
+                window.add_events({ "Task " .. action .. ": " .. task.name .. ', exit code: ' .. tostring(exit_code) })
             end
             local should_continue = exit_code == 0 and not chain.interrupted
             vim.schedule(function()
