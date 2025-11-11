@@ -318,7 +318,6 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
     ----------------------------------------------------------------------
     do
         local tests, err = query_cmake_api_tests(ctest_path, build_dir)
-        --vim.notify(vim.inspect(tests))
         if not tests then
             return false, { err }
         end

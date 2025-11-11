@@ -3,27 +3,62 @@ local M = {}
 local filetools = require("loop.tools.file")
 
 ---@return number window number
-function M.find_or_make_empty_window()
-    for _, winid in ipairs(vim.api.nvim_list_wins()) do
-        local bufnr = vim.api.nvim_win_get_buf(winid)
-        if vim.api.nvim_buf_is_loaded(bufnr)
-            and vim.bo[bufnr].buflisted
-            and vim.bo[bufnr].buftype == '' -- skip special buffers
-            and vim.api.nvim_buf_line_count(bufnr) == 1
-            and vim.api.nvim_buf_get_lines(bufnr, 0, 1, false)[1] == ''
-            and not vim.bo[bufnr].modified
-        then
-            return winid
+local function find_regular_window()
+    -- Get current tabpage and all its windows
+    local tabpage = vim.api.nvim_get_current_tabpage()
+    local windows = vim.api.nvim_tabpage_list_wins(tabpage)
+    -- Helper: check if a buffer is "regular" (listed, not special, etc.)
+    local function is_regular_buffer(bufnr)
+        if not vim.api.nvim_buf_is_valid(bufnr) then
+            return false
+        end
+        local buftype = vim.bo[bufnr].buftype
+        local buflisted = vim.bo[bufnr].buflisted
+
+        -- Exclude special buffer types
+        if buftype ~= '' or not buflisted then
+            return false
+        end
+        return true
+    end
+
+    -- Search through all windows in current tab
+    for _, winid in ipairs(windows) do
+        if vim.api.nvim_win_is_valid(winid) then
+            local bufnr = vim.api.nvim_win_get_buf(winid)
+            if is_regular_buffer(bufnr) then
+                return winid
+            end
         end
     end
-    vim.cmd("split")
-    return vim.api.nvim_get_current_win()
+    -- If no regular window found, create a horizontal split
+    vim.cmd('split')
+    local new_win = vim.api.nvim_get_current_win()
+    local new_buf = vim.api.nvim_win_get_buf(new_win)
+
+    -- Ensure the new buffer is regular (it should be by default)
+    -- But just in case, create an empty buffer if needed
+    if not is_regular_buffer(new_buf) then
+        local buf = vim.api.nvim_create_buf(true, false) -- listed, not scratch
+        vim.api.nvim_win_set_buf(new_win, buf)
+    end
+
+    return new_win
 end
 
 ---@param filepath string
 ---@return number winid
 ---@return number bufnr
-function M.smart_open_file(filepath)
+---@param line? integer 1‑based line number (nil = just open)
+function M.smart_open_file(filepath, line)
+    function set_line(winid, bufnr)
+        if line and type(line) == 'number' and line > 0 then
+            -- Clamp to valid range
+            local maxline = vim.api.nvim_buf_line_count(bufnr)
+            line = math.min(line, maxline)
+            vim.api.nvim_win_set_cursor(winid, { line, 0 })
+        end
+    end
     -- Normalize filepath to handle relative paths
     local full_path = vim.fn.fnamemodify(filepath, ':p')
     -- Check all windows for the file
@@ -33,14 +68,21 @@ function M.smart_open_file(filepath)
         if buf_path == full_path and vim.api.nvim_win_is_valid(winid) then
             -- Activate the window with the file
             vim.api.nvim_set_current_win(winid)
+            set_line(winid, bufnr)
             return winid, bufnr
         end
     end
-    -- File not found in any window, use find_or_make_empty_window
-    local winid = M.find_or_make_empty_window()
+
+    local winid = find_regular_window()
+
     vim.api.nvim_set_current_win(winid)
-    local bufnr = vim.fn.bufnr(full_path, true) -- get or create buffer
+    local bufnr = vim.fn.bufadd(full_path)
+    if vim.fn.bufloaded(bufnr) == 0 then
+        vim.fn.bufload(bufnr)
+    end
+    vim.bo[bufnr].buflisted = true
     vim.api.nvim_win_set_buf(winid, bufnr)
+
     return winid, bufnr
 end
 
@@ -69,7 +111,7 @@ function M.smart_open_buffer(bufnr)
         end
     end
     -- Buffer not visible in any window, find or create an empty window
-    local winid = M.find_or_make_empty_window()
+    local winid = find_regular_window()
     vim.api.nvim_set_current_win(winid)
     vim.api.nvim_win_set_buf(winid, bufnr)
     return winid

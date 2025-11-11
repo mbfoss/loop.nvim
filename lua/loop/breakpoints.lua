@@ -1,5 +1,5 @@
-local json = require('loop.tools.json')
 local log = require('loop.tools.Logger').create_logger("breakpoints")
+local json = require('loop.tools.json')
 
 --- Breakpoints sign manager for Neovim.
 --- Handles visualization (via signs), persistence (JSON), and toggling of breakpoints.

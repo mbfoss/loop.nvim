@@ -1,5 +1,7 @@
-local Page = require('loop.pages.page')
 local class = require('loop.tools.class')
+local Page = require('loop.pages.page')
+local uitools = require('loop.tools.uitools')
+
 
 ---@class loop.pages.BreakpointsPage : loop.pages.Page
 ---@field new fun(self: loop.pages.BreakpointsPage, filetype: string, on_buf_enter: fun(buf: integer)): loop.pages.BreakpointsPage
@@ -55,20 +57,43 @@ end
 function BreakpointsPage:init(filetype, on_buf_enter)
     Page.init(self, filetype, on_buf_enter)
     self._items = {}
-    self._idx = 1
 end
 
 function BreakpointsPage:get_buf()
     local buf, created = Page.get_buf(self)
     if created then
         self:refresh_buffer()
+        -- Set up <Enter> keymap only once when buffer is created
+        vim.api.nvim_buf_set_keymap(buf, 'n', '<CR>', '', {
+            callback = function()
+                local entry = self:get_selected()
+                if entry then
+                    uitools.smart_open_file(entry.filename, entry.line)
+                end
+            end,
+            desc = "Open breakpoint location",
+        })
     end
     return buf, created
 end
 
+---@return number
+function BreakpointsPage:_get_curr_row()
+    local buf = self.buf
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then 
+    return 0 
+    end
+    if vim.api.nvim_get_current_buf() ~= buf then
+        return 0
+    end
+    return vim.api.nvim_win_get_cursor(0)[1]  -- 1-based row
+end
+
 function BreakpointsPage:refresh_buffer()
     local buf = self.buf
-    if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then 
+        return             
+        end
 
     -- 1. Build lines
     local lines = {}
@@ -128,23 +153,8 @@ function BreakpointsPage:setlist(items, action)
     self:refresh_buffer()
 end
 
--- Navigation
-function BreakpointsPage:select_prev()
-    if #self._items > 0 then
-        self._idx = (self._idx - 2) % #self._items + 1
-        self:refresh_buffer()
-    end
-end
-
-function BreakpointsPage:select_next()
-    if #self._items > 0 then
-        self._idx = self._idx % #self._items + 1
-        self:refresh_buffer()
-    end
-end
-
 function BreakpointsPage:get_selected()
-    return self._items[self._idx]
+    return self._items[self:_get_curr_row()]
 end
 
 return BreakpointsPage
