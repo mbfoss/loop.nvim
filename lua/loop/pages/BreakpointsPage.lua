@@ -1,28 +1,47 @@
 local Page = require('loop.pages.page')
 local class = require('loop.tools.class')
 
----@class loop.pages.BreakpointsPage: loop.pages.Page
----@field new fun(self: loop.pages.BreakpointsPage, filetype : string, on_buf_enter : fun(buf : number)) : loop.pages.BreakpointsPage
+--- Represents a specialized Page for managing and displaying breakpoints.
+--- Inherits from `loop.pages.Page`.
+---@class loop.pages.BreakpointsPage : loop.pages.Page
+---@field state { items: table[], idx: integer, ns_id: integer }  Current internal state
+---@field buf integer?  Buffer handle (inherited from Page)
+---@field new fun(self: loop.pages.BreakpointsPage, filetype: string, on_buf_enter: fun(buf: integer)): loop.pages.BreakpointsPage
 local BreakpointsPage = class(Page)
 
+--- Format a single breakpoint entry for display in the buffer.
+---@param entry { filename: string, lnum: integer }
+---@return string
 local function format_entry(entry)
     return entry.filename .. '|' .. tostring(entry.lnum)
 end
 
----@param filetype string
----@param on_buf_enter fun(buf: number)
+--- Initialize a BreakpointsPage instance.
+---@param filetype string  Filetype associated with this page
+---@param on_buf_enter fun(buf: integer)  Callback invoked when entering the buffer
 function BreakpointsPage:init(filetype, on_buf_enter)
     Page.init(self, filetype, on_buf_enter)
     self.state = {
-        items = {},                                                -- list of entries
-        idx   = 1,                                                 -- current position (1-based)
-        ns_id = vim.api.nvim_create_namespace('loop-breakpoints'), -- for extmarks
+        items = {},                                                -- list of breakpoint entries
+        idx   = 1,                                                 -- current selection index (1-based)
+        ns_id = vim.api.nvim_create_namespace('loop-breakpoints'), -- namespace for highlights/extmarks
     }
 end
 
+function BreakpointsPage:get_buf()
+    local buf, created = Page.get_buf(self)
+    if created then
+        self:refresh_buffer()
+    end
+    return buf, created
+end
+
 -- ----------------------------------------------------------------------
--- Refresh the quickfix buffer content
+-- Refresh the quickfix-like buffer content
 -- ----------------------------------------------------------------------
+
+--- Refresh the content of the associated buffer to reflect the current state.
+--- Rebuilds the lines and highlights the active breakpoint line.
 function BreakpointsPage:refresh_buffer()
     if not vim.api.nvim_buf_is_valid(self.buf) then
         return
@@ -35,8 +54,10 @@ function BreakpointsPage:refresh_buffer()
 
     vim.api.nvim_buf_set_lines(self.buf, 0, -1, false, lines)
 
-    -- highlight current line
+    -- Clear previous highlights
     vim.api.nvim_buf_clear_namespace(self.buf, self.state.ns_id, 0, -1)
+
+    -- Highlight the current line
     if self.state.idx > 0 and self.state.idx <= #self.state.items then
         vim.api.nvim_buf_set_extmark(self.buf, self.state.ns_id, self.state.idx - 1, 0, {
             end_line = self.state.idx,
@@ -46,7 +67,13 @@ function BreakpointsPage:refresh_buffer()
     end
 end
 
---- Set the list of items (same shape as :caddexpr)
+--- Set or update the list of breakpoint items.
+--- Items should have the same structure as those used by `:caddexpr`.
+---
+--- Example item: `{ filename = "file.lua", lnum = 12 }`
+---
+---@param items { filename: string, lnum: integer }[]  List of breakpoints to display
+---@param action? '"replace"'|string  If `"replace"` or `nil`, replaces existing items; otherwise appends
 function BreakpointsPage:setlist(items, action)
     if action == 'replace' or action == nil then
         self.state.items = {}
@@ -56,7 +83,7 @@ function BreakpointsPage:setlist(items, action)
     for _, entry in ipairs(items) do
         table.insert(self.state.items, vim.tbl_extend('keep', entry, {
             filename = entry.filename,
-            lnum     = entry.lnum
+            lnum     = entry.lnum,
         }))
     end
 
