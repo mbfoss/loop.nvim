@@ -32,7 +32,8 @@ local jsontools = require('loop.tools.json')
 local filetools = require('loop.tools.file')
 local buftools = require('loop.tools.buffer')
 local strtools = require('loop.tools.strtools')
-local validate = require('loop.schema.validate')
+local vartools = require('loop.tools.vars')
+local jsonschema = require('loop.tools.jsonschema')
 
 ---@param content string
 ---@return loop.Task[]|nil
@@ -45,7 +46,7 @@ local function _load_tasks_from_str(content)
 
     local schema = require("loop.schema.tasksschema")
     local data = data_or_err
-    local errors = validate.validate(schema, data)
+    local errors = jsonschema.validate(schema, data)
     if errors and #errors > 0 then
         return nil, errors
     end
@@ -77,6 +78,7 @@ end
 ---@return boolean
 ---@return string[]|nil
 function M.add_task(config_dir, new_task)
+    vim.fn.mkdir(config_dir, "p")
     local filepath = vim.fs.joinpath(config_dir, "tasks.json")
     local _, bufnr = buftools.smart_open_file(filepath)
 
@@ -149,32 +151,173 @@ function M.load_tasks(config_dir)
     return tasks, nil
 end
 
----@param task loop.Task
+---@param tasks loop.Task[]
 ---@param config_dir string
-function M.save_last_task(task, config_dir)
-    local filepath = vim.fs.joinpath(config_dir, "task.last.json")
-    jsontools.save_to_file(filepath, task)
+function M.save_last_chain(tasks, config_dir)
+    local filepath = vim.fs.joinpath(config_dir, "last.json")
+    jsontools.save_to_file(filepath, tasks)
 end
 
 ---@param config_dir string
----@return boolean, loop.Task
-function M.load_last_task(config_dir)
-    local filepath = vim.fs.joinpath(config_dir, "task.last.json")
-    return jsontools.load_from_file(filepath)
+---@return loop.Task[]|nil, string|nil
+function M.load_last_chain(config_dir)
+    local filepath = vim.fs.joinpath(config_dir, "last.json")
+    local ok, data_or_err = jsontools.load_from_file(filepath)
+    if not ok then
+        return nil, data_or_err
+    end
+    return data_or_err
 end
 
----@param task loop.Task
+---@param ext_name string
+---@return table|nil,string|nil
+function _get_extension_mod(ext_name)
+    if not ext_name or ext_name == "" then
+        return nil, "Extension name required"
+    end
+    if type(ext_name) ~= "string" or not ext_name:match("^[%a%d_-]+$") then
+        return nil, "Invalid extension name: " .. ext_name
+    end
+    local mod_loaded, mod = pcall(require, 'loop.ext.' .. ext_name .. '.extension')
+    if not mod_loaded then
+        return nil, "Extension does not exit: " .. ext_name
+    end
+    if type(mod.get_config_schema) ~= "function" or
+        type(mod.get_config_template) ~= "function" or
+        type(mod.get_init_tasks) ~= "function" or
+        type(mod.get_tasks) ~= "function" then
+        return nil, "Missing function in extension: " .. ext_name
+    end
+    return mod
+end
+
+---@param proj_dir string
 ---@param config_dir string
-function M.save_last_cmake_task(task, config_dir)
-    local filepath = vim.fs.joinpath(config_dir, "cmake.last.json")
-    jsontools.save_to_file(filepath, task)
+---@param ext_name string
+---@return table|nil,string[]|nil
+function _load_extension_config(proj_dir, config_dir, ext_name)
+    local mod, mod_err = _get_extension_mod(ext_name)
+    if not mod then
+        return nil, { mod_err }
+    end
+
+    local filepath = vim.fs.joinpath(config_dir, "ext." .. ext_name .. ".json")
+    if not filetools.file_exists(filepath) then
+        return nil, { "Config file does not exist:", filepath } -- not an error
+    end
+
+    local loaded, contents_or_err = filetools.read_content(filepath)
+    if not loaded then
+        return nil, { contents_or_err }
+    end
+
+    local decoded, data_or_err = jsontools.from_string(contents_or_err)
+    if not decoded then
+        return nil, { data_or_err }
+    end
+
+    local data = data_or_err
+    if not data then
+        return nil, { "Parsing error" }
+    end
+
+    local schema_str = mod.get_config_schema()
+    assert(type(schema_str) == "string")
+
+    local errors = jsonschema.validate(schema_str, data)
+    if errors and #errors > 0 then
+        return nil, errors
+    end
+
+    local cmake_config = data.config
+    
+    -- resolve variables in the cmake config
+    ---@type loop.tools.ProjectVars
+    local variables = {
+        proj_dir = proj_dir
+    }
+    local vars_ok, var_errors = vartools.expand_strings(cmake_config, variables)
+    if not vars_ok then
+        return nil, strtools.indent_errors(var_errors, "Failed to resolve variables in cmake config")
+    end
+
+    return data.config, nil
+end
+
+---@param proj_dir string
+---@param config_dir string
+---@param ext_name string
+---@return loop.Task[]|nil,string[]|nil
+function M.get_extension_init_tasks(proj_dir, config_dir, ext_name)
+    local mod, mod_err = _get_extension_mod(ext_name)
+    if not mod then
+        return nil, { mod_err }
+    end
+    if not mod.get_init_tasks then
+        return {}
+    end
+    local config, config_err = _load_extension_config(proj_dir, config_dir, ext_name)
+    if not config then
+        return nil, config_err
+    end
+    init_tasks = mod.get_init_tasks(config)
+    assert(vim.isarray(init_tasks))
+    return init_tasks
+end
+
+---@param proj_dir string
+---@param config_dir string
+---@param ext_name string
+---@return loop.Task[]|nil,string[]|nil
+function M.get_extension_tasks(proj_dir, config_dir, ext_name)
+    local mod, mod_err = _get_extension_mod(ext_name)
+    if not mod then
+        return nil, { mod_err }
+    end
+    if not mod.get_init_tasks then
+        return {}
+    end
+    local config, config_err = _load_extension_config(proj_dir, config_dir, ext_name)
+    if not config then
+        return nil, config_err
+    end
+    init_tasks = mod.get_tasks(config)
+    assert(vim.isarray(init_tasks))
+    return init_tasks
 end
 
 ---@param config_dir string
----@return boolean, loop.Task
-function M.load_last_cmake_task(config_dir)
-    local filepath = vim.fs.joinpath(config_dir, "cmake.last.json")
-    return jsontools.load_from_file(filepath)
+---@param ext_name string
+---@return boolean,string|nil
+function M.create_extension_config(config_dir, ext_name)
+    local mod, mod_err = _get_extension_mod(ext_name)
+    if not mod then
+        return false, mod_err
+    end
+
+    local schema_str = mod.get_config_schema()
+    assert(type(schema_str) == "string")
+
+    local template_str = mod.get_config_template()
+    assert(type(template_str) == "string")
+
+    local config_filepath = vim.fs.joinpath(config_dir, 'ext.' .. ext_name .. '.json')
+
+    if not filetools.file_exists(config_filepath) then
+        if schema_str then
+            local schema_dir = vim.fs.joinpath(vim.fn.stdpath("data"), "loop.nvim")
+            local schema_filepath = vim.fs.joinpath(schema_dir, 'extschema-' .. ext_name .. '.json')
+            vim.fn.mkdir(schema_dir, 'p')
+            filetools.write_content(schema_filepath, schema_str)
+            local schema_url = 'file://' .. schema_filepath
+            template_str = string.gsub(template_str, "__SCHEMA_FILE_URL__", schema_url)
+        end
+        vim.fn.mkdir(config_dir, "p")
+        filetools.write_content(config_filepath, template_str)
+    end
+
+    buftools.smart_open_file(config_filepath)
+    return true
 end
 
 return M

@@ -1,9 +1,9 @@
----@class loop.tasks.CMakeRunApp
+---@class loop.ext.cmake.CMakeRunApp
 ---@field cwd string
 ---@field args string[]|nil
 ---@field env string[]|nil
 
----@class loop.tasks.CMakeProfile
+---@class loop.ext.cmake.CMakeProfile
 ---@field name string
 ---@field build_type '"Debug"'|'"Release"'|'"RelWithDebInfo"'|'"MinSizeRel"' # required
 ---@field source_dir string # required, non-empty
@@ -11,21 +11,18 @@
 ---@field configure_args string[]|nil
 ---@field build_tool_args string[]|nil
 ---@field prob_matcher loop.task.ProblemMatcher # required
----@field run table<string, loop.tasks.CMakeRunApp> -- target → { cwd, args }
+---@field run table<string, loop.ext.cmake.CMakeRunApp> -- target → { cwd, args }
 
 
----@class loop.tasks.CMakeConfig
+---@class loop.ext.cmake.CMakeConfig
 ---@field cmake_path string # required, non-empty
 ---@field ctest_path string # required, non-empty
----@field profiles loop.tasks.CMakeProfile[] # required, at least one item
+---@field profiles loop.ext.cmake.CMakeProfile[] # required, at least one item
 
 local M         = {}
 
 local filetools = require('loop.tools.file')
 local strtools  = require('loop.tools.strtools')
-local vartools  = require('loop.tools.vars')
-local jsontools = require('loop.tools.json')
-local validate  = require('loop.schema.validate')
 
 local json      = vim.json
 
@@ -64,7 +61,7 @@ end
 -- ----------------------------------------------------------------------
 -- Ensure CMake API query exists (MUST be called BEFORE configure)
 -- ----------------------------------------------------------------------
-local function ensure_cmake_api_query(build_dir)
+function M.ensure_cmake_api_query(build_dir)
     local query_dir = vim.fs.joinpath(build_dir, ".cmake", "api", "v1", "query")
 
     local function make_marker(subpath)
@@ -218,9 +215,9 @@ end
 ---@param tasks loop.Task[]
 ---@param cmake_path string
 ---@param ctest_path string
----@param cfg loop.tasks.CMakeProfile
+---@param cfg loop.ext.cmake.CMakeProfile
 ---@return boolean, string[]|nil
-local function get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
+function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
     local profile_name = cfg.name
     src_root = realpath(cfg.source_dir) or cfg.source_dir
     local build_dir = realpath(cfg.build_dir) or cfg.build_dir
@@ -363,200 +360,5 @@ local function get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
     end
 end
 
----@param cfg loop.tasks.CMakeConfig
----@eturn boolean,string[]
-function _check_params(cfg)
-    local errors = {}
-    if vim.fn.executable(cfg.cmake_path) == 0 then
-        return table.insert(errors, "cmake_path not executable: '" .. (cfg.cmake_path or "") .. "'")
-    end
-    if vim.fn.executable(cfg.ctest_path) == 0 then
-        return table.insert(errors, "ctest_path not executable: '" .. (cfg.ctest_path or "") .. "'")
-    end
-    for idx, prof in ipairs(cfg.profiles or {}) do
-        if not prof.name or prof.name == "" then
-            return table.insert(errors, "profile " .. tostring(idx) .. " name is required")
-        end
-
-        if not prof.build_type or prof.build_type == "" then
-            return table.insert(errors, "In profile: " .. prof.name .. ", build_type is required")
-        end
-
-        if not prof.source_dir or prof.source_dir == "" then
-            return table.insert(errors, "In profile: " .. prof.name .. ", source_dir is required")
-        end
-
-        if not prof.build_dir or prof.build_dir == "" then
-            return table.insert(errors, "In profile: " .. prof.name .. ", build_dir is required")
-        end
-    end
-    return #errors == 0, errors
-end
-
----@param config_dir string
----@return loop.tasks.CMakeConfig|nil
----@return string[]|nil
-function _load_cmake_config(config_dir)
-    local filepath = vim.fs.joinpath(config_dir, "cmake.json")
-    if not filetools.file_exists(filepath) then
-        return nil, { "Config file does not exist:", filepath } -- not an error
-    end
-    local loaded, contents_or_err = filetools.read_content(filepath)
-    if not loaded then
-        return nil, { contents_or_err }
-    end
-
-    local decoded, data_or_err = jsontools.from_string(contents_or_err)
-    if not decoded or type(data_or_err) ~= 'table' then
-        return nil, { data_or_err }
-    end
-
-    local data = data_or_err
-    local schema = require('loop.schema.cmakeconf')
-
-    local errors = validate.validate(schema, data)
-    if errors and #errors > 0 then
-        return nil, errors
-    end
-    if not data or not data.config then
-        return nil, { "Parsing error" }
-    end
-    return data.config, nil
-end
-
--- ----------------------------------------------------------------------
--- Core task generator
--- ----------------------------------------------------------------------
----@param src_root string
----@param cfg loop.tasks.CMakeConfig
----@param ingore_configured boolean
----@return loop.Task[]
-function _get_configure_tasks(src_root, cfg, ingore_configured)
-    local tasks = {}
-    for _, prof in ipairs(cfg.profiles or {}) do
-        local build_type = prof.build_type
-
-        local profile_name = prof.name
-        src_root = realpath(prof.source_dir) or prof.source_dir
-        local build_dir = realpath(prof.build_dir) or prof.build_dir
-        local cmakecache_path = vim.fs.joinpath(build_dir, "CMakeCache.txt")
-        if not (ingore_configured and filetools.file_exists(cmakecache_path)) then
-            do
-                ---@type loop.Task
-                local task = {
-                    name = "[" .. profile_name .. "] Init CMake API",
-                    type = "lua",
-                    command = {"loop.cmake.init_cmake_api", build_dir},
-                    cwd = src_root,
-                }
-                table.insert(tasks, task)
-            end
-            do
-                local cmd = { cfg.cmake_path }
-                if prof.configure_args then
-                    vim.list_extend(cmd, prof.configure_args)
-                end
-                vim.list_extend(cmd, { "-B", build_dir, "-S", src_root, "-DCMAKE_BUILD_TYPE=" .. build_type })
-                ---@type loop.Task
-                local task = {
-                    name = "[" .. profile_name .. "] Configure",
-                    type = "build",
-                    command = cmd,
-                    cwd = src_root,
-                }
-                table.insert(tasks, task)
-            end
-        end
-    end
-    return tasks
-end
-
--- ----------------------------------------------------------------------
--- Public API
--- ----------------------------------------------------------------------
----@param proj_dir string
----@param configdir string
----@param ingore_configured boolean
----@return loop.Task[]|nil, string[]|nil
-function M.get_configure_tasks(proj_dir, configdir, ingore_configured)
-    local cmake_config, cfg_errors = _load_cmake_config(configdir)
-    if not cmake_config then
-        return nil, strtools.indent_errors(cfg_errors, "Failed to load CMake config file")
-    end
-
-    -- resolve variables in the cmake config
-    ---@type loop.tools.ProjectVars
-    local variables = {
-        proj_dir = proj_dir
-    }
-    local vars_ok, var_errors = vartools.expand_strings(cmake_config, variables)
-    if not vars_ok then
-        cmake_config = nil
-        return nil, strtools.indent_errors(var_errors, "Failed to resolve variables in cmake config")
-    end
-
-    local params_ok, params_errors = _check_params(cmake_config)
-    if not params_ok then
-        return nil, strtools.indent_errors(params_errors, "Invalid cmake config")
-    end
-    return _get_configure_tasks(proj_dir, cmake_config, ingore_configured)
-end
-
--- ----------------------------------------------------------------------
--- Public API
--- ----------------------------------------------------------------------
----@param proj_dir string
----@param configdir string
----@return loop.Task[]|nil, string[]|nil
-function M.get_tasks(proj_dir, configdir)
-    local cmake_config, cfg_errors = _load_cmake_config(configdir)
-    if not cmake_config then
-        return nil, strtools.indent_errors(cfg_errors, "Failed to load CMake config file")
-    end
-
-    -- resolve variables in the cmake config
-    ---@type loop.tools.ProjectVars
-    local variables = {
-        proj_dir = proj_dir
-    }
-    local vars_ok, var_errors = vartools.expand_strings(cmake_config, variables)
-    if not vars_ok then
-        cmake_config = nil
-        return nil, strtools.indent_errors(var_errors, "Failed to resolve variables in cmake config")
-    end
-
-    local params_ok, params_errors = _check_params(cmake_config)
-    if not params_ok then
-        return nil, strtools.indent_errors(params_errors, "Invalid cmake config")
-    end
-
-    tasks = {}
-    local all_errors = {}
-    for _, prof in ipairs(cmake_config.profiles or {}) do
-        local _, prof_errs = get_profile_tasks(tasks, cmake_config.cmake_path, cmake_config.ctest_path, prof)
-        if prof_errs and #prof_errs > 0 then
-            vim.list_extend(all_errors,
-                strtools.indent_errors(prof_errs, "While loading profile '" .. (prof.name or '(unkown)') .. "'"))
-        end
-    end
-
-    return tasks, #all_errors > 0 and all_errors or nil
-end
-
----@param args string[]
----@return boolean,string|nil
-function M.init_cmake_api(args)
-    local build_dir = args[1]
-    if type(build_dir) ~= "string" then
-        return false, "Invalid argument"
-    end
-    do
-        local ok, err = pcall(ensure_cmake_api_query, build_dir)
-        if not ok then
-            return false, "Failed to setup CMake API query: " .. err
-        end
-    end
-    return true
-end
 
 return M

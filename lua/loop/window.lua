@@ -245,7 +245,7 @@ function _add_events(lines, level)
     local formatted_lines = {}
     local prefixes = {}
     for _, line in ipairs(lines) do
-        local prefix = timestamp .. " [" .. level:upper() .. "]"
+        local prefix = timestamp
         table.insert(formatted_lines, prefix .. " " .. line)
         table.insert(prefixes, prefix)
     end

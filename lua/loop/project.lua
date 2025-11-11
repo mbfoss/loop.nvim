@@ -19,7 +19,8 @@ local function _get_proj_dir_or_warn()
 end
 
 local function _get_config_dir(project_dir)
-    return vim.fs.joinpath(project_dir, ".nvimloop")
+    local dir = vim.fs.joinpath(project_dir, ".nvimloop")
+    return dir
 end
 
 local function _is_project_dir(dir)
@@ -29,23 +30,12 @@ local function _is_project_dir(dir)
     return stat and stat.type == "directory"
 end
 
-function M.create_cmake_config(dir)
-    local proj_dir = _get_proj_dir_or_warn()
-    if not proj_dir then
-        return
-    end
-    local config_dir = _get_config_dir(proj_dir)
-    vim.fn.mkdir(config_dir, "p")
-    taskmgr.create_cmake_config(config_dir)
-end
-
 function M.add_task()
     local proj_dir = _get_proj_dir_or_warn()
     if not proj_dir then
         return
     end
     local config_dir = _get_config_dir(proj_dir)
-    vim.fn.mkdir(config_dir, "p")
     taskmgr.add_task(config_dir)
 end
 
@@ -118,7 +108,7 @@ function M.create_project(dir)
 
     local config_dir = _get_config_dir(dir)
     vim.fn.mkdir(config_dir, "p")
-
+    
     _load_project(dir)
     window.add_events({ "Project created in " .. dir })
     window.show_events()
@@ -152,7 +142,7 @@ function M.run_task(name)
         return
     end
     local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(proj_dir, config_dir, name, false)
+    taskmgr.run_task(proj_dir, config_dir, "task", nil, name)
 end
 
 function M.repeat_task()
@@ -161,39 +151,31 @@ function M.repeat_task()
     if not proj_dir then
         return
     end
-    local config_dir = _get_config_dir(proj_dir)        
-    taskmgr.run_task(proj_dir, config_dir, nil, true)
+    local config_dir = _get_config_dir(proj_dir)      
+    taskmgr.run_task(proj_dir, config_dir, "repeat")
 end
 
-function M.run_cmake_configure()
+---@param ext_name string
+---@param task_name string|nil
+function M.extension_task(ext_name, task_name)
     assert(_setup_done)
-   local proj_dir = _get_proj_dir_or_warn()
+    local proj_dir = _get_proj_dir_or_warn()
     if not proj_dir then
         return
     end
-    local config_dir = _get_config_dir(proj_dir)    
-    taskmgr.run_cmake_task(proj_dir, config_dir, "configure")
+    local config_dir = _get_config_dir(proj_dir)
+    taskmgr.run_task(proj_dir, config_dir, "extension", ext_name, task_name)
 end
 
----@param name string|nil
-function M.run_cmake_task(name)
+---@param ext_name string
+function M.extension_config(ext_name)
     assert(_setup_done)
-   local proj_dir = _get_proj_dir_or_warn()
+    local proj_dir = _get_proj_dir_or_warn()
     if not proj_dir then
         return
-    end
+    end    
     local config_dir = _get_config_dir(proj_dir)    
-    taskmgr.run_cmake_task(proj_dir, config_dir, "task", name)
-end
-
-function M.repeat_cmake_task()
-    assert(_setup_done)
-   local proj_dir = _get_proj_dir_or_warn()
-    if not proj_dir then
-        return
-    end
-    local config_dir = _get_config_dir(proj_dir)    
-    taskmgr.run_cmake_task(proj_dir, config_dir, "repeat")    
+    taskmgr.create_extension_config(config_dir, ext_name)
 end
 
 function M.show_window()

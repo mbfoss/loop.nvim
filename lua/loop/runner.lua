@@ -134,7 +134,7 @@ end
 
 ---@param tasks loop.Task[]
 ---@param on_complete fun()|nil
-function M.start_task_chain(tasks, on_complete)
+function _start_task_chain(tasks, on_complete)
     ---@param chain loop.runner.TaskChain
     local function next_job(chain)
         if #chain.tasks == 0 then
@@ -175,7 +175,7 @@ function M.start_task_chain(tasks, on_complete)
             chain.active_job = job
             ---@diagnostic disable-next-line: param-type-mismatch
             local cmd_descr = type(task.command) == 'table' and table.concat(task.command, ' ') or task.command
-            window.add_events({ "Running " .. task.type .. " task", "  " .. cmd_descr, "  cwd: " .. (task.cwd or "?") })
+            window.add_events({ "Running " .. task.type .. " task", "  " .. cmd_descr})
             window.show_task_output()
         else
             window.add_events({ "Task creation failed: " .. task.name, "  " .. tostring(job_err) })
@@ -214,18 +214,13 @@ function M.start_task_chain(tasks, on_complete)
     next_job(new_chain)
 end
 
----@param all_tasks loop.Task[]
----@param main loop.Task
----@param proj_dir string
-function M.start_task_with_deps(all_tasks, main, proj_dir)
-    local chain, err = M.get_deps_chain(all_tasks, main)
-    if not chain then
-        window.add_events({ "Dependency error for task '" .. main.name .. "'", "  " .. err }, "error")
-        return
-    end
 
+---@param tasks loop.Task[]
+---@param proj_dir string
+---@param on_complete fun()|nil
+function M.start_task_chain(tasks, proj_dir, on_complete)
     --- copy to solve strings in the copy and keep the original intact
-    chain = vim.deepcopy(chain)
+    chain = vim.deepcopy(tasks)
 
     local variables = { proj_dir = proj_dir }
     local is_unresoved = false
@@ -240,8 +235,7 @@ function M.start_task_with_deps(all_tasks, main, proj_dir)
     if is_unresoved then
         return
     end
-
-    M.start_task_chain(chain)
+    _start_task_chain(chain, on_complete)
 end
 
 return M

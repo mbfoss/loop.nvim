@@ -1,11 +1,6 @@
 -- Process.lua
 local uv = require('luv')
-
 local class = require('loop.tools.class')
-
----@class loop.dap.Process 
----@field new fun(self: loop.dap.Process ) : loop.dap.Process 
-local Process = class()
 
 ---@class loop.dap.Process.Opts
 ---@field cmd string
@@ -14,6 +9,11 @@ local Process = class()
 ---@field cwd string
 ---@field on_output fun(data:string, is_stderr:boolean)
 ---@field on_exit fun(code:number, signal:number)
+
+---@class loop.dap.Process 
+---@field new fun(self: loop.dap.Process, name : string, opts : loop.dap.Process.Opts) : loop.dap.Process 
+
+local Process = class()
 
 ---@param name string
 ---@param opts loop.dap.Process.Opts

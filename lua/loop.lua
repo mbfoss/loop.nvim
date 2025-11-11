@@ -11,7 +11,7 @@ local config = {
         pthon = {
             command = "python",
             args = "-m debugpy.adapter",
-        },        
+        },
     }
 }
 
@@ -33,6 +33,10 @@ local function setup_user_command(calls)
                 end
             end
             return matches
+        elseif #args == 3 then
+            if args[2] == 'ext' or args[2] == 'configure_ext' then
+                return require('loop.ext.extensions').ext_names()
+            end
         end
         return {}
     end
@@ -84,13 +88,11 @@ M.setup = function(args)
         create_project = project.create_project,
         open_project = project.open_project,
         close_project = project.close_project,
-        create_cmake_config = project.create_cmake_config,
         add_task = project.add_task,
         task = project.run_task,
-        repeat_task = project.repeat_task,
-        cmake_configure = project.run_cmake_configure,
-        cmake_task = project.run_cmake_task,
-        cmake_repeat_task = project.repeat_cmake_task,
+        redo = project.repeat_task,
+        ext = project.extension_task,
+        configure_ext = project.extension_config,
         events = project.show_events,
         toggle = project.toggle_window,
         show = project.show_window,

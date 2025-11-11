@@ -1,44 +1,11 @@
 local M = {}
 
-local filetools = require('loop.tools.file')
 local jsontools = require('loop.tools.json')
-local buftools = require('loop.tools.buffer')
 local strtools = require('loop.tools.strtools')
 local tasksstore = require("loop.tasksstore")
 local runner = require("loop.runner")
-local cmake = require("loop.cmake")
 local window = require("loop.window")
 local selector = require("loop.selector")
-
----@param config_dir string
-function M.create_cmake_config(config_dir)
-    local function _order_handler(path, attrs)
-        if path == '/' then
-            return { "$schema", "name" }
-        elseif path == '/config/' then
-            return { "cmake_path", "ctest_path" }
-        elseif path == '/config/profiles/[]/' then
-            return { "name", "build_type", "source_dir", "build_dir", "configure_args", "build_tool_args", "prob_matcher" }
-        end
-    end
-
-    local config_filepath = vim.fs.joinpath(config_dir, 'cmake.json')
-    if not filetools.file_exists(config_filepath) then
-        local schema_dir = vim.fs.joinpath(vim.fn.stdpath("data"), "loop.nvim")
-        local schema_filepath = vim.fs.joinpath(schema_dir, 'cmake.schema.json')
-        vim.fn.mkdir(schema_dir, 'p')
-        filetools.write_content(schema_filepath, require("loop.schema.cmakeconf"))
-
-        local file_data = {}
-        file_data["$schema"] = 'file://' .. schema_filepath
-        file_data.config = require('loop.templates.cmakeconf')
-
-        filetools.write_content(config_filepath, jsontools.to_string(file_data, _order_handler))
-    end
-
-    buftools.smart_open_file(config_filepath)
-    buftools.move_to_first_occurence('"cmake_path": "')
-end
 
 ---@params task loop.Task
 ---@return string
@@ -51,8 +18,7 @@ end
 
 ---@param config_dir string
 function M.add_task(config_dir)
-    local templates = require('loop.templates.tasks')
-    local selector = require("loop.selector")
+    local templates = require('loop.tasktemplates')
     local choices = {}
     for index, template in pairs(templates) do
         ---@type loop.SelectorItem
@@ -115,123 +81,98 @@ function _select_task(args, task_handler)
     end)
 end
 
----@param project_dir string
 ---@param config_dir string
----@param mode "task"|"repeat"
----@param name string|nil
-local function _run_task(project_dir, config_dir, mode, name)
-    local tasks, errors = tasksstore.load_tasks(config_dir)
-    if not tasks or errors then
-        window.add_events(strtools.indent_errors(errors, "Errors while loading tasks"), "error")
+---@param ext_name string
+function M.create_extension_config(config_dir, ext_name)
+    local ok, err = tasksstore.create_extension_config(config_dir, ext_name)
+    if not ok then
+        window.add_events({ "Failed to create configuration", "  " .. err }, "error")
     end
-
-    if not tasks then
-        return
-    end
-
-    if mode == "repeat" then
-        local loaded, task = tasksstore.load_last_task(config_dir)
-        if loaded then
-            runner.start_task_with_deps(tasks, task, project_dir)
-            return
-        end
-    end
-
-    if name and name ~= "" then
-        local task = vim.iter(tasks):find(function(t) return t.name == name end)
-        if not task then
-            window.add_events({ "No task found with name: " .. name }, "error")
-            return
-        end
-        runner.start_task_with_deps(tasks, task, project_dir)
-        return
-    end
-
-    if #tasks == 0 then
-        return
-    end
-
-    ---@type loop.SelectTaskArgs
-    local select_args = {
-        tasks = tasks,
-        prompt = "Select task",
-        project_dir = project_dir
-    }
-    _select_task(select_args, function(task)
-        tasksstore.save_last_task(task, config_dir)
-        runner.start_task_with_deps(tasks, task, project_dir)
-    end)
 end
 
 ---@param project_dir string
 ---@param config_dir string
----@param mode "configure"|"task"|"repeat"
----@param name string|nil
-local function _run_cmake_task(project_dir, config_dir, mode, name)
-    local ingore_configured = mode ~= "configure"
-    local configure_tasks, configure_errors = cmake.get_configure_tasks(project_dir, config_dir, ingore_configured)
-    if not configure_tasks or configure_errors then
-        window.add_events(strtools.indent_errors(configure_errors, "Errors while generating CMake tasks"), "error")
-    end
-    if not configure_tasks then
-        return
-    end
-    runner.start_task_chain(configure_tasks, function()
-        if mode == "configure" then
+---@param mode "task"|"extension"|"repeat"
+---@param ext_name string|nil
+---@param task_name string|nil
+function M.run_task(project_dir, config_dir, mode, ext_name, task_name)
+    if mode == "repeat" then
+        local chain, _ = tasksstore.load_last_chain(config_dir)
+        if chain then
+            runner.start_task_chain(chain, project_dir)
             return
         end
-        local tasks, errors = cmake.get_tasks(project_dir, config_dir)
-        if not tasks or errors then
-            window.add_events(strtools.indent_errors(errors, "Errors while generating CMake tasks"), "error")
+    end
+
+    local function main_task()
+        local tasks, task_errors
+        if mode == "extension" then
+            tasks, task_errors = tasksstore.get_extension_tasks(project_dir, config_dir, ext_name or "")
+        else
+            tasks, task_errors = tasksstore.load_tasks(config_dir)
         end
+        if not tasks or task_errors then
+            window.add_events(strtools.indent_errors(task_errors, "Errors while loading tasks"), "error")
+        end
+
         if not tasks then
             return
         end
-        if mode == "repeat" then
-            local loaded, task = tasksstore.load_last_cmake_task(config_dir)
-            if loaded then
-                runner.start_task_with_deps(tasks, task, project_dir)
+
+        if task_name and task_name ~= "" then
+            local task = vim.iter(tasks):find(function(t) return t.name == task_name end)
+            if not task then
+                window.add_events({ "No task found with name: " .. task_name }, "error")
                 return
             end
-        end        
-        if name and name ~= "" then
-            local task = vim.iter(tasks):find(function(t) return t.name == name end)
-            if not task then
-                window.add_events({ "No CMake task found with name: " .. name }, "error")
+            local chain, err = runner.get_deps_chain(tasks, task)
+            if not chain then
+                window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
                 return
             end
             runner.start_task_with_deps(tasks, task, project_dir)
             return
         end
-        if #tasks > 0 then
-            ---@type loop.SelectTaskArgs
-            local select_args = {
-                tasks = tasks,
-                prompt = "Select CMake task",
-                project_dir = project_dir
-            }
-            _select_task(select_args, function(task)
-                tasksstore.save_last_cmake_task(task, config_dir)
-                runner.start_task_with_deps(tasks, task, project_dir)
-            end)
+
+        if #tasks == 0 then
+            window.add_events({"No tasks found"}, "warn")
+            return
         end
-    end)
-end
 
----@param project_dir string
----@param config_dir string
----@param mode "task"|"repeat"
----@param name string|nil
-function M.run_task(project_dir, config_dir, mode, name)
-    _run_task(project_dir, config_dir, mode, name)
-end
+        ---@type loop.SelectTaskArgs
+        local select_args = {
+            tasks = tasks,
+            prompt = "Select task",
+            project_dir = project_dir
+        }
+        _select_task(select_args, function(task)
+            local chain, err = runner.get_deps_chain(tasks, task)
+            if not chain then
+                window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
+                return
+            end
+            tasksstore.save_last_chain(chain, config_dir)
+            runner.start_task_chain(chain, project_dir)
+        end)
+    end
 
----@param project_dir string
----@param config_dir string
----@param mode "configure"|"task"|"repeat"
----@param name string|nil
-function M.run_cmake_task(project_dir, config_dir, mode, name)
-    _run_cmake_task(project_dir, config_dir, mode, name)
+    local init_tasks = nil
+    if ext_name then
+        init_tasks, errors = tasksstore.get_extension_init_tasks(project_dir, config_dir, ext_name)
+        if not init_tasks then
+            window.add_events(strtools.indent_errors(errors, "Failed to load ext '" .. ext_name .. "' init tasks"),
+                "error")
+            return
+        end
+    end
+
+    if init_tasks then
+        runner.start_task_chain(init_tasks, project_dir, function()
+            main_task()
+        end)
+    else
+        main_task()
+    end
 end
 
 return M

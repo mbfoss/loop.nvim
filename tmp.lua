@@ -1,5 +1,5 @@
+--[[
 function M.run_debug_task()
-    --[[
     if not _project_dir then
         vim.notify("Loop.nvim: No active project")
         return
@@ -36,8 +36,6 @@ function M.run_debug_task()
     if not ok then
         vim.notify("Loop.nvim: " .. (err or 'debug error'))
     end
-    ]] --
 end
+    ]] --
 
-
-return M
