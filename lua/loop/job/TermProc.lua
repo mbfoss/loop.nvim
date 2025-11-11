@@ -1,6 +1,6 @@
 local Job      = require('loop.job.Job')
 local class    = require('loop.tools.class')
-local buftools = require('loop.tools.buffer')
+local uitools = require('loop.tools.uitools')
 
 
 ---@class loop.job.TermProc : loop.job.Job
@@ -153,7 +153,7 @@ function TermProc:_start_interactive(bufnr, cmd_and_args, command_env, command_c
     local function on_exit(code)
         if buffer ~= -1 then
             vim.api.nvim_buf_call(buffer, function() vim.cmd("stopinsert") end)
-            buftools.disable_insert_mappings(buffer)
+            uitools.disable_insert_mappings(buffer)
         end
         if on_exit_handler then
             on_exit_handler(code)

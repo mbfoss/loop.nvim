@@ -20,6 +20,7 @@ function Page:init(filetype, on_buf_enter)
     self.filetype = filetype
     self.on_buf_enter = on_buf_enter
     self.buf = -1
+    self.is_used = false
 end
 
 function Page:_on_buf_enter()
@@ -30,7 +31,7 @@ end
 
 ---@return boolean
 function Page:used()
-    return self.buf ~= -1
+    return self.is_used
 end
 
 function Page:get_buf()
@@ -38,6 +39,7 @@ function Page:get_buf()
         return self.buf, false
     end
 
+    self.is_used = true -- buffer may be unloaded, but used remain true
     self.buf = vim.api.nvim_create_buf(false, true)
 
     log:log('buffer created ' .. self.filetype)

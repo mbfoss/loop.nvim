@@ -134,6 +134,11 @@ local function _have_file_breakpoint(file, line)
     return false
 end
 
+function M.has_breakpoint(file, line)
+  local f = vim.fn.fnamemodify(file, ":p")
+  return _have_file_breakpoint(f, line)
+end
+
 --- Add a breakpoint to a file if it doesn't already exist on that line.
 ---@param file string  File path
 ---@param line integer  Line number
@@ -188,9 +193,21 @@ local function _remove_breakpoint(path, line)
     local removed = _remove_file_breakpoint(file, line)
     if removed then
         _remove_file_sign(file, line)
-        _need_saving = true
     end
     return removed
+end
+
+---@param path string File path (possibly relative)
+local function _clear_file_breakpoints(path)
+    local file = vim.fn.fnamemodify(path, ":p")
+    if _breakpoints[file] then
+        _breakpoints[file] = {}
+        local bufnr = _get_loaded_bufnr(file)
+        if bufnr >= 0 then
+            _remove_buf_signs(bufnr)
+        end
+        _need_saving = true
+    end
 end
 
 --- Remove all breakpoints and their signs from all files.
@@ -203,6 +220,7 @@ local function _clear_breakpoints()
     _breakpoints = {}
     _need_saving = true
 end
+
 
 --- Add a new breakpoint and display its sign.
 ---@param path string File path
@@ -236,14 +254,20 @@ function M.toggle_breakpoint()
 end
 
 function M.get_breakpoint(file, line)
-    local bps = _breakpoints[file] or {}
-    for _, bp in ipairs(bps) do
-        if bp.line == line then return bp end
-    end
+  local full = vim.fn.fnamemodify(file, ":p")
+  local bps = _breakpoints[full] or {}
+  for _, bp in ipairs(bps) do
+    if bp.line == line then return bp end
+  end
 end
 
---- Reset (clear) all breakpoints.
-function M.reset()
+---@param filepath string
+function M.clear_file_breakpoints(filepath)
+    _clear_file_breakpoints(filepath)
+end
+
+--- clear all breakpoints.
+function M.clear_all_breakpoints()
     _clear_breakpoints()
 end
 
@@ -297,7 +321,7 @@ function M.save_breakpoints(proj_config_dir)
     return true
 end
 
----@return table<string, integer[]> 
+---@return table<string, integer[]>
 function M.get_breakpoints()
     return vim.deepcopy(_breakpoints)
 end

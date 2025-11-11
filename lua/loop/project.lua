@@ -3,6 +3,7 @@ local M = {}
 local log = require('loop.tools.Logger').create_logger("project")
 local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
+local uitools = require('loop.tools.uitools')
 local breakpoints = require('loop.breakpoints')
 
 
@@ -53,7 +54,7 @@ local function _close_project()
         return
     end
     _save_breakpoints()
-    breakpoints.reset()
+    breakpoints.clear_all_breakpoints()
     window.update_breakpoints(breakpoints.get_breakpoints())
     window.add_events({ "Project closed" })
     _project_dir = nil
@@ -208,10 +209,35 @@ function M.winbar_click(id, clicks, button, mods)
     window.winbar_click(id, clicks, button, mods)
 end
 
-function M.toggle_breakpoint()
+---@param command nil|"toggle"|"clear_file"|"clear_all"
+function M.update_breakpoints(command)
     assert(_setup_done)
-    breakpoints.toggle_breakpoint()
-    window.update_breakpoints(breakpoints.get_breakpoints())
+    if command == nil or command == "toggle" then
+        breakpoints.toggle_breakpoint()
+        window.update_breakpoints(breakpoints.get_breakpoints())
+    elseif command == "clear_file" then
+        local bufnr = vim.api.nvim_get_current_buf()
+        if vim.api.nvim_buf_is_valid(bufnr) then
+            local full_path = vim.api.nvim_buf_get_name(bufnr)
+            if full_path and full_path ~= "" then
+                uitools.confirm_action("Clear breakpoints in file", false, function(accepted)
+                    if accepted == true then
+                        breakpoints.clear_file_breakpoints(full_path)
+                        window.update_breakpoints(breakpoints.get_breakpoints())
+                    end
+                end)
+            end
+        end
+    elseif command == "clear_all" then
+        uitools.confirm_action("Clear all breakpoints", false, function(accepted)
+            if accepted == true then 
+                breakpoints.clear_all_breakpoints()
+                window.update_breakpoints(breakpoints.get_breakpoints())
+            end
+        end)
+    else 
+        vim.notify('loop.nvim: Invalid breakpoints subcommand: ' .. command)
+    end
 end
 
 function M.setup(config)

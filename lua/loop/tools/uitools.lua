@@ -49,7 +49,7 @@ end
 ---@return string content or error
 function M.smart_read_file(filepath)
     local full_path = vim.fn.fnamemodify(filepath, ":p")
-    local bufnr = vim.fn.bufnr(full_path, false)  -- false = don't create
+    local bufnr = vim.fn.bufnr(full_path, false) -- false = don't create
 
     if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
         return true, vim.fn.join(vim.api.nvim_buf_get_lines(bufnr, 0, -1, false), '\n')
@@ -59,7 +59,7 @@ end
 
 ---@param bufnr number
 ---@return number winid
-function M.smart_open_buffer(bufnr) 
+function M.smart_open_buffer(bufnr)
     -- Check if the buffer is already displayed in any visible window
     for _, winid in ipairs(vim.api.nvim_list_wins()) do
         if vim.api.nvim_win_get_buf(winid) == bufnr then
@@ -74,7 +74,6 @@ function M.smart_open_buffer(bufnr)
     vim.api.nvim_win_set_buf(winid, bufnr)
     return winid
 end
-
 
 ---@text string
 function M.move_to_first_occurence(text)
@@ -122,6 +121,25 @@ function M.disable_insert_mappings(buf)
     for _, key in ipairs(visual_keys) do
         vim.api.nvim_buf_set_keymap(buf, 'v', key, '<Nop>', { noremap = true, silent = true })
     end
+end
+
+---@param msg string
+---@param default_yes boolean
+---@param callback fun(yes: boolean|nil)
+function M.confirm_action(msg, default_yes, callback)
+    local choices = "&Yes\n&No"
+    local default = default_yes and 1 or 2
+
+    vim.schedule(function()
+        local choice = vim.fn.confirm(msg, choices, default)
+        if choice == 1 then
+            callback(true)
+        elseif choice == 2 then
+            callback(false)
+        else
+            callback(nil)
+        end
+    end)
 end
 
 return M

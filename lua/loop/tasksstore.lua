@@ -30,7 +30,7 @@ local M = {}
 
 local jsontools = require('loop.tools.json')
 local filetools = require('loop.tools.file')
-local buftools = require('loop.tools.buffer')
+local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
 local vartools = require('loop.tools.vars')
 local jsonschema = require('loop.tools.jsonschema')
@@ -80,7 +80,7 @@ end
 function M.add_task(config_dir, new_task)
     vim.fn.mkdir(config_dir, "p")
     local filepath = vim.fs.joinpath(config_dir, "tasks.json")
-    local _, bufnr = buftools.smart_open_file(filepath)
+    local _, bufnr = uitools.smart_open_file(filepath)
 
     -- Get all lines
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
@@ -124,7 +124,7 @@ function M.add_task(config_dir, new_task)
         -- Replace all lines in the buffer
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
         if vim.api.nvim_get_current_buf() == bufnr then
-            buftools.move_to_last_occurence('"name": "')
+            uitools.move_to_last_occurence('"name": "')
         end
     end
     return true
@@ -316,7 +316,7 @@ function M.create_extension_config(config_dir, ext_name)
         filetools.write_content(config_filepath, template_str)
     end
 
-    buftools.smart_open_file(config_filepath)
+    uitools.smart_open_file(config_filepath)
     return true
 end
 

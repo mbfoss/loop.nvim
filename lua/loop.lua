@@ -40,6 +40,8 @@ local function setup_user_command(calls)
                 return require('loop.ext.extensions').ext_names()
             elseif args[2] == 'show' then
                 return project.tab_names()
+            elseif args[2] == 'breakpoints' then
+                return {"toggle", "clear_file", "clear_all"}
             end
         end
         return {}
@@ -99,7 +101,7 @@ M.setup = function(args)
         toggle = project.toggle_window,
         show = project.show_window,
         hide = project.hide_window,
-        breakpoint = project.toggle_breakpoint,
+        breakpoints = project.update_breakpoints,
         _winbar_click = project.winbar_click
     }
     setup_user_command(LoopProject)

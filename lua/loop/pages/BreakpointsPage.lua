@@ -8,21 +8,48 @@ local BreakpointsPage = class(Page)
 -- Static namespace for extmarks
 local NS_ID = vim.api.nvim_create_namespace('loop-breakpoints-hl')
 
--- Format a single breakpoint entry
+-- ----------------------------------------------------------------------
+-- Helper: pick the right sign for a breakpoint
+-- ----------------------------------------------------------------------
+local function breakpoint_sign(entry)
+    if entry.enabled == false then
+        return " " -- disabled → no sign
+    end
+    if entry.logMessage and entry.logMessage ~= "" then
+        return "▶" -- logpoint
+    end
+    if entry.condition and entry.condition ~= "" then
+        return "◆" -- conditional
+    end
+    if entry.hitCondition and entry.hitCondition ~= "" then
+        return "▲" -- hit-condition
+    end
+    return "●" -- plain breakpoint
+end
+
+-- ----------------------------------------------------------------------
+-- Format a breakpoint entry for UI (e.g. Telescope, quickfix, etc.)
+-- ----------------------------------------------------------------------
 local function format_entry(entry)
-    local parts = { entry.filename .. ':' .. tostring(entry.line) }
-
-    if entry.condition and entry.condition ~= '' then
-        table.insert(parts, 'if ' .. entry.condition)
+    local parts = {}
+    -- 1. Sign
+    table.insert(parts, breakpoint_sign(entry))
+    -- 2. File + line
+    table.insert(parts, " ")
+    table.insert(parts, entry.filename)
+    table.insert(parts, ":")
+    table.insert(parts, tostring(entry.line))
+    -- 3. Optional qualifiers
+    if entry.condition and entry.condition ~= "" then
+        table.insert(parts, " if " .. entry.condition)
     end
-    if entry.hitCondition and entry.hitCondition ~= '' then
-        table.insert(parts, 'hits=' .. entry.hitCondition)
+    if entry.hitCondition and entry.hitCondition ~= "" then
+        table.insert(parts, " hits=" .. entry.hitCondition)
     end
-    if entry.logMessage and entry.logMessage ~= '' then
-        table.insert(parts, 'log: ' .. entry.logMessage:gsub('\n', ' '))
+    if entry.logMessage and entry.logMessage ~= "" then
+        table.insert(parts, " log: " .. entry.logMessage:gsub("\n", " "))
     end
-
-    return table.concat(parts, '  ')
+    return table.concat(parts, "")
 end
 
 function BreakpointsPage:init(filetype, on_buf_enter)
@@ -41,9 +68,7 @@ end
 
 function BreakpointsPage:refresh_buffer()
     local buf = self.buf
-    if not buf or not vim.api.nvim_buf_is_valid(buf) then
-        return
-    end
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
 
     -- 1. Build lines
     local lines = {}
@@ -59,11 +84,11 @@ function BreakpointsPage:refresh_buffer()
     -- 3. Highlight selected line using extmark
     vim.api.nvim_buf_clear_namespace(buf, NS_ID, 0, -1)
 
-    if #self._items > 0 and self._idx >= 1 and self._idx <= #self._items then
-        local line_idx = self._idx - 1  -- 0-based
-        pcall(vim.api.nvim_buf_set_extmark, buf, NS_ID, line_idx, 0, {
-            end_line = line_idx,
-            hl_group = 'LoopBreakpointsCursorLine',
+    for idx, entry in ipairs(self._items) do
+        local line_idx = idx - 1
+        vim.api.nvim_buf_set_extmark(buf, NS_ID, line_idx, 0, {
+            end_col = 1,
+            hl_group = 'Debug',
             hl_eol = true,
             priority = 200,
         })

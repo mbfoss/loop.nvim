@@ -4,8 +4,7 @@ local Page = require('loop.pages.Page')
 local EventsPage = require('loop.pages.EventsPage')
 local TaskPage = require('loop.pages.TaskPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
-
-local buftools = require('loop.tools.buffer')
+local uitools = require('loop.tools.uitools')
 
 ---@type boolean
 local setup_done = false
@@ -88,7 +87,7 @@ local function protect_split_window_buffer(buf)
         vim.schedule(function()
             set_active_tab(active_tab)
             if vim.api.nvim_buf_is_valid(buf) then
-                buftools.smart_open_buffer(buf)
+                uitools.smart_open_buffer(buf)
             end
         end)
     end
@@ -265,7 +264,6 @@ function M.setup(config)
         vim.api.nvim_set_hl(0, "LoopPluginEventInfo", { link = "Normal" })
         vim.api.nvim_set_hl(0, "LoopPluginEventWarn", { link = "DiagnosticWarn" })
         vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "DiagnosticError" })
-        vim.api.nvim_set_hl(0, "LoopBreakpointsCursorLine", { link = "DiagnosticWarn" })
     end
 
     vim.api.nvim_create_autocmd("WinEnter", { callback = on_window_enter })
