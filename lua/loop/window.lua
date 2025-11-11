@@ -143,11 +143,12 @@ function M.add_events(lines, level)
 end
 
 ---@param breakpoints table<string, integer[]> 
-function M.update_breakpoints(breakpoints)
+---@param proj_dir string
+function M.update_breakpoints(breakpoints, proj_dir)
     ---@type loop.pages.BreakpointsPage
     local page = breakpoints_tab.page
     assert(getmetatable(page) == BreakpointsPage)
-    page:setlist(breakpoints)
+    page:setlist(breakpoints, proj_dir)
     set_active_tab(breakpoints_tab)
 end
 

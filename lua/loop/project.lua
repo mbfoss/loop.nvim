@@ -54,8 +54,13 @@ local function _close_project()
         return
     end
     _save_breakpoints()
-    breakpoints.clear_all_breakpoints()
-    window.update_breakpoints(breakpoints.get_breakpoints())
+
+    local have_breakpoints = breakpoints.have_breakpoints()
+    if have_breakpoints then
+        breakpoints.clear_all_breakpoints()
+        window.update_breakpoints(breakpoints.get_breakpoints(), _project_dir)
+    end
+    
     window.add_events({ "Project closed" })
     _project_dir = nil
 end
@@ -78,8 +83,9 @@ local function _load_project(dir)
     local config_dir = _get_config_dir(proj_dir)
 
     breakpoints.load_breakpoints(config_dir)
-    window.update_breakpoints(breakpoints.get_breakpoints())
-
+    if breakpoints.have_breakpoints() then
+        window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
+    end
 
     if not _save_timer then
         -- Create and start the repeating timer
@@ -212,9 +218,13 @@ end
 ---@param command nil|"toggle"|"clear_file"|"clear_all"
 function M.update_breakpoints(command)
     assert(_setup_done)
+    local proj_dir = _get_proj_dir_or_warn()
+    if not proj_dir then
+        return
+    end
     if command == nil or command == "toggle" then
         breakpoints.toggle_breakpoint()
-        window.update_breakpoints(breakpoints.get_breakpoints())
+        window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
     elseif command == "clear_file" then
         local bufnr = vim.api.nvim_get_current_buf()
         if vim.api.nvim_buf_is_valid(bufnr) then
@@ -223,19 +233,19 @@ function M.update_breakpoints(command)
                 uitools.confirm_action("Clear breakpoints in file", false, function(accepted)
                     if accepted == true then
                         breakpoints.clear_file_breakpoints(full_path)
-                        window.update_breakpoints(breakpoints.get_breakpoints())
+                        window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
                     end
                 end)
             end
         end
     elseif command == "clear_all" then
         uitools.confirm_action("Clear all breakpoints", false, function(accepted)
-            if accepted == true then 
+            if accepted == true then
                 breakpoints.clear_all_breakpoints()
-                window.update_breakpoints(breakpoints.get_breakpoints())
+                window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
             end
         end)
-    else 
+    else
         vim.notify('loop.nvim: Invalid breakpoints subcommand: ' .. command)
     end
 end

@@ -321,6 +321,11 @@ function M.save_breakpoints(proj_config_dir)
     return true
 end
 
+---@return boolean
+function M.have_breakpoints()
+    return next(_breakpoints) ~= nil
+end
+
 ---@return table<string, integer[]>
 function M.get_breakpoints()
     return vim.deepcopy(_breakpoints)

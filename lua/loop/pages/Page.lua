@@ -34,6 +34,7 @@ function Page:used()
     return self.is_used
 end
 
+---@return number,boolean
 function Page:get_buf()
     if self.buf ~= -1 then
         return self.buf, false

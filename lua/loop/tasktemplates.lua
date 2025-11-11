@@ -15,13 +15,6 @@ return {
         depends_on = { "Build ${FILENAME}" },
     },
     {
-        name = "Test ${FILENAME}",
-        type = "test",
-        command = "test_${FILEROOT}.out",
-        cwd = "${PROJDIR}",
-        depends_on = { "Build ${FILENAME}", "Run ${FILENAME}" },
-    },
-    {
         name = "Debug ${FILENAME}",
         type = "debug:launch",
         command = "${FILEROOT}.out",
@@ -31,6 +24,5 @@ return {
     {
         name = "Attach Debugger",
         type = "debug:attach",
-        depends_on = { "Build ${FILENAME}" },
     },
 }

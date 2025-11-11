@@ -32,13 +32,19 @@ end
 -- ----------------------------------------------------------------------
 -- Format a breakpoint entry for UI (e.g. Telescope, quickfix, etc.)
 -- ----------------------------------------------------------------------
-local function format_entry(entry)
+local function format_entry(entry, project_dir)
+    local filename = entry.filename
+    if project_dir then
+        -- get relative path
+        filename = vim.fn.fnamemodify(filename, ":." .. project_dir)
+    end
+
     local parts = {}
     -- 1. Sign
     table.insert(parts, breakpoint_sign(entry))
     -- 2. File + line
     table.insert(parts, " ")
-    table.insert(parts, entry.filename)
+    table.insert(parts, filename)
     table.insert(parts, ":")
     table.insert(parts, tostring(entry.line))
     -- 3. Optional qualifiers
@@ -61,44 +67,58 @@ end
 
 function BreakpointsPage:get_buf()
     local buf, created = Page.get_buf(self)
-    if created then
-        self:refresh_buffer()
-        -- Set up <Enter> keymap only once when buffer is created
-        vim.api.nvim_buf_set_keymap(buf, 'n', '<CR>', '', {
-            callback = function()
-                local entry = self:get_selected()
-                if entry then
-                    uitools.smart_open_file(entry.filename, entry.line)
-                end
-            end,
-            desc = "Open breakpoint location",
-        })
+    if not created then
+        return buf, false
     end
-    return buf, created
+
+    self:_refresh_buffer()
+    
+    -- Set up <Enter> keymap only once when buffer is created
+    vim.api.nvim_buf_set_keymap(buf, 'n', '<CR>', '', {
+        callback = function()
+            local entry = self:get_selected()
+            if entry then
+                uitools.smart_open_file(entry.filename, entry.line)
+            end
+        end,
+        desc = "Open breakpoint location",
+    })
+
+    vim.api.nvim_buf_set_keymap(buf, 'n', '<2-LeftMouse>', '', {
+        callback = function()
+            local entry = self:get_selected()
+            if entry then
+                uitools.smart_open_file(entry.filename, entry.line)
+            end
+        end,
+        desc = "Open breakpoint location on double-click",
+    })
+
+    return buf, true
 end
 
 ---@return number
 function BreakpointsPage:_get_curr_row()
     local buf = self.buf
-    if not buf or not vim.api.nvim_buf_is_valid(buf) then 
-    return 0 
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then
+        return 0
     end
     if vim.api.nvim_get_current_buf() ~= buf then
         return 0
     end
-    return vim.api.nvim_win_get_cursor(0)[1]  -- 1-based row
+    return vim.api.nvim_win_get_cursor(0)[1] -- 1-based row
 end
 
-function BreakpointsPage:refresh_buffer()
+function BreakpointsPage:_refresh_buffer()
     local buf = self.buf
-    if not buf or not vim.api.nvim_buf_is_valid(buf) then 
-        return             
-        end
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then
+        return
+    end
 
     -- 1. Build lines
     local lines = {}
     for _, entry in ipairs(self._items) do
-        lines[#lines + 1] = format_entry(entry)
+        lines[#lines + 1] = format_entry(entry, self.proj_dir)
     end
 
     -- 2. Update buffer
@@ -120,14 +140,10 @@ function BreakpointsPage:refresh_buffer()
     end
 end
 
-function BreakpointsPage:setlist(items, action)
-    action = action or 'replace'
-
-    if action ~= 'append' then
-        self._items = {}
-        self._idx = 1
-    end
-
+function BreakpointsPage:setlist(items, proj_dir)
+    self.proj_dir = proj_dir
+    self._items = {}
+    self._idx = 1
     for file, bpts in pairs(items or {}) do
         for _, bp in ipairs(bpts) do
             if bp.line and type(bp.line) == 'number' then
@@ -150,7 +166,7 @@ function BreakpointsPage:setlist(items, action)
     end
 
     self:get_buf()
-    self:refresh_buffer()
+    self:_refresh_buffer()
 end
 
 function BreakpointsPage:get_selected()
