@@ -208,26 +208,23 @@ function M.create_task_buffer(label)
     return page:new_buf()
 end
 
-local function _on_buf_enter(buf)
+local function _on_buf_enter(page)
     log:log("buf enter: win = " .. tostring(vim.api.nvim_get_current_win()) .. " buf " .. tostring(buf))
     --- don't set keymaps if outside loop_win
     if vim.api.nvim_get_current_win() ~= loop_win then
         return
     end
-    local modes = { "n", "t" }
     local idx = 0
     for _, tab in ipairs(tabs_data) do
         if tab.page and tab.page:used() then
             idx = idx + 1
-            local key = tostring(idx)
-            for _, mode in ipairs(modes) do
-                local ok, err = pcall(vim.api.nvim_buf_del_keymap, buf, mode, key)
-                log:log({ 'remove keymap ', ok, err })
+            if tab.page ~= page  then
+                local key = tostring(idx)
+                page:set_keymap(key, function()
+                    log:log({ "setting active tab: ", tab.label })
+                    set_active_tab(tab)
+                end)
             end
-            vim.keymap.set(modes, key, function()
-                log:log({ "setting active tab: ", tab.label })
-                set_active_tab(tab)
-            end, { buffer = buf })
         end
     end
 end

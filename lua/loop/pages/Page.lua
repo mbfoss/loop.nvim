@@ -14,7 +14,7 @@ function Page.is_page(buf)
 end
 
 ---@param filetype string
----@param on_buf_enter fun(buf : number)
+---@param on_buf_enter fun(page : loop.pages.Page)
 function Page:init(filetype, on_buf_enter)
     assert(on_buf_enter)
     self.filetype = filetype
@@ -25,7 +25,7 @@ end
 function Page:_on_buf_enter()
     local last_line = vim.api.nvim_buf_line_count(self.buf)
     vim.api.nvim_win_set_cursor(0, { last_line, 0 })
-    self.on_buf_enter(self.buf)
+    self.on_buf_enter(self)
 end
 
 ---@return boolean
@@ -70,6 +70,23 @@ function Page:get_buf()
     })
 
     return buf, true
+end
+
+---@param key string
+---@param callback fun()
+function Page:set_keymap(key, callback)
+    if self.buf ~= -1 then
+        local modes = { "n", "t" }
+        for _, mode in ipairs(modes) do
+            local ok, err = pcall(vim.api.nvim_buf_del_keymap, self.buf, mode, key)
+            --vim.notify(vim.inspect { 'remove keymap ', ok, err })
+            log:log({ 'remove keymap ', ok, err })
+        end
+        --vim.notify(vim.inspect { 'setting keymap', self.filetype, modes, key, self.buf})
+        vim.keymap.set(modes, key, function()
+            callback()
+        end, { buffer = self.buf })
+    end
 end
 
 return Page
