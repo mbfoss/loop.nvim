@@ -130,8 +130,6 @@ function TermProc:start(args)
         return false, result
     end
 
-    vim.api.nvim_buf_set_name(args.bufnr, args.name)
-
     return result[1], result[2]
 end
 

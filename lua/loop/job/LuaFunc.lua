@@ -1,7 +1,5 @@
 local Job      = require('loop.job.Job')
 local class    = require('loop.tools.class')
-local buftools = require('loop.tools.buffer')
-
 
 ---@class loop.job.LuaFunc : loop.job.Job
 ---@field new fun(self: loop.job.LuaFunc) : loop.job.LuaFunc

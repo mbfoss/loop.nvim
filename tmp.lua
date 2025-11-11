@@ -37,5 +37,26 @@ function M.run_debug_task()
         vim.notify("Loop.nvim: " .. (err or 'debug error'))
     end
 end
-    ]] --
 
+---@param page loop.pages.Page
+---@param set_active_tab fun(tab: loop.TabInfo)
+local function set_keymaps(page, set_active_tab)
+    local modes = { "n", "t" }
+    local idx = 0
+    for _, tab in ipairs(tabs_data) do
+        if tab.page then
+            local buf = page:get_buf()
+            idx = idx + 1
+            local key = tostring(idx)
+            for _, mode in ipairs(modes) do
+                local ok, err = pcall(vim.api.nvim_buf_del_keymap, buf, mode, key)
+                log:log({ 'remove keymap ', ok, err })
+            end
+            vim.keymap.set(modes, key, function()
+                log:log({ "setting active tab: ", tab.filetype })
+                set_active_tab(tab)
+            end, { buffer = buf })
+        end
+    end
+end
+    ]] --

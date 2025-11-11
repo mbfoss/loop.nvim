@@ -227,7 +227,7 @@ function M.start_task_chain(tasks, proj_dir, on_complete)
         if not expand_ok then
             is_unresoved = true
             window.add_events({ "Failed to resolve variable(s) in task '" .. task.name .. "':", '  ' ..
-            table.concat(unresolved, ', ') })
+            table.concat(unresolved, ', ') }, "error")
         end
     end
     if is_unresoved then
