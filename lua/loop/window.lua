@@ -265,6 +265,7 @@ function M.setup(config)
         vim.api.nvim_set_hl(0, "LoopPluginEventInfo", { link = "Normal" })
         vim.api.nvim_set_hl(0, "LoopPluginEventWarn", { link = "DiagnosticWarn" })
         vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "DiagnosticError" })
+        vim.api.nvim_set_hl(0, "LoopBreakpointsCursorLine", { link = "Visual" })
     end
 
     vim.api.nvim_create_autocmd("WinEnter", { callback = on_window_enter })
