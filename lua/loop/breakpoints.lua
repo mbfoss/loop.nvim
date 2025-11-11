@@ -48,7 +48,7 @@ end
 ---@param bufnr integer Buffer number
 ---@param line integer Line number
 local function _add_buf_sign(bufnr, line)
-    log:log({ 'adding buffer sign ', line })
+    log:log('adding buffer sign ' .. line)
     vim.fn.sign_place(
         line,                -- sign ID (using line as ID for simplicity)
         signs_group,         -- sign group name
@@ -88,7 +88,7 @@ end
 local function _remove_file_sign(file, line)
     local bufnr = _get_loaded_bufnr(file)
     if bufnr >= 0 then
-        log:log({ 'removing buffer sign ', line })
+        log:log('removing buffer sign ' .. line)
         vim.fn.sign_unplace(signs_group, { buffer = bufnr, id = line })
     end
 end
@@ -104,7 +104,7 @@ local function _add_file_sign(file, line)
 end
 
 --- Refresh all signs in all loaded buffers.
-local function refresh_all_signs()
+local function _refresh_all_signs()
     for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
         if vim.api.nvim_buf_is_loaded(bufnr) then
             _remove_buf_signs(bufnr)
@@ -150,6 +150,7 @@ local function _add_file_breakpoint(file, line, condition, hitCondition, logMess
         hitCondition = hitCondition,
         logMessage = logMessage,
     })
+    _need_saving = true
     return true
 end
 
@@ -169,7 +170,9 @@ local function _remove_file_breakpoint(file, line)
         end
     end
     _breakpoints[file] = new_bps
-    return #bps ~= #new_bps
+    local changed = #bps ~= #new_bps
+    _need_saving = _need_saving or changed
+    return changed
 end
 
 --- Remove a single breakpoint and its sign.
@@ -181,6 +184,7 @@ local function _remove_breakpoint(path, line)
     local removed = _remove_file_breakpoint(file, line)
     if removed then
         _remove_file_sign(file, line)
+        _need_saving = true
     end
     return removed
 end
@@ -192,6 +196,7 @@ local function _remove_all_breakpoints()
             _remove_file_sign(file, b.line)
         end
     end
+    _breakpoints = {}
 end
 
 --- Add a new breakpoint and display its sign.
@@ -245,10 +250,8 @@ function M.load_breakpoints(proj_config_dir)
     if not loaded or type(data) ~= "table" then
         return false, data
     end
-    for file, bps in pairs(data) do
-        _breakpoints[file] = bps
-    end
-    refresh_all_signs()
+    _breakpoints = data
+    _refresh_all_signs()
     _need_saving = false
     return true, nil
 end
@@ -263,16 +266,15 @@ function M.save_breakpoints(proj_config_dir)
         return true
     end
     if proj_config_dir and type(proj_config_dir) == 'string' and vim.fn.isdirectory(proj_config_dir) == 1 then
-        local data = {}
-        local files = _breakpoints.get_breakpoint_files()
-        for _, file in ipairs(files) do
-            data[file] = _breakpoints.get_file_breakpoints(file)
-        end
         local breakpoints_file = vim.fs.joinpath(proj_config_dir, 'breakpoints.json')
-        return json.save_to_file(breakpoints_file, data)
+        return json.save_to_file(breakpoints_file, _breakpoints)
     end
     _need_saving = false
     return true, nil
+end
+
+function M.get_breakpoints()
+    return vim.deepcopy(_breakpoints)
 end
 
 --- Setup the breakpoint sign system and autocommands.
@@ -285,9 +287,8 @@ function M.setup(opts)
 
     -- Remove signs when buffers are deleted or unloaded
     vim.api.nvim_create_autocmd({ "BufDelete", "BufUnload" }, {
-        pattern = "*",
         callback = function(args)
-            vim.fn.sign_unplace(signs_group, { buffer = args.buf })
+            _remove_buf_signs(args.buf)
         end,
     })
 
@@ -298,12 +299,6 @@ function M.setup(opts)
         end,
     })
 
-    -- Clean up signs when buffers are deleted
-    vim.api.nvim_create_autocmd("BufDelete", {
-        callback = function(args)
-            _remove_buf_signs(args.buf)
-        end,
-    })
 end
 
 return M
