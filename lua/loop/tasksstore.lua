@@ -191,11 +191,10 @@ function _get_extension_mod(ext_name)
     return mod
 end
 
----@param proj_dir string
 ---@param config_dir string
 ---@param ext_name string
 ---@return table|nil,string[]|nil
-function _load_extension_config(proj_dir, config_dir, ext_name)
+function _load_extension_config(config_dir, ext_name)
     local mod, mod_err = _get_extension_mod(ext_name)
     if not mod then
         return nil, { mod_err }
@@ -231,12 +230,7 @@ function _load_extension_config(proj_dir, config_dir, ext_name)
 
     local cmake_config = data.config
     
-    -- resolve variables in the cmake config
-    ---@type loop.tools.ProjectVars
-    local variables = {
-        proj_dir = proj_dir
-    }
-    local vars_ok, var_errors = vartools.expand_strings(cmake_config, variables)
+    local vars_ok, var_errors = vartools.expand_strings(cmake_config)
     if not vars_ok then
         return nil, strtools.indent_errors(var_errors, "Failed to resolve variables in cmake config")
     end
@@ -244,11 +238,10 @@ function _load_extension_config(proj_dir, config_dir, ext_name)
     return data.config, nil
 end
 
----@param proj_dir string
 ---@param config_dir string
 ---@param ext_name string
 ---@return loop.Task[]|nil,string[]|nil
-function M.get_extension_init_tasks(proj_dir, config_dir, ext_name)
+function M.get_extension_init_tasks(config_dir, ext_name)
     local mod, mod_err = _get_extension_mod(ext_name)
     if not mod then
         return nil, { mod_err }
@@ -256,7 +249,7 @@ function M.get_extension_init_tasks(proj_dir, config_dir, ext_name)
     if not mod.get_init_tasks then
         return {}
     end
-    local config, config_err = _load_extension_config(proj_dir, config_dir, ext_name)
+    local config, config_err = _load_extension_config(config_dir, ext_name)
     if not config then
         return nil, config_err
     end
@@ -265,11 +258,10 @@ function M.get_extension_init_tasks(proj_dir, config_dir, ext_name)
     return init_tasks
 end
 
----@param proj_dir string
 ---@param config_dir string
 ---@param ext_name string
 ---@return loop.Task[]|nil,string[]|nil
-function M.get_extension_tasks(proj_dir, config_dir, ext_name)
+function M.get_extension_tasks(config_dir, ext_name)
     local mod, mod_err = _get_extension_mod(ext_name)
     if not mod then
         return nil, { mod_err }
@@ -277,7 +269,7 @@ function M.get_extension_tasks(proj_dir, config_dir, ext_name)
     if not mod.get_init_tasks then
         return {}
     end
-    local config, config_err = _load_extension_config(proj_dir, config_dir, ext_name)
+    local config, config_err = _load_extension_config(config_dir, ext_name)
     if not config then
         return nil, config_err
     end

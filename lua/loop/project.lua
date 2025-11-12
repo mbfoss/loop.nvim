@@ -4,6 +4,7 @@ local log = require('loop.tools.Logger').create_logger("project")
 local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
 local uitools = require('loop.tools.uitools')
+local vartools = require('loop.tools.vars')
 local breakpoints = require('loop.breakpoints')
 
 
@@ -80,6 +81,7 @@ local function _load_project(dir)
     local proj_dir = dir
     _project_dir = proj_dir
 
+    vartools.set_context(proj_dir)
     local config_dir = _get_config_dir(proj_dir)
 
     breakpoints.load_breakpoints(config_dir)
@@ -129,7 +131,7 @@ function M.open_project(dir)
     dir = dir or vim.fn.getcwd()
     local ok, errors = _load_project(dir)
     if ok then
-        window.add_events({ "Project directory " .. dir })
+        window.add_events({ "Project loaded " .. dir })
     else
         errors = errors or {}
         table.insert(errors, 1, "Failed to load project")
@@ -152,7 +154,7 @@ function M.run_task(name)
         return
     end
     local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(proj_dir, config_dir, "task", nil, name)
+    taskmgr.run_task(config_dir, "task", nil, name)
 end
 
 function M.repeat_task()
@@ -162,7 +164,7 @@ function M.repeat_task()
         return
     end
     local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(proj_dir, config_dir, "repeat")
+    taskmgr.run_task(config_dir, "repeat")
 end
 
 ---@param ext_name string
@@ -174,7 +176,7 @@ function M.extension_task(ext_name, task_name)
         return
     end
     local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(proj_dir, config_dir, "extension", ext_name, task_name)
+    taskmgr.run_task(config_dir, "extension", ext_name, task_name)
 end
 
 ---@param ext_name string

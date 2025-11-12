@@ -50,7 +50,6 @@ end
 ---@class loop.SelectTaskArgs
 ---@field tasks loop.Task[]
 ---@field prompt string
----@field project_dir string
 
 ---@param args loop.SelectTaskArgs
 ---@param task_handler fun(task : loop.Task)
@@ -58,10 +57,6 @@ function _select_task(args, task_handler)
     if #args.tasks == 0 then
         return
     end
-    ---@type loop.tools.ProjectVars
-    local variables = {
-        proj_dir = args.project_dir
-    }
     local choices = {}
     for _, task in ipairs(args.tasks) do
         ---@type loop.SelectorItem
@@ -90,16 +85,15 @@ function M.create_extension_config(config_dir, ext_name)
     end
 end
 
----@param project_dir string
 ---@param config_dir string
 ---@param mode "task"|"extension"|"repeat"
 ---@param ext_name string|nil
 ---@param task_name string|nil
-function M.run_task(project_dir, config_dir, mode, ext_name, task_name)
+function M.run_task(config_dir, mode, ext_name, task_name)
     if mode == "repeat" then
         local chain, _ = tasksstore.load_last_chain(config_dir)
         if chain then
-            runner.start_task_chain(chain, project_dir)
+            runner.start_task_chain(chain)
             return
         end
     end
@@ -107,7 +101,7 @@ function M.run_task(project_dir, config_dir, mode, ext_name, task_name)
     local function main_task()
         local tasks, task_errors
         if mode == "extension" then
-            tasks, task_errors = tasksstore.get_extension_tasks(project_dir, config_dir, ext_name or "")
+            tasks, task_errors = tasksstore.get_extension_tasks(config_dir, ext_name or "")
         else
             tasks, task_errors = tasksstore.load_tasks(config_dir)
         end
@@ -130,7 +124,7 @@ function M.run_task(project_dir, config_dir, mode, ext_name, task_name)
                 window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
                 return
             end
-            runner.start_task_with_deps(tasks, task, project_dir)
+            runner.start_task_with_deps(tasks, task)
             return
         end
 
@@ -142,8 +136,7 @@ function M.run_task(project_dir, config_dir, mode, ext_name, task_name)
         ---@type loop.SelectTaskArgs
         local select_args = {
             tasks = tasks,
-            prompt = "Select task",
-            project_dir = project_dir
+            prompt = "Select task"
         }
         _select_task(select_args, function(task)
             local chain, err = runner.get_deps_chain(tasks, task)
@@ -152,13 +145,13 @@ function M.run_task(project_dir, config_dir, mode, ext_name, task_name)
                 return
             end
             tasksstore.save_last_chain(chain, config_dir)
-            runner.start_task_chain(chain, project_dir)
+            runner.start_task_chain(chain)
         end)
     end
 
     local init_tasks = nil
     if ext_name then
-        init_tasks, errors = tasksstore.get_extension_init_tasks(project_dir, config_dir, ext_name)
+        init_tasks, errors = tasksstore.get_extension_init_tasks(config_dir, ext_name)
         if not init_tasks then
             window.add_events(strtools.indent_errors(errors, "Failed to load ext '" .. ext_name .. "' init tasks"),
                 "error")
@@ -167,7 +160,7 @@ function M.run_task(project_dir, config_dir, mode, ext_name, task_name)
     end
 
     if init_tasks then
-        runner.start_task_chain(init_tasks, project_dir, function()
+        runner.start_task_chain(init_tasks, function()
             main_task()
         end)
     else

@@ -214,16 +214,14 @@ end
 
 
 ---@param tasks loop.Task[]
----@param proj_dir string
 ---@param on_complete fun()|nil
-function M.start_task_chain(tasks, proj_dir, on_complete)
+function M.start_task_chain(tasks, on_complete)
     --- copy to solve strings in the copy and keep the original intact
     chain = vim.deepcopy(tasks)
 
-    local variables = { proj_dir = proj_dir }
     local is_unresoved = false
     for _, task in ipairs(chain) do
-        local expand_ok, unresolved = vartools.expand_strings(chain, variables)
+        local expand_ok, unresolved = vartools.expand_strings(chain)
         if not expand_ok then
             is_unresoved = true
             window.add_events({ "Failed to resolve variable(s) in task '" .. task.name .. "':", '  ' ..
