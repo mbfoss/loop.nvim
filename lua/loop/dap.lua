@@ -1,5 +1,6 @@
 local M = {}
 
+require('loop.config')
 local Session = require('loop.dap.Session')
 
 -- local sessions = {}
@@ -38,6 +39,11 @@ end
 
 function M.start_session(args)
 	return _start_session(args)
+end
+
+---@param config loop.Config
+function M.setup(config)
+    vim.notify('dap setup\n' .. vim.inspect(config))
 end
 
 return M

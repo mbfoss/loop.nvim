@@ -2,23 +2,7 @@
 local M = {}
 
 local project = require('loop.project')
-
----@class Config
-local config = {
-    debuggers = {
-        lldb = {
-            command = "/Library/Developer/CommandLineTools/usr/bin/lldb-dap",
-            args = "",
-        },
-        pthon = {
-            command = "python",
-            args = "-m debugpy.adapter",
-        },
-    }
-}
-
----@type Config
-M.config = config
+local config = require('loop.config')
 
 local function setup_user_command(calls)
     -- Command completion: suggest subcommands first
@@ -77,7 +61,7 @@ end
 
 local setup_done = false
 
----@param args Config?
+---@param args loop.Config?
 M.setup = function(args)
     assert(not setup_done, "Loop.nvim: setup() already done")
     setup_done = true
@@ -85,7 +69,7 @@ M.setup = function(args)
         error("loop.nvim requires Neovim >= 0.10")
     end
 
-    M.config = vim.tbl_deep_extend("force", M.config, args or {})
+    M.config = vim.tbl_deep_extend("force", config.defaut_config, args or {})
     project.setup(M.config)
 
     _G.LoopProject =

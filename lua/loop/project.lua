@@ -1,10 +1,12 @@
 local M = {}
 
+require("loop.config")
 local log = require('loop.tools.Logger').create_logger("project")
 local taskmgr = require("loop.task.taskmgr")
 local window = require("loop.window")
 local uitools = require('loop.tools.uitools')
 local vartools = require('loop.tools.vars')
+local dap = require('loop.dap')
 local breakpoints = require('loop.breakpoints')
 
 
@@ -260,15 +262,18 @@ function M.debug_command(command)
     vim.notify('loop.nvim: Invalid debug subcommand: ' .. tostring(command))
 end
 
-function M.setup(_)
+---@param config loop.Config
+function M.setup(config)
 	assert(not _setup_done, "Setup alreay done")
 	_setup_done = true
 
 	log:log('setup')
 
-	window.setup({})
+    dap.setup(config)
 
 	breakpoints.setup()
+
+	window.setup({})
 
 	vim.api.nvim_create_autocmd("VimEnter", {
 		callback = vim.schedule_wrap(function()
