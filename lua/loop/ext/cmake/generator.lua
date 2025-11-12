@@ -10,7 +10,7 @@
 ---@field build_dir string # required, non-empty
 ---@field configure_args string[]|nil
 ---@field build_tool_args string[]|nil
----@field prob_matcher loop.task.ProblemMatcher # required
+---@field prob_matcher any
 ---@field run table<string, loop.ext.cmake.CMakeRunApp> -- target → { cwd, args }
 
 
@@ -21,6 +21,7 @@
 
 local M         = {}
 
+require('loop.task')
 local filetools = require('loop.tools.file')
 local strtools  = require('loop.tools.strtools')
 

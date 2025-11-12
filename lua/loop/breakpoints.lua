@@ -333,7 +333,7 @@ end
 
 --- Setup the breakpoint sign system and autocommands.
 ---@param opts? table Optional setup options (currently unused)
-function M.setup(opts)
+function M.setup(_)
     assert(not _setup_done, "setup already done")
     _setup_done = true
 

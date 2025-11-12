@@ -60,7 +60,7 @@ return [[
             "oneOf": [
               {
                 "type": "string",
-                "enum": ["$gcc", "$tsc-watch", "$eslint-stylish", "$msCompile", "$lessCompile"],
+                "enum": ["$gcc", "$tsc-watch", "$eslint-stylish", "$msCompile", "$luacheck"],
                 "description": "Predefined problem matcher"
               },
               {

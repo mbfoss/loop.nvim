@@ -110,12 +110,12 @@ function BaseSession:_handle_rev_req(msg)
             self.log:error("In rev-request handler for " .. (msg.command or "?") .. "\n" .. debug.traceback(
                 "Error: " .. tostring(err) .. "\n", 2))
         end
-        ok, _ = xpcall(function() handler(msg.arguments) end, cb_error)
+		local err
+        ok,err = xpcall(function() handler(msg.arguments) end, cb_error)
         if not ok then
-            self.log:error({ "Error in response handler reverse request ", msg.command })
+            self.log:error({ "Error in response handler reverse request ", msg.command, err })
         end
     else
-        ok = false
         result_or_err = "No handler for reverse request: " .. tostring(msg.command)
     end
     return ok, result_or_err

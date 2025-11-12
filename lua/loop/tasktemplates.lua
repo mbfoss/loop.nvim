@@ -1,5 +1,13 @@
 return {
     {
+        name = "Lua check",
+        type = "build",
+        command = {"luacheck", "${PROJDIR}"},
+        cwd = "${PROJDIR}",
+        problem_matcher = "$luacheck",
+        depends_on = {},
+    },    
+    {
         name = "Build ${FILENAME}",
         type = "build",
         command = {"g++", "-g", "-std=c++23", "${FILE}", "-o", "${FILEROOT}.out", "-fdiagnostics-color=always"},

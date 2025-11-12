@@ -98,74 +98,54 @@ function M.run_task(config_dir, mode, ext_name, task_name)
         end
     end
 
-    local function main_task()
-        local tasks, task_errors
-        if mode == "extension" then
-            tasks, task_errors = tasksstore.get_extension_tasks(config_dir, ext_name or "")
-        else
-            tasks, task_errors = tasksstore.load_tasks(config_dir)
-        end
-        if not tasks or task_errors then
-            window.add_events(strtools.indent_errors(task_errors, "Errors while loading tasks"), "error")
-        end
-
-        if not tasks then
-            return
-        end
-
-        if task_name and task_name ~= "" then
-            local task = vim.iter(tasks):find(function(t) return t.name == task_name end)
-            if not task then
-                window.add_events({ "No task found with name: " .. task_name }, "error")
-                return
-            end
-            local chain, err = runner.get_deps_chain(tasks, task)
-            if not chain then
-                window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
-                return
-            end
-            runner.start_task_with_deps(tasks, task)
-            return
-        end
-
-        if #tasks == 0 then
-            window.add_events({"No tasks found"}, "warn")
-            return
-        end
-
-        ---@type loop.SelectTaskArgs
-        local select_args = {
-            tasks = tasks,
-            prompt = "Select task"
-        }
-        _select_task(select_args, function(task)
-            local chain, err = runner.get_deps_chain(tasks, task)
-            if not chain then
-                window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
-                return
-            end
-            tasksstore.save_last_chain(chain, config_dir)
-            runner.start_task_chain(chain)
-        end)
-    end
-
-    local init_tasks = nil
-    if ext_name then
-        init_tasks, errors = tasksstore.get_extension_init_tasks(config_dir, ext_name)
-        if not init_tasks then
-            window.add_events(strtools.indent_errors(errors, "Failed to load ext '" .. ext_name .. "' init tasks"),
-                "error")
-            return
-        end
-    end
-
-    if init_tasks then
-        runner.start_task_chain(init_tasks, function()
-            main_task()
-        end)
+    local tasks, task_errors
+    if mode == "extension" then
+        tasks, task_errors = tasksstore.get_extension_tasks(config_dir, ext_name or "")
     else
-        main_task()
+        tasks, task_errors = tasksstore.load_tasks(config_dir)
     end
+    if not tasks or task_errors then
+        window.add_events(strtools.indent_errors(task_errors, "Errors while loading tasks"), "error")
+    end
+
+    if not tasks then
+        return
+    end
+
+    if task_name and task_name ~= "" then
+        local task = vim.iter(tasks):find(function(t) return t.name == task_name end)
+        if not task then
+            window.add_events({ "No task found with name: " .. task_name }, "error")
+            return
+        end
+        local chain, err = runner.get_deps_chain(tasks, task)
+        if not chain then
+            window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
+            return
+        end
+        runner.start_task_with_deps(tasks, task)
+        return
+    end
+
+    if #tasks == 0 then
+        window.add_events({ "No tasks found" }, "warn")
+        return
+    end
+
+    ---@type loop.SelectTaskArgs
+    local select_args = {
+        tasks = tasks,
+        prompt = "Select task"
+    }
+    _select_task(select_args, function(task)
+        local chain, err = runner.get_deps_chain(tasks, task)
+        if not chain then
+            window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
+            return
+        end
+        tasksstore.save_last_chain(chain, config_dir)
+        runner.start_task_chain(chain)
+    end)
 end
 
 return M

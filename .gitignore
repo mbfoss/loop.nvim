@@ -42,4 +42,4 @@ luac.out
 .DS_Store
 /standalone
 .vscode
-
+/.nvimloop

@@ -1,6 +1,13 @@
 local M = {}
 
 local builtin_matchers = {
+    ["$luacheck"] = {
+        regexp = "^%s*([^:]+):(%d+):(%d+):%s*(.+)$",
+        file = 1,
+        line = 2,
+        column = 3,
+        message = 4
+    },
     ------------------------------------------------------------------
     -- GCC / Clang
     ------------------------------------------------------------------
@@ -12,7 +19,6 @@ local builtin_matchers = {
         severity = 4,
         message = 5,
     },
-
     ------------------------------------------------------------------
     -- TypeScript (tsc --watch)
     ------------------------------------------------------------------
@@ -38,7 +44,6 @@ local builtin_matchers = {
         severity = 3,
         message = 4,
     },
-
     ------------------------------------------------------------------
     -- MSVC (msCompile)
     ------------------------------------------------------------------
@@ -49,19 +54,6 @@ local builtin_matchers = {
         line = 2,
         severity = 3,
         message = 4,
-    },
-
-    ------------------------------------------------------------------
-    -- Less compiler
-    ------------------------------------------------------------------
-    ["$lessCompile"] = {
-        -- ParseError: expected '{' in file.less on line 12, column 5
-        regexp = "^%w+:%s*(.-)%s+in%s+([^(]+)%s+on%s+line%s+(%d+),%s+column%s+(%d+)",
-        file = 2,
-        line = 3,
-        column = 4,
-        severity = 1,
-        message = 1,
     },
 }
 
@@ -90,7 +82,7 @@ local function make_qf_entry(m, line)
     }
 
     -- optional type → 'E' (error) or 'W' (warning)
-    if m.severity then
+    if m.severity and captures[m.severity] then
         local typ = captures[m.severity]:lower()
         entry.type = (typ:find("error") or typ:find("fatal")) and "E" or "W"
     end
@@ -101,7 +93,7 @@ end
 --- @param lines  string[]   raw compiler / linter output
 --- @param matcher table   "$name" or a custom matcher table
 --- @param module string|nil
---- @return boolean true if matched
+--- @return number number of matched lines
 local function _add_to_quickfix(lines, matcher, module)
     local qf = {}
     for _, line in ipairs(lines) do
@@ -115,11 +107,11 @@ local function _add_to_quickfix(lines, matcher, module)
     end
 
     if #qf == 0 then
-        return false
+        return 0
     end
 
     vim.fn.setqflist(qf, "a")
-    return true
+    return #qf
 end
 
 --- @param module string | nil
@@ -133,6 +125,12 @@ function M.clear(module)
     end
 end
 
+---@param name any
+---@return boolean
+function M.is_builtin_matcher(name)
+    return type(name) == "string" and builtin_matchers[name] ~= nil
+end
+
 -- ----------------------------------------------------------------------
 -- Public API
 -- ----------------------------------------------------------------------
@@ -140,7 +138,7 @@ end
 --- @param lines  string[]   raw compiler / linter output
 --- @param matcher string|table   "$name" or a custom matcher table
 --- @param group string | nil
---- @return boolean true if matched
+--- @return number number of matched lines
 function M.add(lines, matcher, group)
     ------------------------------------------------------------------
     -- 1. Resolve a built-in matcher when a string is passed
@@ -155,7 +153,7 @@ function M.add(lines, matcher, group)
     if type(matcher) == "table" and matcher.regexp then
         return _add_to_quickfix(lines, matcher, group)
     end
-    return false
+    return 0
 end
 
 return M

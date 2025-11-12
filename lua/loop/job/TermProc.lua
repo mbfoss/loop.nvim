@@ -1,5 +1,5 @@
-local Job      = require('loop.job.Job')
-local class    = require('loop.tools.class')
+local Job     = require('loop.job.Job')
+local class   = require('loop.tools.class')
 local uitools = require('loop.tools.uitools')
 
 
@@ -43,7 +43,6 @@ end
 
 ---@class loop.TermProc.StartArgs
 ---@field bufnr number
----@field interactive boolean
 ---@field name string
 ---@field command string|string[]
 ---@field command_env table<string,string>|nil
@@ -109,14 +108,8 @@ function TermProc:start(args)
     -- Call risky_function safely
     local call_ok, result = xpcall(
         function()
-            if args.interactive then
-                return { self:_start_interactive(args.bufnr, cmd_and_args, command_env, command_cwd, args.output_handler,
-                    args.on_exit_handler) }
-            else
-                return { self:_start_non_interactive(args.bufnr, cmd_and_args, command_env, command_cwd,
-                    args.output_handler,
-                    args.on_exit_handler) }
-            end
+            return { self:_start_term_job(args.bufnr, cmd_and_args, command_env, command_cwd, args.output_handler,
+                args.on_exit_handler) }
         end,
         function(err)
             return debug.traceback()
@@ -140,7 +133,7 @@ end
 ---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
 ---@param on_exit_handler fun(code : number)
 ---@return boolean, string|nil
-function TermProc:_start_interactive(bufnr, cmd_and_args, command_env, command_cwd, output_handler, on_exit_handler)
+function TermProc:_start_term_job(bufnr, cmd_and_args, command_env, command_cwd, output_handler, on_exit_handler)
     local buffer = bufnr
     vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
         buffer = bufnr,
@@ -180,75 +173,6 @@ function TermProc:_start_interactive(bufnr, cmd_and_args, command_env, command_c
             assert_main_thread()
             self.job_id = -1
             on_exit(code)
-        end,
-    })
-
-    if self.job_id <= 0 then
-        return false, "Failed to start terminal job"
-    end
-
-    return true, nil
-end
-
----@param bufnr number
----@param cmd_and_args string[]
----@param command_env table<string,string>|nil
----@param command_cwd string|nil
----@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
----@param on_exit_handler fun(code : number)
----@return boolean, string|nil
-function TermProc:_start_non_interactive(bufnr, cmd_and_args, command_env, command_cwd, output_handler, on_exit_handler)
-    self.term_id = vim.api.nvim_open_term(bufnr, {})
-    if self.term_id <= 0 then
-        return false, "Failed to create pseudo-terminal"
-    end
-
-    self.job_id = vim.fn.jobstart(cmd_and_args, {
-        pty = true,
-        cwd = command_cwd,
-        env = command_env,
-        clear_env = false,
-        stdout_buffered = false,
-        stderr_buffered = false,
-        on_stdout = function(_, data, _)
-            assert_main_thread()
-            if data then
-                if self.term_id > 0 then
-                    for _, line in ipairs(data) do
-                        if #line > 0 then
-                            vim.api.nvim_chan_send(self.term_id, line .. '\n')
-                        end
-                    end
-                end
-                if output_handler then
-                    output_handler("stdout", data)
-                end
-            end
-        end,
-        on_stderr = function(_, data, _)
-            assert_main_thread()
-            if data then
-                if self.term_id > 0 then
-                    for _, line in ipairs(data) do
-                        if #line > 0 then
-                            vim.api.nvim_chan_send(self.term_id, line .. '\n')
-                        end
-                    end
-                end
-                if output_handler then
-                    output_handler("stderr", data)
-                end
-            end
-        end,
-        on_exit = function(_, code, _)
-            assert_main_thread()
-            self.job_id = -1
-            if self.term_id > 0 then
-                vim.api.nvim_chan_send(self.term_id, string.format("\r\n[process exited with %d]\r\n", code))
-            end
-            if on_exit_handler then
-                on_exit_handler(code)
-            end
         end,
     })
 

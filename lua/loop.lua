@@ -24,8 +24,6 @@ local function setup_user_command(calls)
     -- Command completion: suggest subcommands first
     local function loop_complete(arg_lead, cmd_line, _)
         local args = vim.split(cmd_line, "%s+")
-        local subcmd = args[2] -- First argument after command name
-
         -- Complete subcommands when typing the first argument
         if #args == 2 then
             local matches = {}

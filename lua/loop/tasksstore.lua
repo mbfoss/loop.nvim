@@ -184,7 +184,6 @@ function _get_extension_mod(ext_name)
     end
     if type(mod.get_config_schema) ~= "function" or
         type(mod.get_config_template) ~= "function" or
-        type(mod.get_init_tasks) ~= "function" or
         type(mod.get_tasks) ~= "function" then
         return nil, "Missing function in extension: " .. ext_name
     end
@@ -241,33 +240,10 @@ end
 ---@param config_dir string
 ---@param ext_name string
 ---@return loop.Task[]|nil,string[]|nil
-function M.get_extension_init_tasks(config_dir, ext_name)
-    local mod, mod_err = _get_extension_mod(ext_name)
-    if not mod then
-        return nil, { mod_err }
-    end
-    if not mod.get_init_tasks then
-        return {}
-    end
-    local config, config_err = _load_extension_config(config_dir, ext_name)
-    if not config then
-        return nil, config_err
-    end
-    init_tasks = mod.get_init_tasks(config)
-    assert(vim.isarray(init_tasks))
-    return init_tasks
-end
-
----@param config_dir string
----@param ext_name string
----@return loop.Task[]|nil,string[]|nil
 function M.get_extension_tasks(config_dir, ext_name)
     local mod, mod_err = _get_extension_mod(ext_name)
     if not mod then
         return nil, { mod_err }
-    end
-    if not mod.get_init_tasks then
-        return {}
     end
     local config, config_err = _load_extension_config(config_dir, ext_name)
     if not config then

@@ -51,7 +51,7 @@ end
 ---@return number bufnr
 ---@param line? integer 1‑based line number (nil = just open)
 function M.smart_open_file(filepath, line)
-    function set_line(winid, bufnr)
+    local function set_line(winid, bufnr)
         if line and type(line) == 'number' and line > 0 then
             -- Clamp to valid range
             local maxline = vim.api.nvim_buf_line_count(bufnr)

@@ -15,7 +15,7 @@ local window = require("loop.window")
 ---@field next_chain loop.runner.TaskChain|nil
 
 ---@type loop.runner.TaskChain|nil
-_current_task_chain = nil
+local _current_task_chain = nil
 
 ---@param tasks loop.Task[] all available tasks
 ---@param main loop.Task main task
@@ -85,6 +85,9 @@ local function _start_one_task(task, on_exit_handler)
     local output_handler = nil
     if tasktype == "build" then
         if task.problem_matcher then
+            if type(task.problem_matcher) == 'string' and not quickfix.is_builtin_matcher(task.problem_matcher) then
+                return nil, "Unknown problem matcher: " .. task.problem_matcher
+            end
             quickfix.clear()
             output_handler = function(category, text)
                 quickfix.add(text, task.problem_matcher)
@@ -97,11 +100,9 @@ local function _start_one_task(task, on_exit_handler)
         if buf == -1 then
             return nil, "No output buffer for task"
         end
-        local interactive = tasktype == "run"
         ---@type loop.TermProc.StartArgs
         local args = {
             bufnr = buf,
-            interactive = interactive,
             name = task.name,
             command = task.command,
             command_env = task.env,
@@ -217,7 +218,7 @@ end
 ---@param on_complete fun()|nil
 function M.start_task_chain(tasks, on_complete)
     --- copy to solve strings in the copy and keep the original intact
-    chain = vim.deepcopy(tasks)
+    local chain = vim.deepcopy(tasks)
 
     local is_unresoved = false
     for _, task in ipairs(chain) do

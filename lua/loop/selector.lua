@@ -2,23 +2,27 @@
 -- A unified selector menu that uses Telescope if available, otherwise falls back to a simple native picker.
 -- Items must have: { label = string, content = table }
 -- Callback now receives the selected item (or nil) instead of index.
-local M = {}
+
 --- @class loop.SelectorItem
 --- @field label string The display label in the picker
 --- @field content table The table to show in preview via vim.inspect()
 --- @field formatter function(fun(content:table):string) Convert the content into json for display in the preview
+
 --- @alias loop.SelectorCallback fun(item: loop.SelectorItem|nil): nil
-local jsontools = require('loop.tools.json')
+
+local M = {}
+
 local pickers = nil
 local finders = nil
 local previewers = nil
 local conf = nil
 local actions = nil
 local action_state = nil
+
 --- Fallback native selector using vim.ui.select (Neovim 0.6+)
 --- @param prompt string
 --- @param items loop.SelectorItem[]
---- @param callback loop.SelectorCallback
+--- @param callback fun(item: loop.SelectorItem|nil)
 local function default_select(prompt, items, callback)
     local labels = {}
     for _, item in ipairs(items) do
@@ -62,7 +66,7 @@ end
 --- Use Telescope to show the selector
 --- @param prompt string The prompt title
 --- @param items loop.SelectorItem[] List of items
---- @param callback loop.SelectorCallback Called with selected item or nil
+--- @param callback fun(item: loop.SelectorItem|nil) Called with selected item or nil
 local function telescope_select(prompt, items, callback)
     -- Ensure Telescope is loaded
     if not (pickers and finders and previewers and conf and actions and action_state) then

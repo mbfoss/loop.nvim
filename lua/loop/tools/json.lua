@@ -43,7 +43,7 @@ local function json_encode_pretty(obj, order_handler, indent)
                 end
                 if order_handler then
                     ordered = order_handler(path, keys)
-                    index = 1
+                    local index = 1
                     local priorities = {}
                     if ordered then
                         for _, v in ipairs(ordered) do
