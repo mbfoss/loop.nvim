@@ -77,7 +77,7 @@ end
 ---@return loop.job.Job|nil, string|nil
 ---@param on_exit_handler fun(code : number)
 local function _start_one_task(task, on_exit_handler)
-    if task.type ~= "attach" and (not task.command or #task.command == 0) then
+    if not task.command or #task.command == 0 then
         return nil, "Invalid or empty command"
     end
 

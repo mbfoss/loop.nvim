@@ -39,7 +39,9 @@ local function setup_user_command(calls)
             elseif args[2] == 'show' then
                 return project.tab_names()
             elseif args[2] == 'breakpoints' then
-                return {"toggle", "clear_file", "clear_all"}
+                return { "toggle", "clear_file", "clear_all" }
+            elseif args[2] == 'debug' then
+                return { "start", "continue", "restart", "stop" }
             end
         end
         return {}
@@ -86,8 +88,9 @@ M.setup = function(args)
     M.config = vim.tbl_deep_extend("force", M.config, args or {})
     project.setup(M.config)
 
-	_G.LoopProject =
+    _G.LoopProject =
     {
+        _winbar_click = project.winbar_click,
         create_project = project.create_project,
         open_project = project.open_project,
         close_project = project.close_project,
@@ -100,7 +103,7 @@ M.setup = function(args)
         show = project.show_window,
         hide = project.hide_window,
         breakpoints = project.update_breakpoints,
-        _winbar_click = project.winbar_click
+        debug = project.debug_command,
     }
     setup_user_command(_G.LoopProject)
 end

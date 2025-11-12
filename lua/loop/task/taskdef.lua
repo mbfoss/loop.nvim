@@ -15,7 +15,7 @@
 
 ---@alias loop.task.ProblemMatcher loop.task.KnownProblemMatcher | loop.task.CustomProblemMatcher
 
----@alias loop.TaskType "lua"|"tool"|"app"|"debug"|"attach"
+---@alias loop.TaskType "lua"|"tool"|"app"|"debug"
 
 ---@class loop.Task
 ---@field name string # non-empty task name (supports ${VAR} templates)

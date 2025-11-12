@@ -28,10 +28,6 @@ return {
 		command = "${FILEROOT}.out",
 		cwd = "${PROJDIR}",
 		depends_on = { "Build ${FILENAME}" },
-	},
-	{
-		name = "Attach Debugger",
-		type = "attach",
-	},
+	}
 }
 

@@ -41,20 +41,22 @@ function M.add_task()
 	taskmgr.add_task(config_dir)
 end
 
-local function _save_breakpoints()
+local function _save_project()
 	if not _project_dir then
 		return false
 	end
 	assert(_setup_done)
-	local config_dir = _get_config_dir(_project_dir)
-	breakpoints.save_breakpoints(config_dir)
+    local config_dir = _get_config_dir(_project_dir)
+	vim.fn.mkdir(config_dir, "p")
+    window.save_settings(config_dir)
+    breakpoints.save_breakpoints(config_dir)
 end
 
 local function _close_project()
 	if not _project_dir then
 		return
 	end
-	_save_breakpoints()
+	_save_project()
 
 	local have_breakpoints = breakpoints.have_breakpoints()
 	if have_breakpoints then
@@ -84,6 +86,7 @@ local function _load_project(dir)
 	vartools.set_context(proj_dir)
 	local config_dir = _get_config_dir(proj_dir)
 
+    window.load_settings(config_dir)
 	breakpoints.load_breakpoints(config_dir)
 	if breakpoints.have_breakpoints() then
 		window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
@@ -97,7 +100,7 @@ local function _load_project(dir)
 		_save_timer:start(
 			save_frequency,                  -- initial delay
 			save_frequency,                  -- frequency
-			vim.schedule_wrap(_save_breakpoints)
+			vim.schedule_wrap(_save_project)
 		)
 	end
 
@@ -252,6 +255,11 @@ function M.update_breakpoints(command)
 	end
 end
 
+---@param command string|nil
+function M.debug_command(command)
+    vim.notify('loop.nvim: Invalid debug subcommand: ' .. tostring(command))
+end
+
 function M.setup(_)
 	assert(not _setup_done, "Setup alreay done")
 	_setup_done = true
@@ -281,7 +289,7 @@ function M.setup(_)
 				_save_timer:stop()
 				_save_timer:close()
 			end
-			_save_breakpoints()
+            _save_project()
 		end,
 	})
 end

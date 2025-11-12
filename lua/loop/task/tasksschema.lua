@@ -21,8 +21,7 @@ return [[
             "enum": [
               "tool",
               "app",
-              "debug",
-              "attach"
+              "debug"
             ],
             "description": "Task type. Use colon for subtypes (e.g., debug:launch)."
           },
@@ -82,11 +81,7 @@ return [[
             "description": "List of task names this task depends on"
           }
         },
-        "required": ["name", "type"],
-        "anyOf": [
-          { "required": ["command"] },
-          { "enum": ["attach"] }
-        ],
+        "required": ["name", "type", "command"],
         "additionalProperties": false
       }
     }
