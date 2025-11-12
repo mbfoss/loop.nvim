@@ -13,9 +13,9 @@ local _breakpoints = {}
 --- Represents a single breakpoint.
 ---@class loop.breakpoints.Breakpoint
 ---@field line integer                     Line number of the breakpoint
----@field condition? string|nil            Optional condition expression
----@field hitCondition? string|nil         Optional hit condition
----@field logMessage? string|nil           Optional log message
+---@field condition string|nil            Optional condition expression
+---@field hitCondition string|nil         Optional hit condition
+---@field logMessage string|nil           Optional log message
 
 --- Whether setup() has been called.
 ---@type boolean
@@ -332,7 +332,7 @@ function M.get_breakpoints()
 end
 
 --- Setup the breakpoint sign system and autocommands.
----@param opts? table Optional setup options (currently unused)
+---@param _? table Optional setup options (currently unused)
 function M.setup(_)
     assert(not _setup_done, "setup already done")
     _setup_done = true

@@ -3,12 +3,12 @@
 -- Items must have: { label = string, content = table }
 -- Callback now receives the selected item (or nil) instead of index.
 
---- @class loop.SelectorItem
---- @field label string The display label in the picker
---- @field content table The table to show in preview via vim.inspect()
---- @field formatter function(fun(content:table):string) Convert the content into json for display in the preview
+---@class loop.SelectorItem
+---@field label string The display label in the picker
+---@field content table The table to show in preview via vim.inspect()
+---@field formatter function(fun(content:table):string) Convert the content into json for display in the preview
 
---- @alias loop.SelectorCallback fun(item: loop.SelectorItem|nil): nil
+---@alias loop.SelectorCallback fun(item: loop.SelectorItem|nil): nil
 
 local M = {}
 

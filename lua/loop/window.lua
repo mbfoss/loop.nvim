@@ -163,7 +163,7 @@ function M.tab_names()
 	return arr
 end
 
----@param tabname string|nil
+---@param tabname? string
 function M.show_window(tabname)
 	assert(setup_done)
 	local tab = nil

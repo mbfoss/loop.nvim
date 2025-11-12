@@ -252,7 +252,7 @@ function M.update_breakpoints(command)
 	end
 end
 
-function M.setup(--[[config]])
+function M.setup(_)
 	assert(not _setup_done, "Setup alreay done")
 	_setup_done = true
 
