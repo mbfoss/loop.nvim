@@ -1,3 +1,5 @@
+require('loop.tools.taskdef')
+
 ---@class loop.ext.cmake.CMakeRunApp
 ---@field cwd string
 ---@field args string[]|nil
@@ -10,7 +12,7 @@
 ---@field build_dir string # required, non-empty
 ---@field configure_args string[]|nil
 ---@field build_tool_args string[]|nil
----@field prob_matcher any
+---@field prob_matcher loop.task.ProblemMatcher
 ---@field run table<string, loop.ext.cmake.CMakeRunApp> -- target → { cwd, args }
 
 
@@ -220,7 +222,7 @@ end
 ---@return boolean, string[]|nil
 function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
     local profile_name = cfg.name
-    src_root = realpath(cfg.source_dir) or cfg.source_dir
+    local src_root = realpath(cfg.source_dir) or cfg.source_dir
     local build_dir = realpath(cfg.build_dir) or cfg.build_dir
     local prob_matcher = cfg.prob_matcher or "$gcc"
     local cmake_file = vim.fs.joinpath(src_root, "CMakeLists.txt")
@@ -255,7 +257,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
         table.insert(tasks, task)
     end
 
-    function build_task_name(tgt, tgt_type)
+    local function build_task_name(tgt, tgt_type)
         local name = "[" .. profile_name .. "] Build "
         if tgt_type ~= "UTILITY" then
             name = name .. strtools.human_case(tgt_type)

@@ -86,7 +86,7 @@ M.setup = function(args)
     M.config = vim.tbl_deep_extend("force", M.config, args or {})
     project.setup(M.config)
 
-    LoopProject =
+	_G.LoopProject =
     {
         create_project = project.create_project,
         open_project = project.open_project,
@@ -102,7 +102,7 @@ M.setup = function(args)
         breakpoints = project.update_breakpoints,
         _winbar_click = project.winbar_click
     }
-    setup_user_command(LoopProject)
+    setup_user_command(_G.LoopProject)
 end
 
 return M

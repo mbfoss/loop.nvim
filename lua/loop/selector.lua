@@ -147,7 +147,7 @@ local function snacks_select(prompt, items, callback)
 
     -- Map items for Snacks.nvim
     local snack_items = {}
-    for idx, item in ipairs(items) do
+    for _, item in ipairs(items) do
         table.insert(snack_items, {
             text = item.label,
             value = item,

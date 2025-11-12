@@ -58,7 +58,7 @@ end
 ---@param config loop.ext.cmake.CMakeConfig
 ---@param ingore_configured boolean
 ---@return loop.Task[]|nil,string[]|nil
-function _get_configure_tasks(config, ingore_configured)
+local function _get_configure_tasks(config, ingore_configured)
 	local params_ok, params_errors = _check_params(config)
 	if not params_ok then
 		return nil, strtools.indent_errors(params_errors, "Invalid cmake config")
@@ -69,7 +69,7 @@ function _get_configure_tasks(config, ingore_configured)
 		local build_type = prof.build_type
 
 		local profile_name = prof.name
-		src_root = realpath(prof.source_dir) or prof.source_dir
+		local src_root = realpath(prof.source_dir) or prof.source_dir
 		local build_dir = realpath(prof.build_dir) or prof.build_dir
 		local cmakecache_path = vim.fs.joinpath(build_dir, "CMakeCache.txt")
 		if not (ingore_configured and filetools.file_exists(cmakecache_path)) then
@@ -115,7 +115,6 @@ function M.get_tasks(config)
 			name = "Configure All",
 			type = "build",
 			command = { "true" },
-			cwd = src_root,
 			depends_on = {}
 		}
 		for _, t in ipairs(tasks) do

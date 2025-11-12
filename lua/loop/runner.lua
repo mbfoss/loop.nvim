@@ -1,5 +1,6 @@
 local M = {}
 
+require('loop.tools.taskdef')
 local vartools = require('loop.tools.vars')
 local TermProc = require('loop.job.TermProc')
 local LuaFunc = require('loop.job.LuaFunc')
@@ -89,7 +90,7 @@ local function _start_one_task(task, on_exit_handler)
                 return nil, "Unknown problem matcher: " .. task.problem_matcher
             end
             quickfix.clear()
-            output_handler = function(category, text)
+            output_handler = function(_, text)
                 quickfix.add(text, task.problem_matcher)
             end
         end
@@ -135,7 +136,7 @@ end
 
 ---@param tasks loop.Task[]
 ---@param on_complete fun()|nil
-function _start_task_chain(tasks, on_complete)
+local function _start_task_chain(tasks, on_complete)
     ---@param chain loop.runner.TaskChain
     local function next_job(chain)
         if #chain.tasks == 0 then

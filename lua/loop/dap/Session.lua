@@ -194,7 +194,7 @@ function Session:_send_configuration(on_response)
 				},
 				breakpoints = bps
 			},
-			function(response)
+			function(--[[response]])
 				-- breakpoints_response(response.success)    // send the status to the user
 			end)
 	end

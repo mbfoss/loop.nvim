@@ -9,8 +9,8 @@ local selector = require("loop.selector")
 
 ---@params task loop.Task
 ---@return string
-function _task_as_json(task)
-    local function order_handler(path, attrs)
+local function _task_as_json(task)
+    local function order_handler(_, _)
         return { "name", "type", "command", "cwd", "depends_on", "problem_matcher" }
     end
     return jsontools.to_string(task, order_handler)
@@ -20,7 +20,7 @@ end
 function M.add_task(config_dir)
     local templates = require('loop.tasktemplates')
     local choices = {}
-    for index, template in pairs(templates) do
+    for _, template in pairs(templates) do
         ---@type loop.SelectorItem
         local item = {
             label = '[' .. template.type .. '] ' .. template.name,
@@ -53,7 +53,7 @@ end
 
 ---@param args loop.SelectTaskArgs
 ---@param task_handler fun(task : loop.Task)
-function _select_task(args, task_handler)
+local function _select_task(args, task_handler)
     if #args.tasks == 0 then
         return
     end

@@ -1,4 +1,4 @@
-M = {}
+local M = {}
 
 ---@param str string
 ---@return string
@@ -21,7 +21,7 @@ end
 ---@return string, string[]|nil
 function M.get_program_and_args(str_or_array)
     assert(type(str_or_array) == 'string' or type(str_or_array) == 'table')
-    local cmd = nil
+    local cmd
     local args = nil
 
     if type(str_or_array) == 'string' then

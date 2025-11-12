@@ -56,13 +56,14 @@ end
 function TermProc:start(args)
     assert(args.on_exit_handler)
     assert(type(args.command) == 'string' or type(args.command) == 'table')
-    assert(not command_env or type(command_env) == 'table')
+    assert(not args.command_env or type(args.command_env) == 'table')
     if self.started then
         return false, "job aleady started"
     end
 
     self.started = true
 
+	local command_cwd = args.command_cwd
     if not command_cwd or #command_cwd == 0 then
         command_cwd = vim.fn.getcwd()
     end
@@ -74,16 +75,15 @@ function TermProc:start(args)
     -- get the real path (no symlinks etc...)
     command_cwd = vim.fn.fnamemodify(vim.fn.resolve(command_cwd), ':p')
 
-    command_env = command_env or {}
+	---@type table<string,string>
+    local command_env = args.command_env or {}
     command_env.PWD = command_cwd -- required for commands to use cwd in all cases
 
-    ---@type string[]
-    local cmd_and_args = {}
+	---@type any
+    local cmd_and_args
     if type(args.command) == "string" then
-        ---@diagnostic disable-next-line: assign-type-mismatch
         cmd_and_args = { args.command }
     elseif type(args.command) == "table" then
-        ---@diagnostic disable-next-line: cast-local-type
         cmd_and_args = args.command
     else
         return false, "Invalid command"
@@ -111,7 +111,7 @@ function TermProc:start(args)
             return { self:_start_term_job(args.bufnr, cmd_and_args, command_env, command_cwd, args.output_handler,
                 args.on_exit_handler) }
         end,
-        function(err)
+        function(_)
             return debug.traceback()
         end
     )

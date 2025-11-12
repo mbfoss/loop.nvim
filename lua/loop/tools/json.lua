@@ -42,7 +42,7 @@ local function json_encode_pretty(obj, order_handler, indent)
                     table.insert(keys, k)
                 end
                 if order_handler then
-                    ordered = order_handler(path, keys)
+                    local ordered = order_handler(path, keys)
                     local index = 1
                     local priorities = {}
                     if ordered then
