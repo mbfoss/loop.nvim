@@ -1,6 +1,6 @@
 local M = {}
 
-require('loop.tools.taskdef')
+require('loop.task.taskdef')
 local vartools = require('loop.tools.vars')
 local TermProc = require('loop.job.TermProc')
 local LuaFunc = require('loop.job.LuaFunc')
@@ -77,14 +77,14 @@ end
 ---@return loop.job.Job|nil, string|nil
 ---@param on_exit_handler fun(code : number)
 local function _start_one_task(task, on_exit_handler)
-    if not task.command or #task.command == 0 then
+    if task.type ~= "attach" and (not task.command or #task.command == 0) then
         return nil, "Invalid or empty command"
     end
 
     local tasktype = task.type
 
     local output_handler = nil
-    if tasktype == "build" then
+    if tasktype == "tool" then
         if task.problem_matcher then
             if type(task.problem_matcher) == 'string' and not quickfix.is_builtin_matcher(task.problem_matcher) then
                 return nil, "Unknown problem matcher: " .. task.problem_matcher
@@ -96,8 +96,8 @@ local function _start_one_task(task, on_exit_handler)
         end
     end
 
-    if tasktype == "build" or tasktype == "run" or tasktype == "test" then
-        local buf = window.create_task_buffer(strtools.human_case(tasktype))
+    if tasktype == "tool" or tasktype == "app" then
+        local buf = window.create_task_buffer()
         if buf == -1 then
             return nil, "No output buffer for task"
         end

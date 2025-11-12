@@ -207,11 +207,8 @@ function M.show_task_output()
 	create_window(tasks_tab)
 end
 
----@param label string
-function M.create_task_buffer(label)
+function M.create_task_buffer()
 	assert(setup_done)
-	tasks_tab.label = label
-
 	---@type loop.pages.TaskPage
 	local page = tasks_tab.page
 	assert(getmetatable(page) == TaskPage)

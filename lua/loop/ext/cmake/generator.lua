@@ -1,4 +1,4 @@
-require('loop.tools.taskdef')
+require('loop.task.taskdef')
 
 ---@class loop.ext.cmake.CMakeRunApp
 ---@field cwd string
@@ -249,7 +249,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
         ---@type loop.Task
         local task = {
             name = "[" .. profile_name .. "] Build All",
-            type = "build",
+            type = "tool",
             command = cmd,
             cwd = src_root,
             problem_matcher = prob_matcher,
@@ -280,7 +280,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             ---@type loop.Task
             local task = {
                 name = build_task_name(tgt, tgt_type),
-                type = "build",
+                type = "tool",
                 command = cmd,
                 cwd = src_root,
                 problem_matcher = prob_matcher
@@ -307,7 +307,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             local task =
             {
                 name = name,
-                type = "run",
+                type = "app",
                 command = cmd,
                 cwd = cwd,
                 env = env,
@@ -329,7 +329,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
                 ---@type loop.Task
                 local task = {
                     name    = "[" .. profile_name .. "] CTest: " .. t.name,
-                    type    = "test",
+                    type    = "tool",
                     command = t.command,
                     cwd     = build_dir
                 }
@@ -341,7 +341,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             ---@type loop.Task
             local all_tests_task = {
                 name    = "[" .. profile_name .. "] CTest All",
-                type    = "test",
+                type    = "tool",
                 command = { "ctest", "--output-on-failure" },
                 cwd     = build_dir
             }
@@ -352,7 +352,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             ---@type loop.Task
             local all_tests_task = {
                 name    = "[" .. profile_name .. "] CTest Rerun Failed",
-                type    = "test",
+                type    = "tool",
                 command = { "ctest", "--rerun-failed", "--output-on-failure" },
                 cwd     = build_dir
             }

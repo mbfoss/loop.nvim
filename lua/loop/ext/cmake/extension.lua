@@ -82,7 +82,7 @@ local function _get_configure_tasks(config, ingore_configured)
 				---@type loop.Task
 				local task = {
 					name = "[" .. profile_name .. "] Configure",
-					type = "build",
+					type = "tool",
 					command = cmd,
 					cwd = src_root
 				}
@@ -113,7 +113,7 @@ function M.get_tasks(config)
 		---@type loop.Task
 		local task = {
 			name = "Configure All",
-			type = "build",
+			type = "tool",
 			command = { "true" },
 			depends_on = {}
 		}

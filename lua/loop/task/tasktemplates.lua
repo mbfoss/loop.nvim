@@ -1,7 +1,7 @@
 return {
 	{
 		name = "Lua check",
-		type = "build",
+		type = "tool",
 		command = { "luacheck", "${PROJDIR}" },
 		cwd = "${PROJDIR}",
 		problem_matcher = "$luacheck",
@@ -9,7 +9,7 @@ return {
 	},
 	{
 		name = "Build ${FILENAME}",
-		type = "build",
+		type = "tool",
 		command = { "g++", "-g", "-std=c++23", "${FILE}", "-o", "${FILEROOT}.out", "-fdiagnostics-color=always" },
 		cwd = "${PROJDIR}",
 		problem_matcher = "$gcc",
@@ -17,21 +17,21 @@ return {
 	},
 	{
 		name = "Run ${FILENAME}",
-		type = "run",
+		type = "app",
 		command = "${FILEROOT}.out",
 		cwd = "${PROJDIR}",
 		depends_on = { "Build ${FILENAME}" },
 	},
 	{
 		name = "Debug ${FILENAME}",
-		type = "debug:launch",
+		type = "debug",
 		command = "${FILEROOT}.out",
 		cwd = "${PROJDIR}",
 		depends_on = { "Build ${FILENAME}" },
 	},
 	{
 		name = "Attach Debugger",
-		type = "debug:attach",
+		type = "attach",
 	},
 }
 

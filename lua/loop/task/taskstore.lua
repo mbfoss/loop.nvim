@@ -1,6 +1,6 @@
 local M = {}
 
-require('loop.tools.taskdef')
+require('loop.task.taskdef')
 local jsontools = require('loop.tools.json')
 local filetools = require('loop.tools.file')
 local uitools = require('loop.tools.uitools')
@@ -17,7 +17,7 @@ local function _load_tasks_from_str(content)
 		return nil, { data_or_err }
 	end
 
-	local schema = require("loop.schema.tasksschema")
+	local schema = require("loop.task.tasksschema")
 	local data = data_or_err
 	local errors = jsonschema.validate(schema, data)
 	if errors and #errors > 0 then
@@ -65,7 +65,7 @@ function M.add_task(config_dir, new_task)
 		local schema_dir = vim.fs.joinpath(vim.fn.stdpath("data"), "loop.nvim")
 		local schema_filepath = vim.fs.joinpath(schema_dir, 'tasksschema.json')
 		vim.fn.mkdir(schema_dir, 'p')
-		filetools.write_content(schema_filepath, require("loop.schema.tasksschema"))
+		filetools.write_content(schema_filepath, require("loop.task.tasksschema"))
 		local file_data = {}
 		file_data["$schema"] = 'file://' .. schema_filepath
 		file_data.tasks = tasks

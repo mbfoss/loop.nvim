@@ -19,13 +19,10 @@ return [[
           "type": {
             "type": "string",
             "enum": [
-              "build",
-              "run",
-              "test",
-              "test:junit",
+              "tool",
+              "app",
               "debug",
-              "debug:launch",
-              "debug:attach"
+              "attach"
             ],
             "description": "Task type. Use colon for subtypes (e.g., debug:launch)."
           },
@@ -88,7 +85,7 @@ return [[
         "required": ["name", "type"],
         "anyOf": [
           { "required": ["command"] },
-          { "enum": ["debug:attach"] }
+          { "enum": ["attach"] }
         ],
         "additionalProperties": false
       }

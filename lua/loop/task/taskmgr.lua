@@ -2,7 +2,7 @@ local M = {}
 
 local jsontools = require('loop.tools.json')
 local strtools = require('loop.tools.strtools')
-local tasksstore = require("loop.tasksstore")
+local taskstore = require("loop.task.taskstore")
 local runner = require("loop.runner")
 local window = require("loop.window")
 local selector = require("loop.selector")
@@ -18,7 +18,7 @@ end
 
 ---@param config_dir string
 function M.add_task(config_dir)
-    local templates = require('loop.tasktemplates')
+    local templates = require('loop.task.tasktemplates')
     local choices = {}
     for _, template in pairs(templates) do
         ---@type loop.SelectorItem
@@ -36,7 +36,7 @@ function M.add_task(config_dir)
                 vim.notify("Loop.nvim: Failed to load project task template\n")
                 return
             end
-            local ok, errors = tasksstore.add_task(config_dir, template)
+            local ok, errors = taskstore.add_task(config_dir, template)
             if not ok then
                 errors = errors or {}
                 table.insert(errors, 1, "Failed to add task:")
@@ -79,7 +79,7 @@ end
 ---@param config_dir string
 ---@param ext_name string
 function M.create_extension_config(config_dir, ext_name)
-    local ok, err = tasksstore.create_extension_config(config_dir, ext_name)
+    local ok, err = taskstore.create_extension_config(config_dir, ext_name)
     if not ok then
         window.add_events({ "Failed to create configuration", "  " .. err }, "error")
     end
@@ -91,7 +91,7 @@ end
 ---@param task_name string|nil
 function M.run_task(config_dir, mode, ext_name, task_name)
     if mode == "repeat" then
-        local chain, _ = tasksstore.load_last_chain(config_dir)
+        local chain, _ = taskstore.load_last_chain(config_dir)
         if chain then
             runner.start_task_chain(chain)
             return
@@ -100,9 +100,9 @@ function M.run_task(config_dir, mode, ext_name, task_name)
 
     local tasks, task_errors
     if mode == "extension" then
-        tasks, task_errors = tasksstore.get_extension_tasks(config_dir, ext_name or "")
+        tasks, task_errors = taskstore.get_extension_tasks(config_dir, ext_name or "")
     else
-        tasks, task_errors = tasksstore.load_tasks(config_dir)
+        tasks, task_errors = taskstore.load_tasks(config_dir)
     end
     if not tasks or task_errors then
         window.add_events(strtools.indent_errors(task_errors, "Errors while loading tasks"), "error")
@@ -143,7 +143,7 @@ function M.run_task(config_dir, mode, ext_name, task_name)
             window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
             return
         end
-        tasksstore.save_last_chain(chain, config_dir)
+        taskstore.save_last_chain(chain, config_dir)
         runner.start_task_chain(chain)
     end)
 end
