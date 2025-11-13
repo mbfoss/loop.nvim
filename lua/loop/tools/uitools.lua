@@ -49,19 +49,36 @@ local function find_regular_window()
     return new_win
 end
 
+---@param winid integer
+---@param line? integer 1‑based line number (nil = just open)
+---@param col? integer 1‑based line number (nil = just open)
+function M.set_cursor_pos(winid, line, col)
+    if line and type(line) == 'number' and line > 0 then
+        local bufnr = vim.api.nvim_win_get_buf(winid)
+        if not vim.api.nvim_buf_is_valid(bufnr) then
+            return
+        end
+        -- Clamp line to valid range
+        local maxline = vim.api.nvim_buf_line_count(bufnr)
+        line = math.min(line, maxline)
+
+        -- Clamp col to valid range
+        local line_length = #vim.api.nvim_buf_get_lines(bufnr, line - 1, line, true)[1]
+        if col and type(col) == 'number' and col >= 0 then
+            col = math.min(col, line_length)
+        else
+            col = 0
+        end
+        vim.api.nvim_win_set_cursor(winid, { line, col })
+    end
+end
+
 ---@param filepath string
 ---@return number winid
 ---@return number bufnr
 ---@param line? integer 1‑based line number (nil = just open)
-function M.smart_open_file(filepath, line)
-    local function set_line(winid, bufnr)
-        if line and type(line) == 'number' and line > 0 then
-            -- Clamp to valid range
-            local maxline = vim.api.nvim_buf_line_count(bufnr)
-            line = math.min(line, maxline)
-            vim.api.nvim_win_set_cursor(winid, { line, 0 })
-        end
-    end
+---@param col? integer 1‑based line number (nil = just open)
+function M.smart_open_file(filepath, line, col)
     -- Normalize filepath to handle relative paths
     local full_path = vim.fn.fnamemodify(filepath, ':p')
     -- Check all windows for the file
@@ -71,7 +88,7 @@ function M.smart_open_file(filepath, line)
         if buf_path == full_path and vim.api.nvim_win_is_valid(winid) then
             -- Activate the window with the file
             vim.api.nvim_set_current_win(winid)
-            set_line(winid, bufnr)
+            M.set_cursor_pos(winid, line, col)
             return winid, bufnr
         end
     end
@@ -85,6 +102,7 @@ function M.smart_open_file(filepath, line)
     end
     vim.bo[bufnr].buflisted = true
     vim.api.nvim_win_set_buf(winid, bufnr)
+    M.set_cursor_pos(winid, line, col)
 
     return winid, bufnr
 end

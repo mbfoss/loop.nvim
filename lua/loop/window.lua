@@ -3,6 +3,7 @@ local log = require('loop.tools.Logger').create_logger("window")
 local Page = require('loop.pages.Page')
 local EventsPage = require('loop.pages.EventsPage')
 local TaskPage = require('loop.pages.TaskPage')
+local ErrorsPage = require('loop.pages.ErrorsPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
@@ -22,13 +23,15 @@ local _loop_win_height_ratio
 ---@type loop.TabInfo[]
 local tabs_data = {
     { label = "Events",      page = nil },
-    { label = "Tasks",       page = nil },
+    { label = "Task",        page = nil },
+    { label = "Errors",      page = nil },
     { label = "Breakpoints", page = nil },
 }
 
 local events_tab = tabs_data[1]
 local tasks_tab = tabs_data[2]
-local breakpoints_tab = tabs_data[3]
+local errors_tab = tabs_data[3]
+local breakpoints_tab = tabs_data[4]
 
 ---@type loop.TabInfo
 local active_tab = events_tab
@@ -257,6 +260,18 @@ function M.show_task_output()
     create_window(tasks_tab)
 end
 
+---@param copy_qf boolean
+---@param proj_dir string
+function M.show_errors(copy_qf, proj_dir)
+    if copy_qf then
+        ---@type loop.pages.ErrorsPage
+        local page = errors_tab.page
+        local qflist = vim.fn.getqflist()
+        page:setlist(qflist, proj_dir)
+    end
+    create_window(errors_tab)
+end
+
 function M.create_task_buffer()
     assert(setup_done)
     ---@type loop.pages.TaskPage
@@ -311,6 +326,7 @@ function M.setup(_)
     do
         events_tab.page      = EventsPage:new("loop-events", _on_buf_enter)
         tasks_tab.page       = TaskPage:new("loop-tasks", _on_buf_enter)
+        errors_tab.page      = ErrorsPage:new("loop-errors", _on_buf_enter)
         breakpoints_tab.page = BreakpointsPage:new("loop-breakpoints", _on_buf_enter)
     end
 

@@ -12,7 +12,10 @@ local window = require("loop.window")
 ---@class loop.runner.TaskChain
 ---@field tasks loop.Task[]
 ---@field interrupted boolean
+---@field ended boolean
 ---@field active_job loop.job.Job|nil
+---@field qf_errors boolean
+---@field on_complete fun(qf_errors : boolean)|nil
 ---@field next_chain loop.runner.TaskChain|nil
 
 ---@type loop.runner.TaskChain|nil
@@ -73,10 +76,14 @@ function M.get_deps_chain(tasks, main)
     return ordered, nil
 end
 
+---@class loop.task.ExitStatus
+---@field exit_code number
+---@field qf_errors boolean
+
 ---@param task loop.Task
 ---@return loop.job.Job|nil, string|nil
----@param on_exit_handler fun(code : number)
-local function _start_one_task(task, on_exit_handler)
+---@param task_exit_handler fun(status : loop.task.ExitStatus)
+local function _start_one_task(task, task_exit_handler)
     if not task.command or #task.command == 0 then
         return nil, "Invalid or empty command"
     end
@@ -84,6 +91,7 @@ local function _start_one_task(task, on_exit_handler)
     local tasktype = task.type
 
     local output_handler = nil
+    local qf_errors = false
     if tasktype == "tool" then
         if task.problem_matcher then
             if type(task.problem_matcher) == 'string' and not quickfix.is_builtin_matcher(task.problem_matcher) then
@@ -91,9 +99,21 @@ local function _start_one_task(task, on_exit_handler)
             end
             quickfix.clear()
             output_handler = function(_, text)
-                quickfix.add(text, task.problem_matcher)
+                local added = quickfix.add(text, task.problem_matcher)
+                if added > 0 then
+                    qf_errors = true
+                end
             end
         end
+    end
+
+    local exit_handler = function(exit_code)
+        ---@type loop.task.ExitStatus
+        local exit_status = {
+            exit_code = exit_code,
+            qf_errors = qf_errors
+        }
+        task_exit_handler(exit_status)
     end
 
     if tasktype == "tool" or tasktype == "app" then
@@ -109,7 +129,7 @@ local function _start_one_task(task, on_exit_handler)
             command_env = task.env,
             command_cwd = task.cwd,
             output_handler = output_handler,
-            on_exit_handler = on_exit_handler
+            on_exit_handler = exit_handler,
         }
         local job = TermProc:new()
         local ok, err = job:start(args)
@@ -121,7 +141,7 @@ local function _start_one_task(task, on_exit_handler)
         ---@type loop.LuaFunc.StartArgs
         local args = {
             command = task.command,
-            on_exit_handler = on_exit_handler
+            on_exit_handler = exit_handler
         }
         local job = LuaFunc:new()
         local ok, err = job:start(args)
@@ -135,38 +155,45 @@ local function _start_one_task(task, on_exit_handler)
 end
 
 ---@param tasks loop.Task[]
----@param on_complete fun()|nil
+---@param on_complete fun(qf_errors : boolean)|nil
 local function _start_task_chain(tasks, on_complete)
     ---@param chain loop.runner.TaskChain
     local function next_job(chain)
-        if #chain.tasks == 0 then
-            chain.active_job = nil
-            if _current_task_chain == chain then
-                _current_task_chain = nil
-                if on_complete then
-                    on_complete()
-                end
+        if chain.interrupted or not chain.tasks or #chain.tasks == 0 then
+            chain.ended = true
+            if chain.on_complete then
+                chain.on_complete(chain.qf_errors)
             end
+            vim.schedule(function()
+                if chain.next_chain then
+                    _current_task_chain = chain.next_chain
+                    next_job(chain.next_chain)
+                elseif chain == _current_task_chain then
+                    _current_task_chain = nil
+                end
+            end)
             return
         end
 
         local task = table.remove(chain.tasks, 1)
-
-        local job, job_err = _start_one_task(task, function(exit_code)
-            if exit_code == 0 then
+        local job, job_err = _start_one_task(task, function(status)
+            if type(status.exit_code) ~= "number" then
+                window.add_events({ "Invalid task status for " .. task.name })
+                chain.interrupted = true
+            elseif status.exit_code == 0 then
                 window.add_events({ "Task ended: " .. task.name })
             else
                 local action = chain.interrupted and "interrupted" or "failed"
-                window.add_events({ "Task " .. action .. ": " .. task.name .. ', exit code: ' .. tostring(exit_code) })
+                chain.interrupted = true -- after the line above the distinguish requested interruption
+                window.add_events({ "Task " ..
+                action .. ": " .. task.name .. ', exit code: ' .. tostring(status.exit_code) })
             end
-            local should_continue = exit_code == 0 and not chain.interrupted
+            if status.qf_errors == true then
+                chain.qf_errors = true
+            end
             vim.schedule(function()
-                if should_continue then
+                if chain == _current_task_chain then
                     next_job(chain)
-                else
-                    if chain.next_chain then
-                        next_job(chain.next_chain)
-                    end
                 end
             end)
         end)
@@ -175,37 +202,37 @@ local function _start_task_chain(tasks, on_complete)
             chain.active_job = job
             ---@diagnostic disable-next-line: param-type-mismatch
             local cmd_descr = type(task.command) == 'table' and table.concat(task.command, ' ') or task.command
-            window.add_events({ "Running " .. task.type .. " task", "  " .. cmd_descr})
+            window.add_events({ "Running " .. task.type .. " task", "  " .. cmd_descr })
             window.show_task_output()
         else
             window.add_events({ "Task creation failed: " .. task.name, "  " .. tostring(job_err) })
+            chain.interrupted = true
+            vim.schedule(function()
+                if chain == _current_task_chain then
+                    next_job(chain)
+                end
+            end)
         end
-    end
-
-    if not tasks then
-        return
-    end
-
-    if #tasks == 0 then
-        if on_complete then
-            on_complete()
-        end
-        return
     end
 
     ---@type loop.runner.TaskChain
     local new_chain = {
         tasks = tasks,
         interrupted = false,
+        ended = false,
+        active_job = nil,
+        qf_errors = false,
+        on_complete = on_complete,
         next_chain = nil,
-        active_job = nil
     }
 
     if _current_task_chain then
-        if _current_task_chain.active_job and _current_task_chain.active_job:is_running() then
+        if _current_task_chain.active_job and not _current_task_chain.ended then
             _current_task_chain.interrupted = true
             _current_task_chain.next_chain = new_chain
-            _current_task_chain.active_job:kill()
+            if _current_task_chain.active_job then
+                _current_task_chain.active_job:kill()
+            end
             return
         end
     end
@@ -221,16 +248,16 @@ function M.start_task_chain(tasks, on_complete)
     --- copy to solve strings in the copy and keep the original intact
     local chain = vim.deepcopy(tasks)
 
-    local is_unresoved = false
+    local is_unresolved = false
     for _, task in ipairs(chain) do
-        local expand_ok, unresolved = vartools.expand_strings(chain)
+        local expand_ok, unresolved = vartools.expand_strings(task)
         if not expand_ok then
-            is_unresoved = true
+            is_unresolved = true
             window.add_events({ "Failed to resolve variable(s) in task '" .. task.name .. "':", '  ' ..
-            table.concat(unresolved, ', ') }, "error")
+            table.concat(unresolved or {}, ', ') }, "error")
         end
     end
-    if is_unresoved then
+    if is_unresolved then
         return
     end
     _start_task_chain(chain, on_complete)

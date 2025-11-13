@@ -1,152 +1,142 @@
-local Page = require('loop.pages.Page')
 local class = require('loop.tools.class')
+local Page = require('loop.pages.Page')
+local uitools = require('loop.tools.uitools')
 
----@class loop.pages.ErrorsPage: loop.pages.Page
----@field new fun(self: loop.pages.ErrorsPage, filetype : string, on_buf_enter : fun(buf : number)) : loop.pages.ErrorsPage
+---@class loop.pages.ErrorsPage : loop.pages.Page
+---@field new fun(self: loop.pages.ErrorsPage, filetype: string, on_buf_enter: fun(buf: integer)): loop.pages.ErrorsPage
 local ErrorsPage = class(Page)
 
-local function format_entry(entry)
-    local severity = ''
-    if entry.type then
-        severity = (entry.type == 'E' and 'Error') or
-            (entry.type == 'W' and 'Warning') or
-            (entry.type == 'I' and 'Info') or
-            (entry.type == 'N' and 'Note') or
-            entry.type
-        severity = '[' .. severity .. '] '
-    end
-    return string.format('%s%s:%d:%d: %s',
-        severity,
-        vim.fn.fnamemodify(entry.filename, ':.'),
-        entry.lnum or 0,
-        entry.col or 0,
-        entry.text or '')
+local NS_ID = vim.api.nvim_create_namespace('loop-errors-hl')
+
+local function format_entry(entry, project_dir)
+	local filename = entry.filename or '[No File]'
+	if project_dir then
+		filename = vim.fn.fnamemodify(filename, ":." .. project_dir)
+	end
+
+	local lnum = entry.lnum or 0
+	local col = entry.col or 0
+	local text = entry.text or ""
+	local type_char = entry.type or " " -- E, W, I, or blank
+
+	return string.format("%s %s:%d:%d: %s", type_char, filename, lnum, col, text)
 end
 
----@param filetype string
----@param on_buf_enter fun(buf: number)
 function ErrorsPage:init(filetype, on_buf_enter)
-    Page.init(self, filetype, on_buf_enter)
-    self.state = {
-        items = {},                                         -- list of quickfix entries
-        idx   = 1,                                          -- current position (1-based)
-        ns_id = vim.api.nvim_create_namespace('qf_module'), -- for extmarks
-    }
+	Page.init(self, filetype, on_buf_enter)
+	self._items = {}
 end
 
--- ----------------------------------------------------------------------
--- Refresh the quickfix buffer content
--- ----------------------------------------------------------------------
-function ErrorsPage:refresh_buffer()
-    if not vim.api.nvim_buf_is_valid(self.state.bufnr) then return end
+function ErrorsPage:get_buf()
+	local buf, created = Page.get_buf(self)
+	if not created then
+		return buf, false
+	end
 
-    local lines = {}
-    for i, entry in ipairs(self.state.items) do
-        lines[i] = format_entry(entry)
-    end
+	self:_refresh_buffer()
 
-    vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
+	-- Jump to selected error on Enter
+	vim.api.nvim_buf_set_keymap(buf, 'n', '<CR>', '', {
+		callback = function()
+			local entry = self:get_selected()
+			if entry then
+				uitools.smart_open_file(entry.filename, entry.lnum, entry.col)
+			end
+		end,
+		desc = "Open error location",
+	})
 
-    -- highlight current line
-    vim.api.nvim_buf_clear_namespace(self.state.bufnr, self.state.ns_id, 0, -1)
-    if self.state.idx > 0 and self.state.idx <= #self.state.items then
-        vim.api.nvim_buf_set_extmark(self.state.bufnr, self.state.ns_id, self.state.idx - 1, 0, {
-            end_line = self.state.idx,
-            hl_group = 'CursorLine',
-            hl_eol = true,
-        })
-    end
+	-- Jump on double-click
+	vim.api.nvim_buf_set_keymap(buf, 'n', '<2-LeftMouse>', '', {
+		callback = function()
+			local entry = self:get_selected()
+			if entry then
+				uitools.smart_open_file(entry.filename, entry.lnum, entry.col)
+			end
+		end,
+		desc = "Open error location on double-click",
+	})
+
+	-- Track cursor moves to update quickfix index
+	vim.api.nvim_create_autocmd('CursorMoved', {
+		buffer = buf,
+		callback = function()
+			local idx = self:_get_curr_row()
+			if idx >= 1 and idx <= #self._items then
+				vim.fn.setqflist({}, 'r', { idx = idx })
+			end
+		end,
+	})
+
+	return buf, true
 end
 
---- Set the list of items (same shape as :caddexpr)
-function ErrorsPage:setlist(items, action)
-    if action == 'replace' or action == nil then
-        self.state.items = {}
-        self.state.idx   = 1
-    end
-
-    for _, entry in ipairs(items) do
-        table.insert(self.state.items, vim.tbl_extend('keep', entry, {
-            filename = entry.filename or '',
-            lnum     = entry.lnum or 0,
-            col      = entry.col or 0,
-            text     = entry.text or '',
-            type     = entry.type or '',
-        }))
-    end
-
-    if #self.state.items > 0 and self.state.idx > #self.state.items then
-        self.state.idx = #self.state.items
-    end
-
-    if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
-        self:refresh_buffer()
-    end
+function ErrorsPage:_get_curr_row()
+	local buf = self.buf
+	if not buf or not vim.api.nvim_buf_is_valid(buf) then
+		return 0
+	end
+	if vim.api.nvim_get_current_buf() ~= buf then
+		return 0
+	end
+	return vim.api.nvim_win_get_cursor(0)[1] -- 1-based row
 end
 
---- Append items (like :caddexpr)
-function ErrorsPage:addlist(items)
-    ErrorsPage:setlist(items, 'append')
+function ErrorsPage:_refresh_buffer()
+	local buf = self.buf
+	if not buf or not vim.api.nvim_buf_is_valid(buf) then
+		return
+	end
+
+	local lines = {}
+	for _, entry in ipairs(self._items) do
+		lines[#lines + 1] = format_entry(entry, self.proj_dir)
+	end
+
+	vim.bo[buf].modifiable = true
+	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+	vim.bo[buf].modifiable = false
+
+	vim.api.nvim_buf_clear_namespace(buf, NS_ID, 0, -1)
+	for idx, _ in ipairs(self._items) do
+		vim.api.nvim_buf_set_extmark(buf, NS_ID, idx - 1, 0, {
+			end_col = 1,
+			hl_group = 'ErrorMsg',
+			hl_eol = true,
+			priority = 200,
+		})
+	end
 end
 
---- Jump to the entry under the cursor (or to current idx)
-function ErrorsPage:jump()
-    local idx = self.state.idx
-    if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
-        idx = vim.api.nvim_win_get_cursor(self.state.winid)[1]
-    end
+function ErrorsPage:setlist(qflist, proj_dir)
+	self.proj_dir = proj_dir
+	self._items = {}
+	self._idx = 1
 
-    local entry = self.state.items[idx]
-    if not entry then return end
+	for _, entry in ipairs(qflist or {}) do
+		if entry.lnum and entry.filename then
+			table.insert(self._items, {
+				filename = entry.filename,
+				lnum = entry.lnum,
+				col = entry.col or 0,
+				text = entry.text or "",
+				type = entry.type or " ",
+			})
+		end
+	end
 
-    vim.cmd(string.format('edit %s', vim.fn.fnameescape(entry.filename)))
-    vim.api.nvim_win_set_cursor(0, { entry.lnum ~= 0 and entry.lnum or 1, (entry.col or 1) - 1 })
+	if #self._items == 0 then
+		self._idx = 1
+	elseif self._idx > #self._items then
+		self._idx = #self._items
+	end
+
+	self:get_buf()
+	self:_refresh_buffer()
 end
 
---- Go to next entry
-function ErrorsPage:next()
-    if #self.state.items == 0 then return end
-    self.state.idx = (self.state.idx % #self.state.items) + 1
-    if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
-        vim.api.nvim_win_set_cursor(self.state.winid, { self.state.idx, 0 })
-    end
-    ErrorsPage:jump()
+function ErrorsPage:get_selected()
+	return self._items[self:_get_curr_row()]
 end
-
---- Go to previous entry
-function ErrorsPage:prev()
-    if #self.state.items == 0 then return end
-    self.state.idx = self.state.idx - 1
-    if self.state.idx < 1 then self.state.idx = #self.state.items end
-    if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
-        vim.api.nvim_win_set_cursor(self.state.winid, { self.state.idx, 0 })
-    end
-    ErrorsPage:jump()
-end
-
---- Go to first entry
-function ErrorsPage:first()
-    if #self.state.items == 0 then return end
-    self.state.idx = 1
-    if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
-        vim.api.nvim_win_set_cursor(self.state.winid, { 1, 0 })
-    end
-    ErrorsPage:jump()
-end
-
---- Go to last entry
-function ErrorsPage:last()
-    if #self.state.items == 0 then return end
-    self.state.idx = #self.state.items
-    if self.state.winid and vim.api.nvim_win_is_valid(self.state.winid) then
-        vim.api.nvim_win_set_cursor(self.state.winid, { self.state.idx, 0 })
-    end
-    ErrorsPage:jump()
-end
-
---  map('n', '<CR>',  [[<Cmd>lua require('qf').jump()<CR>]])
---  map('n', 'q',     [[<Cmd>lua require('qf').close()<CR>]])
---  map('n', '<Esc>', [[<Cmd>lua require('qf').close()<CR>]])
-
 
 return ErrorsPage
