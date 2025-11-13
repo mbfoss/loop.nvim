@@ -14,26 +14,26 @@ end
 local function _check_params(cfg)
 	local errors = {}
 	if vim.fn.executable(cfg.cmake_path) == 0 then
-		return table.insert(errors, "cmake_path not executable: '" .. (cfg.cmake_path or "") .. "'")
+		table.insert(errors, "cmake_path not executable: '" .. (cfg.cmake_path or "") .. "'")
 	end
 	if vim.fn.executable(cfg.ctest_path) == 0 then
-		return table.insert(errors, "ctest_path not executable: '" .. (cfg.ctest_path or "") .. "'")
+		table.insert(errors, "ctest_path not executable: '" .. (cfg.ctest_path or "") .. "'")
 	end
 	for idx, prof in ipairs(cfg.profiles or {}) do
 		if not prof.name or prof.name == "" then
-			return table.insert(errors, "profile " .. tostring(idx) .. " name is required")
+			table.insert(errors, "profile " .. tostring(idx) .. " name is required")
 		end
 
 		if not prof.build_type or prof.build_type == "" then
-			return table.insert(errors, "In profile: " .. prof.name .. ", build_type is required")
+			table.insert(errors, "In profile: " .. prof.name .. ", build_type is required")
 		end
 
 		if not prof.source_dir or prof.source_dir == "" then
-			return table.insert(errors, "In profile: " .. prof.name .. ", source_dir is required")
+			table.insert(errors, "In profile: " .. prof.name .. ", source_dir is required")
 		end
 
 		if not prof.build_dir or prof.build_dir == "" then
-			return table.insert(errors, "In profile: " .. prof.name .. ", build_dir is required")
+			table.insert(errors, "In profile: " .. prof.name .. ", build_dir is required")
 		end
 	end
 	return #errors == 0, errors
@@ -59,10 +59,6 @@ end
 ---@param ingore_configured boolean
 ---@return loop.Task[]|nil,string[]|nil
 local function _get_configure_tasks(config, ingore_configured)
-	local params_ok, params_errors = _check_params(config)
-	if not params_ok then
-		return nil, strtools.indent_errors(params_errors, "Invalid cmake config")
-	end
 	_init_cmake_api(config)
 	local tasks = {}
 	for _, prof in ipairs(config.profiles or {}) do

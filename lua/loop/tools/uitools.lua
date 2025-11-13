@@ -25,9 +25,12 @@ local function find_regular_window()
     -- Search through all windows in current tab
     for _, winid in ipairs(windows) do
         if vim.api.nvim_win_is_valid(winid) then
-            local bufnr = vim.api.nvim_win_get_buf(winid)
-            if is_regular_buffer(bufnr) then
-                return winid
+            local cfg = vim.api.nvim_win_get_config(winid)
+            if cfg.relative == "" then -- skip poup windows
+                local bufnr = vim.api.nvim_win_get_buf(winid)
+                if is_regular_buffer(bufnr) then
+                    return winid
+                end
             end
         end
     end

@@ -228,9 +228,7 @@ function M.get_extension_tasks(config_dir, ext_name)
 	if not config then
 		return nil, config_err
 	end
-	local tasks = mod.get_tasks(config)
-	assert(vim.isarray(tasks))
-	return tasks
+	return mod.get_tasks(config)
 end
 
 ---@param config_dir string
