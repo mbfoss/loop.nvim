@@ -14,8 +14,7 @@ return [[
           "pattern": "^.+$"
         },
         "ctest_path": {
-          "type": "string",
-          "pattern": "^.+$"
+          "type": "string"
         },
         "profiles": {
           "type": "array",

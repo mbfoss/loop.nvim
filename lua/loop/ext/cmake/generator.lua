@@ -318,7 +318,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
     ----------------------------------------------------------------------
     -- 4. CTest API
     ----------------------------------------------------------------------
-    do
+    if ctest_path and ctest_path ~= "" then
         local tests, err = query_cmake_api_tests(ctest_path, build_dir)
         if not tests then
             return false, { err }
@@ -357,8 +357,8 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             }
             table.insert(tasks, all_tests_task)
         end
-        return true
     end
+    return true
 end
 
 return M

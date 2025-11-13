@@ -16,8 +16,8 @@ local function _check_params(cfg)
 	if vim.fn.executable(cfg.cmake_path) == 0 then
 		table.insert(errors, "cmake_path not executable: '" .. (cfg.cmake_path or "") .. "'")
 	end
-	if vim.fn.executable(cfg.ctest_path) == 0 then
-		table.insert(errors, "ctest_path not executable: '" .. (cfg.ctest_path or "") .. "'")
+	if cfg.ctest_path and cfg.ctest_path ~= "" and vim.fn.executable(cfg.ctest_path) == 0 then
+		table.insert(errors, "ctest_path not executable: '" .. cfg.ctest_path .. "'")
 	end
 	for idx, prof in ipairs(cfg.profiles or {}) do
 		if not prof.name or prof.name == "" then
