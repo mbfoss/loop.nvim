@@ -1,6 +1,6 @@
 local M = {}
 
-require('loop.Task')
+require('loop.task.taskdef')
 local generator = require('loop.ext.cmake.generator')
 local strtools = require('loop.tools.strtools')
 local filetools = require('loop.tools.file')

@@ -7,6 +7,7 @@ local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
 local vartools = require('loop.tools.vars')
 local jsonschema = require('loop.tools.jsonschema')
+local extensions = require('loop.ext.extensions')
 
 ---@param content string
 ---@return loop.Task[]|nil
@@ -151,9 +152,14 @@ local function _get_extension_mod(ext_name)
 	if type(ext_name) ~= "string" or not ext_name:match("^[%a%d_-]+$") then
 		return nil, "Invalid extension name: " .. ext_name
 	end
+    local exists = false
+    for _,v in ipairs(extensions.ext_names()) do if v == ext_name then exists = true end end
+    if not exists then
+		return nil, "Invalid extension name '" .. ext_name        
+    end
 	local mod_loaded, mod = pcall(require, 'loop.ext.' .. ext_name .. '.extension')
 	if not mod_loaded then
-		return nil, "Extension does not exit: " .. ext_name
+		return nil, "Failed to load extension '" .. ext_name .. "' " .. mod
 	end
 	if type(mod.get_config_schema) ~= "function" or
 		type(mod.get_config_template) ~= "function" or

@@ -54,7 +54,7 @@ local function _on_win_new_or_close()
     if _loop_win_height_ratio then
         vim.api.nvim_win_set_height(winid, math.floor(vim.o.lines * _loop_win_height_ratio))
     else
-        vim.api.nvim_win_set_height(winid, math.floor(vim.o.lines * 0.25))
+        vim.api.nvim_win_set_height(winid, math.floor(vim.o.lines * 0.17))
     end
 end
 
