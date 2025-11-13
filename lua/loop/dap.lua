@@ -43,7 +43,7 @@ end
 
 ---@param config loop.Config
 function M.setup(config)
-    vim.notify('dap setup\n' .. vim.inspect(config))
+    --vim.notify('dap setup\n' .. vim.inspect(config))
 end
 
 return M
