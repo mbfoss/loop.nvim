@@ -10,7 +10,7 @@ return {
 	{
 		name = "Build ${FILENAME}",
 		type = "tool",
-		command = { "g++", "-g", "-std=c++23", "${FILE}", "-o", "${FILEROOT}.out", "-fdiagnostics-color=always" },
+		command = { "g++", "-g", "-std=c++23", "${FILE}", "-o", "${FILEROOT}.out" },
 		cwd = "${PROJDIR}",
 		problem_matcher = "$gcc",
 		depends_on = {},
