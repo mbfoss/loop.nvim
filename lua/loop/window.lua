@@ -33,13 +33,10 @@ local breakpoints_tab = tabs_data[3]
 ---@type loop.TabInfo
 local active_tab = events_tab
 
-local function _on_win_new_or_close()
-    if _loop_win == -1 then
-        return
-    end
-    local winid = _loop_win
-    local tab = vim.api.nvim_win_get_tabpage(winid)
-    local wins_in_tab = vim.api.nvim_tabpage_list_wins(tab)
+---@param vim_tab_id number
+---@return number
+local function _count_normal_windows(vim_tab_id)
+    local wins_in_tab = vim.api.nvim_tabpage_list_wins(vim_tab_id)
     local count = 0
     for _, win in ipairs(wins_in_tab) do
         local cfg = vim.api.nvim_win_get_config(win)
@@ -47,6 +44,34 @@ local function _on_win_new_or_close()
             count = count + 1
         end
     end
+    return count
+end
+
+local function _quit_if_last_window()
+    if _loop_win ~= -1 then
+        local count = _count_normal_windows(vim.api.nvim_win_get_tabpage(_loop_win))
+        if count == 1 then
+            local tab_count = #vim.api.nvim_list_tabpages()   
+            if tab_count > 1 then
+                M.hide_window()
+            else
+                -- only our window remains, quit neovim
+                vim.cmd('quit')
+            end
+        end
+    end
+end
+
+local function _on_win_new_or_close()
+    if _loop_win == -1 then
+        return
+    end
+    local winid = _loop_win
+    local count = _count_normal_windows(vim.api.nvim_win_get_tabpage(winid))
+    --this should be configurable
+    --if count <= 2 then
+    --    vim.schedule(_quit_if_last_window)
+    --end
     if count <= 1 then
         return
     end
