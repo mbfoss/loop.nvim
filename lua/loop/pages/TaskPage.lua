@@ -1,4 +1,4 @@
-local Page = require('loop.pages.page')
+local Page = require('loop.pages.Page')
 local class = require('loop.tools.class')
 
 ---@class loop.pages.TaskPage: loop.pages.Page
