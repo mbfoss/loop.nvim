@@ -61,3 +61,8 @@ local function set_keymaps(page, set_active_tab)
 end
     ]] --
 
+
+                    local added = quickfix.add(text, task.problem_matcher)
+                if added > 0 then
+                    qf_updated = true
+                end

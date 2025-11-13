@@ -1,7 +1,7 @@
 require("plenary.busted")
 
 describe("loop.tasks.tasks.get_deps_chain", function()
-    local runner = require("loop.runner")
+    local runner = require("loop.task.runner")
 
     it("returns simple linear dependency chain", function()
         local tasks = {

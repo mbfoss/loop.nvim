@@ -40,7 +40,7 @@ function ErrorsPage:get_buf()
 		callback = function()
 			local entry = self:get_selected()
 			if entry then
-				uitools.smart_open_file(entry.filename, entry.lnum, entry.col)
+				uitools.smart_open_file(entry.filename, entry.lnum, entry.col - 1)
 			end
 		end,
 		desc = "Open error location",
@@ -51,7 +51,8 @@ function ErrorsPage:get_buf()
 		callback = function()
 			local entry = self:get_selected()
 			if entry then
-				uitools.smart_open_file(entry.filename, entry.lnum, entry.col)
+                --- col is zero based in neovim and 1 based in qf
+				uitools.smart_open_file(entry.filename, entry.lnum, entry.col - 1)
 			end
 		end,
 		desc = "Open error location on double-click",
@@ -114,15 +115,18 @@ function ErrorsPage:setlist(qflist, proj_dir)
 	self._idx = 1
 
 	for _, entry in ipairs(qflist or {}) do
-		if entry.lnum and entry.filename then
-			table.insert(self._items, {
-				filename = entry.filename,
-				lnum = entry.lnum,
-				col = entry.col or 0,
-				text = entry.text or "",
-				type = entry.type or " ",
-			})
-		end
+       --vim.notify(vim.inspect({"entry", entry}))
+        local filename = entry.filename
+        if not filename and vim.api.nvim_buf_is_valid(entry.bufnr) then
+            filename = vim.api.nvim_buf_get_name(entry.bufnr)
+        end
+        table.insert(self._items, {
+            filename = filename,
+            lnum = entry.lnum,
+            col = entry.col or 0,
+            text = entry.text or "",
+            type = entry.type or " ",
+        })
 	end
 
 	if #self._items == 0 then

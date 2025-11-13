@@ -161,7 +161,7 @@ function M.run_task(name)
         return
     end
     local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(config_dir, "task", nil, name)
+    taskmgr.run_task(proj_dir, config_dir, "task", nil, name)
 end
 
 function M.repeat_task()
@@ -171,7 +171,7 @@ function M.repeat_task()
         return
     end
     local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(config_dir, "repeat")
+    taskmgr.run_task(proj_dir, config_dir, "repeat")
 end
 
 ---@param ext_name string
@@ -183,7 +183,7 @@ function M.extension_task(ext_name, task_name)
         return
     end
     local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(config_dir, "extension", ext_name, task_name)
+    taskmgr.run_task(proj_dir, config_dir, "extension", ext_name, task_name)
 end
 
 ---@param ext_name string

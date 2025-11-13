@@ -111,6 +111,7 @@ function TermProc:start(args)
     -- Call risky_function safely
     local call_ok, result = xpcall(
         function()
+            ---@diagnostic disable-next-line: param-type-mismatch
             return { self:_start_term_job(args.bufnr, cmd_and_args, command_env, command_cwd, args.output_handler,
                 args.on_exit_handler) }
         end,

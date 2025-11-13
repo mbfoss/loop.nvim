@@ -3,9 +3,10 @@ local M = {}
 local jsontools = require('loop.tools.json')
 local strtools = require('loop.tools.strtools')
 local taskstore = require("loop.task.taskstore")
-local runner = require("loop.runner")
+local runner = require("loop.task.runner")
 local window = require("loop.window")
 local selector = require("loop.selector")
+local quickfix = require('loop.tools.quickfix')
 
 ---@params task loop.Task
 ---@return string
@@ -85,15 +86,20 @@ function M.create_extension_config(config_dir, ext_name)
     end
 end
 
+---@param proj_dir string
 ---@param config_dir string
 ---@param mode "task"|"extension"|"repeat"
 ---@param ext_name string|nil
 ---@param task_name string|nil
-function M.run_task(config_dir, mode, ext_name, task_name)
+function M.run_task(proj_dir, config_dir, mode, ext_name, task_name)
     if mode == "repeat" then
         local chain, _ = taskstore.load_last_chain(config_dir)
         if chain then
-            runner.start_task_chain(chain)
+            runner.start_task_chain(chain, function(qf_updated)
+                if qf_updated then
+                    window.show_errors(true, proj_dir)
+                end
+            end)
             return
         end
     end
@@ -144,7 +150,11 @@ function M.run_task(config_dir, mode, ext_name, task_name)
             return
         end
         taskstore.save_last_chain(chain, config_dir)
-        runner.start_task_chain(chain)
+        runner.start_task_chain(chain, function(qf_updated)
+            if qf_updated then
+                window.show_errors(true, proj_dir)
+            end
+        end)
     end)
 end
 
