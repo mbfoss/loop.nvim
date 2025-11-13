@@ -2,7 +2,7 @@ local M = {}
 
 require("loop.config")
 local log = require('loop.tools.Logger').create_logger("project")
-local taskmgr = require("loop.task.taskmgr")
+local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
 local uitools = require('loop.tools.uitools')
 local vartools = require('loop.tools.vars')

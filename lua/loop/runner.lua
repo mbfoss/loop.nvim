@@ -14,7 +14,7 @@ local window = require('loop.window')
 ---@field interrupted boolean
 ---@field ended boolean
 ---@field active_job loop.job.Job|nil
----@field on_complete fun()
+---@field on_complete fun()|nil
 ---@field next_chain loop.runner.TaskChain|nil
 
 ---@type loop.runner.TaskChain|nil
@@ -147,7 +147,7 @@ end
 
 ---@param tasks loop.Task[]
 ---@param issue_handler loop.runner.IssueHandler
----@param on_complete fun()
+---@param on_complete fun()|nil
 local function _start_task_chain(tasks, issue_handler, on_complete)
     ---@param chain loop.runner.TaskChain
     local function next_job(chain)
@@ -232,7 +232,7 @@ end
 
 ---@param tasks loop.Task[]
 ---@param on_issue loop.runner.IssueHandler
----@param on_complete fun()
+---@param on_complete fun()|nil
 function M.start_task_chain(tasks, on_issue, on_complete)
     --- copy to solve strings in the copy and keep the original intact
     local chain = vim.deepcopy(tasks)

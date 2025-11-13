@@ -19,13 +19,14 @@ local _loop_win_height_ratio
 ---@class loop.TabInfo
 ---@field label string
 ---@field page any
+---@field used boolean
 
 ---@type loop.TabInfo[]
 local tabs_data = {
-    { label = "Events",      page = nil },
-    { label = "Task",        page = nil },
-    { label = "Errors",      page = nil },
-    { label = "Breakpoints", page = nil },
+    { label = "Events",      page = nil, used=true },
+    { label = "Task",        page = nil, used=false },
+    { label = "Errors",      page = nil, used=false },
+    { label = "Breakpoints", page = nil, used=false },
 }
 
 local events_tab = tabs_data[1]
@@ -88,17 +89,17 @@ end
 
 ---@param req_tab loop.TabInfo
 local function set_active_tab(req_tab)
+    req_tab.used = true
     log:log({ "setting active page: ", req_tab.label })
     if _loop_win == -1 then
         log:log({ "no active window" })
         return
     end
-
     local win = _loop_win
     local winbar_parts = { "%#LoopPluginInactiveTab#" }
     local tabidx = 0
     for arr_idx, tab in ipairs(tabs_data) do
-        if tab.page and tab.page:used() then
+        if tab.page and tab.used then
             tabidx = tabidx + 1
             if tabidx ~= 1 then table.insert(winbar_parts, '|') end
             local active = false
@@ -209,7 +210,7 @@ end
 function M.tab_names()
     local arr = {}
     for _, t in ipairs(tabs_data) do
-        if t.page:used() then
+        if t.used then
             table.insert(arr, t.label)
         end
     end
@@ -222,7 +223,7 @@ function M.show_window(tabname)
     local tab = nil
     if tabname then
         for _, t in ipairs(tabs_data) do
-            if t.page:used() and tabname == t.label then
+            if  tabname == t.label then
                 tab = t
                 break
             end
@@ -260,14 +261,13 @@ function M.show_task_output()
     create_window(tasks_tab)
 end
 
----@param copy_qf boolean
+---@param issues loop.task.TaskIssue[]|nil
 ---@param proj_dir string
-function M.show_errors(copy_qf, proj_dir)
-    if copy_qf then
+function M.show_errors(issues, proj_dir)
+    if issues then
         ---@type loop.pages.ErrorsPage
         local page = errors_tab.page
-        local qflist = vim.fn.getqflist()
-        page:setlist(qflist, proj_dir)
+        page:setlist(issues, proj_dir)
     end
     create_window(errors_tab)
 end
@@ -287,7 +287,7 @@ local function _on_buf_enter(page)
     end
     local idx = 0
     for _, tab in ipairs(tabs_data) do
-        if tab.page and tab.page:used() then
+        if tab.page and tab.used then
             idx = idx + 1
             if tab.page ~= page then
                 local key = tostring(idx)

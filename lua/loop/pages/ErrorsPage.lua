@@ -8,6 +8,15 @@ local ErrorsPage = class(Page)
 
 local NS_ID = vim.api.nvim_create_namespace('loop-errors-hl')
 
+---@class loop.pages.ErrorItem
+---@field filename string
+---@field lnum number
+---@field col number
+---@field text string
+---@field type string|nil
+
+---@param entry loop.pages.ErrorItem
+---@param project_dir string
 local function format_entry(entry, project_dir)
 	local filename = entry.filename or '[No File]'
 	if project_dir then
@@ -24,6 +33,7 @@ end
 
 function ErrorsPage:init(filetype, on_buf_enter)
 	Page.init(self, filetype, on_buf_enter)
+    ---@type loop.pages.ErrorItem[]
 	self._items = {}
 end
 
@@ -58,17 +68,6 @@ function ErrorsPage:get_buf()
 		desc = "Open error location on double-click",
 	})
 
-	-- Track cursor moves to update quickfix index
-	vim.api.nvim_create_autocmd('CursorMoved', {
-		buffer = buf,
-		callback = function()
-			local idx = self:_get_curr_row()
-			if idx >= 1 and idx <= #self._items then
-				vim.fn.setqflist({}, 'r', { idx = idx })
-			end
-		end,
-	})
-
 	return buf, true
 end
 
@@ -99,43 +98,21 @@ function ErrorsPage:_refresh_buffer()
 	vim.bo[buf].modifiable = false
 
 	vim.api.nvim_buf_clear_namespace(buf, NS_ID, 0, -1)
-	for idx, _ in ipairs(self._items) do
+	for idx, item in ipairs(self._items) do
+        local hl = item.type == 'E' and 'DiagnosticError' or 'DiagnosticWarn'
 		vim.api.nvim_buf_set_extmark(buf, NS_ID, idx - 1, 0, {
 			end_col = 1,
-			hl_group = 'ErrorMsg',
+			hl_group = hl,
 			hl_eol = true,
 			priority = 200,
 		})
 	end
 end
 
-function ErrorsPage:setlist(qflist, proj_dir)
+---@param errors loop.pages.ErrorItem[]
+function ErrorsPage:setlist(errors, proj_dir)
 	self.proj_dir = proj_dir
-	self._items = {}
-	self._idx = 1
-
-	for _, entry in ipairs(qflist or {}) do
-       --vim.notify(vim.inspect({"entry", entry}))
-        local filename = entry.filename
-        if not filename and vim.api.nvim_buf_is_valid(entry.bufnr) then
-            filename = vim.api.nvim_buf_get_name(entry.bufnr)
-        end
-        table.insert(self._items, {
-            filename = filename,
-            lnum = entry.lnum,
-            col = entry.col or 0,
-            text = entry.text or "",
-            type = entry.type or " ",
-        })
-	end
-
-	if #self._items == 0 then
-		self._idx = 1
-	elseif self._idx > #self._items then
-		self._idx = #self._items
-	end
-
-	self:get_buf()
+	self._items =errors
 	self:_refresh_buffer()
 end
 

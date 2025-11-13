@@ -3,10 +3,9 @@ local M = {}
 local jsontools = require('loop.tools.json')
 local strtools = require('loop.tools.strtools')
 local taskstore = require("loop.task.taskstore")
-local runner = require("loop.task.runner")
+local runner = require("loop.runner")
 local window = require("loop.window")
 local selector = require("loop.selector")
-local quickfix = require('loop.tools.quickfix')
 
 ---@params task loop.Task
 ---@return string
@@ -92,14 +91,33 @@ end
 ---@param ext_name string|nil
 ---@param task_name string|nil
 function M.run_task(proj_dir, config_dir, mode, ext_name, task_name)
+    
+    ---@type loop.task.TaskIssue[]
+    local task_issues = {}
+
+    ---@param issues loop.task.TaskIssue[]|nil
+    ---@param reset boolean
+    local on_issue = function(issues, reset)
+        if reset then
+            task_issues = {}
+            vim.fn.setqflist({}, "r")
+        end
+        if issues then 
+            vim.fn.setqflist(issues, "a")
+            vim.list_extend(task_issues, issues)
+        end
+    end
+
+    local function on_complete()
+        if #task_issues > 0 then
+            window.show_errors(task_issues, proj_dir)     
+        end
+    end
+
     if mode == "repeat" then
         local chain, _ = taskstore.load_last_chain(config_dir)
         if chain then
-            runner.start_task_chain(chain, function(qf_updated)
-                if qf_updated then
-                    window.show_errors(true, proj_dir)
-                end
-            end)
+            runner.start_task_chain(chain, on_issue, on_complete)
             return
         end
     end
@@ -150,11 +168,7 @@ function M.run_task(proj_dir, config_dir, mode, ext_name, task_name)
             return
         end
         taskstore.save_last_chain(chain, config_dir)
-        runner.start_task_chain(chain, function(qf_updated)
-            if qf_updated then
-                window.show_errors(true, proj_dir)
-            end
-        end)
+        runner.start_task_chain(chain, on_issue)
     end)
 end
 

@@ -80,7 +80,7 @@ local function _make_issue(m, line)
         return nil
     end
 
-    ---@type loop.task.TaskIssue|
+    ---@type loop.task.TaskIssue
     local entry = {
         filename = captures[m.file] or "",
         lnum     = tonumber(captures[m.line]) or 0,
@@ -133,7 +133,6 @@ function M.get_issues(lines, matcher)
     if type(matcher) == "string" then
         matcher = builtin_matchers[matcher]
     end
-
     ------------------------------------------------------------------
     -- 2. If we still have a table → process it
     ------------------------------------------------------------------
