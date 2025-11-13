@@ -1,5 +1,5 @@
 local BaseSession = require("loop.dap.BaseSession")
-local FSM = require("loop.dap.fsm")
+local FSM = require("loop.dap.FSM")
 local strtools = require('loop.tools.strtools')
 local class = require('loop.tools.class')
 local Session = class()
