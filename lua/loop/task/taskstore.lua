@@ -150,7 +150,7 @@ local function _get_extension_mod(ext_name)
 		return nil, "Extension name required"
 	end
 	if type(ext_name) ~= "string" or not ext_name:match("^[%a%d_-]+$") then
-		return nil, "Invalid extension name: " .. ext_name
+		return nil, "Invalid extension name: " .. ext_name "'"
 	end
     local exists = false
     for _,v in ipairs(extensions.ext_names()) do if v == ext_name then exists = true end end

@@ -23,7 +23,6 @@ require('loop.task.taskdef')
 
 local M         = {}
 
-require('loop.task')
 local filetools = require('loop.tools.file')
 local strtools  = require('loop.tools.strtools')
 
