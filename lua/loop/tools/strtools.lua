@@ -76,4 +76,83 @@ function M.indent_errors(errors, parent_msg)
     return errors
 end
 
+
+---@param str string
+---@return string[]
+function M.split_shell_args(str)
+  local args = {}
+  local i = 1
+  local len = #str
+
+  local function skip_ws()
+    while i <= len and str:sub(i, i):match("%s") do
+      i = i + 1
+    end
+  end
+
+  local function add(part)
+    if part ~= "" then table.insert(args, part) end
+  end
+
+  while i <= len do
+    skip_ws()
+    if i > len then break end
+
+    local part = {}
+    local in_quote = nil
+
+    while i <= len do
+      local c = str:sub(i, i)
+      local nxt = str:sub(i + 1, i + 1)
+
+      -- whitespace ends token (unless inside quotes)
+      if not in_quote and c:match("%s") then break end
+
+      -- start quoted section
+      if not in_quote and (c == '"' or c == "'") then
+        in_quote = c
+        i = i + 1
+        goto continue
+      end
+
+      -- end quote
+      if in_quote and c == in_quote then
+        in_quote = nil
+        i = i + 1
+        goto continue
+      end
+
+      -- handle backslash escapes
+      if c == "\\" and i + 1 <= len then
+        local esc = nxt
+        -- include escaped char literally
+        if esc == "\n" then
+          i = i + 2  -- line continuation
+        else
+          table.insert(part, esc)
+          i = i + 2
+        end
+        goto continue
+      end
+
+      table.insert(part, c)
+      i = i + 1
+      ::continue::
+    end
+
+    -- unterminated quote → keep literal opening quote
+    if in_quote then
+      table.insert(part, 1, in_quote)
+    end
+
+    add(table.concat(part))
+  end
+
+  return args
+end
+
+
+
+
+
 return M

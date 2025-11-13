@@ -1,6 +1,7 @@
 local Job     = require('loop.job.Job')
 local class   = require('loop.tools.class')
 local uitools = require('loop.tools.uitools')
+local strtools = require('loop.tools.strtools')
 
 
 ---@class loop.job.TermProc : loop.job.Job
@@ -79,11 +80,13 @@ function TermProc:start(args)
     local command_env = args.command_env or {}
     command_env.PWD = command_cwd -- required for commands to use cwd in all cases
 
-	---@type any
+	---@type string[]
     local cmd_and_args
     if type(args.command) == "string" then
-        cmd_and_args = { args.command }
+        ---@diagnostic disable-next-line: param-type-mismatch
+        cmd_and_args = strtools.split_shell_args(args.command)
     elseif type(args.command) == "table" then
+        ---@diagnostic disable-next-line: cast-local-type
         cmd_and_args = args.command
     else
         return false, "Invalid command"
@@ -153,6 +156,7 @@ function TermProc:_start_term_job(bufnr, cmd_and_args, command_env, command_cwd,
         end
     end
 
+    assert(type(cmd_and_args) ~= 'string')
     self.job_id = vim.fn.jobstart(cmd_and_args, {
         term = true,
         cwd = command_cwd,

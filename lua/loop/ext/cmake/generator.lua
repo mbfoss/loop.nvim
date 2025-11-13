@@ -2,7 +2,7 @@ require('loop.task.taskdef')
 
 ---@class loop.ext.cmake.CMakeRunApp
 ---@field cwd string
----@field args string[]|nil
+---@field args string|string[]|nil
 ---@field env string[]|nil
 
 ---@class loop.ext.cmake.CMakeProfile
@@ -10,8 +10,8 @@ require('loop.task.taskdef')
 ---@field build_type '"Debug"'|'"Release"'|'"RelWithDebInfo"'|'"MinSizeRel"' # required
 ---@field source_dir string # required, non-empty
 ---@field build_dir string # required, non-empty
----@field configure_args string[]|nil
----@field build_tool_args string[]|nil
+---@field configure_args string|string[]|nil
+---@field build_tool_args string|string[]|nil
 ---@field prob_matcher loop.task.ProblemMatcher
 ---@field run table<string, loop.ext.cmake.CMakeRunApp> -- target → { cwd, args }
 
@@ -243,7 +243,13 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
         local cmd = { cmake_path, "--build", build_dir }
         if cfg.build_tool_args then
             table.insert(cmd, "--")
-            vim.list_extend(cmd, cfg.build_tool_args)
+            if type(cfg.build_tool_args) == 'string' then
+                ---@diagnostic disable-next-line: param-type-mismatch
+                vim.list_extend(cmd, strtools.split_shell_args(cfg.build_tool_args))
+            else
+                ---@diagnostic disable-next-line: param-type-mismatch
+                vim.list_extend(cmd, cfg.build_tool_args)
+            end
         end
         ---@type loop.Task
         local task = {
@@ -274,7 +280,13 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             local cmd = { cmake_path, "--build", build_dir, "--target", tgt }
             if cfg.build_tool_args then
                 table.insert(cmd, "--")
-                vim.list_extend(cmd, cfg.build_tool_args)
+                if type(cfg.build_tool_args) == 'string' then
+                    ---@diagnostic disable-next-line: param-type-mismatch
+                    vim.list_extend(cmd, strtools.split_shell_args(cfg.build_tool_args))
+                else
+                    ---@diagnostic disable-next-line: param-type-mismatch
+                    vim.list_extend(cmd, cfg.build_tool_args)
+                end
             end
             ---@type loop.Task
             local task = {
@@ -298,7 +310,13 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             local app = (cfg.run and cfg.run[tgt]) or {}
             local cmd = { exec_path }
             if app.args then
-                vim.list_extend(cmd, app.args)
+                if type(app.args) == 'string' then
+                    ---@diagnostic disable-next-line: param-type-mismatch
+                    vim.list_extend(cmd, strtools.split_shell_args(app.args))
+                else
+                    ---@diagnostic disable-next-line: param-type-mismatch
+                    vim.list_extend(cmd, app.args)
+                end                
             end
             local env = app.env
             local cwd = app.cwd and realpath(app.cwd) or build_dir

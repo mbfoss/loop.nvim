@@ -10,4 +10,5 @@ vim.opt.rtp:append(plenary_dir)
 
 vim.cmd("runtime plugin/plenary.vim")
 
-require("tests.taskdeps")
+require("tests.runner")
+require("tests.strtools")

@@ -14,7 +14,7 @@ return [[
           "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
         ],
         "build_tool_args": [
-          "-j4"
+          "-j8"
         ],
         "prob_matcher": "$gcc"
       },
@@ -27,7 +27,7 @@ return [[
           "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
         ],
         "build_tool_args": [
-          "-j4"
+          "-j8"
         ],
         "prob_matcher": "$gcc"
       }
