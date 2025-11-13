@@ -69,9 +69,9 @@ local function _on_win_new_or_close()
     local winid = _loop_win
     local count = _count_normal_windows(vim.api.nvim_win_get_tabpage(winid))
     --this should be configurable
-    --if count <= 2 then
-    --    vim.schedule(_quit_if_last_window)
-    --end
+    if count <= 2 then
+       vim.schedule(_quit_if_last_window)
+    end
     if count <= 1 then
         return
     end
