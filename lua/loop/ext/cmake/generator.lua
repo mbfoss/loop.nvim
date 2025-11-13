@@ -362,5 +362,4 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
     end
 end
 
-
 return M
