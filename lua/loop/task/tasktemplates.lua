@@ -4,7 +4,7 @@ return {
 		type = "tool",
 		command = { "luacheck", "${PROJDIR}" },
 		cwd = "${PROJDIR}",
-		problem_matcher = "$luacheck",
+		quickfix_matcher = "luacheck",
 		depends_on = {},
 	},
 	{
@@ -12,7 +12,7 @@ return {
 		type = "tool",
 		command = { "g++", "-g", "-std=c++23", "${FILE}", "-o", "${FILEROOT}.out" },
 		cwd = "${PROJDIR}",
-		problem_matcher = "$gcc",
+		quickfix_matcher = "gcc",
 		depends_on = {},
 	},
 	{

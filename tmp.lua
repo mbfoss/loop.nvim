@@ -60,4 +60,3 @@ local function set_keymaps(page, set_active_tab)
     end
 end
     ]] --
-

@@ -11,7 +11,7 @@ local selector = require("loop.selector")
 ---@return string
 local function _task_as_json(task)
     local function order_handler(_, _)
-        return { "name", "type", "command", "cwd", "depends_on", "problem_matcher" }
+        return { "name", "type", "command", "cwd", "depends_on", "quickfix_matcher" }
     end
     return jsontools.to_string(task, order_handler)
 end
@@ -91,33 +91,10 @@ end
 ---@param ext_name string|nil
 ---@param task_name string|nil
 function M.run_task(proj_dir, config_dir, mode, ext_name, task_name)
-    
-    ---@type loop.task.TaskIssue[]
-    local task_issues = {}
-
-    ---@param issues loop.task.TaskIssue[]|nil
-    ---@param reset boolean
-    local on_issue = function(issues, reset)
-        if reset then
-            task_issues = {}
-            vim.fn.setqflist({}, "r")
-        end
-        if issues then 
-            vim.fn.setqflist(issues, "a")
-            vim.list_extend(task_issues, issues)
-        end
-    end
-
-    local function on_complete()
-        if #task_issues > 0 then
-            window.show_errors(task_issues, proj_dir)     
-        end
-    end
-
     if mode == "repeat" then
         local chain, _ = taskstore.load_last_chain(config_dir)
         if chain then
-            runner.start_task_chain(chain, on_issue, on_complete)
+            runner.start_task_chain(chain)
             return
         end
     end
@@ -168,7 +145,7 @@ function M.run_task(proj_dir, config_dir, mode, ext_name, task_name)
             return
         end
         taskstore.save_last_chain(chain, config_dir)
-        runner.start_task_chain(chain, on_issue)
+        runner.start_task_chain(chain)
     end)
 end
 

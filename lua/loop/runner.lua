@@ -1,13 +1,11 @@
 local M = {}
 
 require('loop.task.taskdef')
-local matcher = require("loop.task.matcher")
+local qfparsers = require("loop.task.qfparsers")
 local vartools = require('loop.tools.vars')
 local TermProc = require('loop.job.TermProc')
 local LuaFunc = require('loop.job.LuaFunc')
 local window = require('loop.window')
-
----@alias loop.runner.IssueHandler fun(issue : loop.task.TaskIssue[]|nil, reset : boolean)
 
 ---@class loop.runner.TaskChain
 ---@field tasks loop.Task[]
@@ -75,35 +73,69 @@ function M.get_deps_chain(tasks, main)
     return ordered, nil
 end
 
+---@param line string
+---@return string
+local function _normalize_string(line)
+    --ansi color codes
+    local pattern = "\27%[%d*;?%d*;?%d*[mGKHK]"
+    line = line:gsub("\r\n?", "\n")
+    line = line:gsub(pattern, "")
+    return line
+end
+
+local function _clear_quickfix()
+    vim.fn.setqflist({}, "r")
+    --_errors_page:clear()
+end
+
+---@param items loop.task.QuickFixItem
+local function _add_quickfix_items(items)
+    if #items > 0 then
+        vim.fn.setqflist(items, "a")
+    end
+end
+
 ---@param task loop.Task
 ---@return loop.job.Job|nil, string|nil
----@param issue_handler loop.runner.IssueHandler
 ---@param task_exit_handler fun(exit_code : number)
-local function _start_one_task(task, issue_handler, task_exit_handler)
+local function _start_one_task(task, task_exit_handler)
     if not task.command or #task.command == 0 then
         return nil, "Invalid or empty command"
     end
 
     local tasktype = task.type
 
-    local output_handler = nil
-    if tasktype == "tool" then
-        if task.problem_matcher then
-            if type(task.problem_matcher) == 'string' and not matcher.is_builtin(task.problem_matcher) then
-                return nil, "Unknown problem matcher: " .. task.problem_matcher
-            end
-            issue_handler(nil, true)
-            ---@param lines string[]
-            output_handler = function(_, lines)
-                local issues = matcher.get_issues(lines, task.problem_matcher)
-                if issues then
-                    issue_handler(issues, false)
-                end
+    local quickfix_parser
+    local parser_context = {}
+    local function parse_output_lines(lines)
+        if not quickfix_parser then
+            return
+        end
+        local issues = {}
+        for _, line in ipairs(lines) do
+            local issue = quickfix_parser(_normalize_string(line), parser_context)
+            if issue then
+                table.insert(issues, issue)
             end
         end
+        _add_quickfix_items(issues)
+    end
+
+    if task.quickfix_matcher then
+        quickfix_parser = qfparsers.get_parser(task.quickfix_matcher)
+        if not quickfix_parser then
+            return nil, "Invalid quickfix matcher: " .. task.quickfix_matcher
+        end
+        _clear_quickfix()
+    end
+
+    ---@param lines string[]
+    local output_handler = function(_, lines)
+        parse_output_lines(lines)
     end
 
     local exit_handler = function(exit_code)
+        parse_output_lines({ "" })
         task_exit_handler(exit_code)
     end
 
@@ -146,9 +178,8 @@ local function _start_one_task(task, issue_handler, task_exit_handler)
 end
 
 ---@param tasks loop.Task[]
----@param issue_handler loop.runner.IssueHandler
 ---@param on_complete fun()|nil
-local function _start_task_chain(tasks, issue_handler, on_complete)
+local function _start_task_chain(tasks, on_complete)
     ---@param chain loop.runner.TaskChain
     local function next_job(chain)
         if chain.interrupted or not chain.tasks or #chain.tasks == 0 then
@@ -168,7 +199,7 @@ local function _start_task_chain(tasks, issue_handler, on_complete)
         end
 
         local task = table.remove(chain.tasks, 1)
-        local job, job_err = _start_one_task(task, issue_handler, function(exit_code)
+        local job, job_err = _start_one_task(task, function(exit_code)
             if type(exit_code) ~= "number" then
                 window.add_events({ "Invalid task status for " .. task.name })
                 chain.interrupted = true
@@ -231,9 +262,8 @@ end
 
 
 ---@param tasks loop.Task[]
----@param on_issue loop.runner.IssueHandler
 ---@param on_complete fun()|nil
-function M.start_task_chain(tasks, on_issue, on_complete)
+function M.start_task_chain(tasks, on_complete)
     --- copy to solve strings in the copy and keep the original intact
     local chain = vim.deepcopy(tasks)
 
@@ -249,7 +279,7 @@ function M.start_task_chain(tasks, on_issue, on_complete)
     if is_unresolved then
         return
     end
-    _start_task_chain(chain, on_issue, on_complete)
+    _start_task_chain(chain, on_complete)
 end
 
 return M

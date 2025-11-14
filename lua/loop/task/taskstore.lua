@@ -44,7 +44,7 @@ local function _load_tasks_file(filepath)
 	return _load_tasks_from_str(contents_or_err)
 end
 local function order_handler(path, attrs)
-	return { "name", "type", "command", "cwd", "depends_on", "problem_matcher" }
+	return { "name", "type", "command", "cwd", "depends_on", "quickfix_matcher" }
 end
 
 ---@param config_dir string
@@ -152,11 +152,11 @@ local function _get_extension_mod(ext_name)
 	if type(ext_name) ~= "string" or not ext_name:match("^[%a%d_-]+$") then
 		return nil, "Invalid extension name: " .. ext_name "'"
 	end
-    local exists = false
-    for _,v in ipairs(extensions.ext_names()) do if v == ext_name then exists = true end end
-    if not exists then
-		return nil, "Invalid extension name '" .. ext_name        
-    end
+	local exists = false
+	for _, v in ipairs(extensions.ext_names()) do if v == ext_name then exists = true end end
+	if not exists then
+		return nil, "Invalid extension name '" .. ext_name
+	end
 	local mod_loaded, mod = pcall(require, 'loop.ext.' .. ext_name .. '.extension')
 	if not mod_loaded then
 		return nil, "Failed to load extension '" .. ext_name .. "' " .. mod

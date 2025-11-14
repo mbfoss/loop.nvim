@@ -52,28 +52,9 @@ return [[
             "additionalProperties": { "type": "string" },
             "description": "Environment variables to set"
           },
-          "problem_matcher": {
-            "oneOf": [
-              {
-                "type": "string",
-                "enum": ["$gcc", "$tsc-watch", "$eslint-stylish", "$msCompile", "$luacheck"],
-                "description": "Predefined problem matcher"
-              },
-              {
-                "type": "object",
-                "required": ["regexp", "file", "line", "message"],
-                "properties": {
-                  "regexp": { "type": "string", "pattern": "^.+$" },
-                  "file": { "type": "integer", "minimum": 1 },
-                  "line": { "type": "integer", "minimum": 1 },
-                  "column": { "type": "integer", "minimum": 1 },
-                  "severity": { "type": "integer", "minimum": 1 },
-                  "message": { "type": "integer", "minimum": 1 }
-                },
-                "additionalProperties": false,
-                "description": "Custom problem matcher pattern"
-              }
-            ]
+          "quickfix_matcher": {
+            "type": "string",
+            "description": "Matcher used to fill the quickfix list"
           },
           "depends_on": {
             "type": "array",

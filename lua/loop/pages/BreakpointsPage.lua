@@ -3,7 +3,7 @@ local Page = require('loop.pages.Page')
 local uitools = require('loop.tools.uitools')
 
 
----@class loop.pages.BreakpointsPage : loop.pages.Page 
+---@class loop.pages.BreakpointsPage : loop.pages.Page
 ---@field new fun(self: loop.pages.BreakpointsPage, filetype: string, on_buf_enter: fun(buf: integer)): loop.pages.BreakpointsPage
 local BreakpointsPage = class(Page)
 

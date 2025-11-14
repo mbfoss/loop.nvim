@@ -23,15 +23,15 @@ local _loop_win_height_ratio
 
 ---@type loop.TabInfo[]
 local tabs_data = {
-    { label = "Events",      page = nil, used=true },
-    { label = "Task",        page = nil, used=false },
-    { label = "Errors",      page = nil, used=false },
-    { label = "Breakpoints", page = nil, used=false },
+    { label = "Events",      page = nil, used = true },
+    { label = "Task",        page = nil, used = false },
+    { label = "Errors",      page = nil, used = false },
+    { label = "Breakpoints", page = nil, used = false },
 }
 
 local events_tab = tabs_data[1]
 local tasks_tab = tabs_data[2]
-local errors_tab = tabs_data[3]
+--local errors_tab = tabs_data[3]
 local breakpoints_tab = tabs_data[4]
 
 ---@type loop.TabInfo
@@ -55,7 +55,7 @@ local function _quit_if_last_window()
     if _loop_win ~= -1 then
         local count = _count_normal_windows(vim.api.nvim_win_get_tabpage(_loop_win))
         if count == 1 then
-            local tab_count = #vim.api.nvim_list_tabpages()   
+            local tab_count = #vim.api.nvim_list_tabpages()
             if tab_count > 1 then
                 M.hide_window()
             else
@@ -74,7 +74,7 @@ local function _on_win_new_or_close()
     local count = _count_normal_windows(vim.api.nvim_win_get_tabpage(winid))
     --this should be configurable
     if count <= 2 then
-       vim.schedule(_quit_if_last_window)
+        vim.schedule(_quit_if_last_window)
     end
     if count <= 1 then
         return
@@ -223,7 +223,7 @@ function M.show_window(tabname)
     local tab = nil
     if tabname then
         for _, t in ipairs(tabs_data) do
-            if  tabname == t.label then
+            if tabname == t.label then
                 tab = t
                 break
             end
@@ -259,17 +259,6 @@ end
 
 function M.show_task_output()
     create_window(tasks_tab)
-end
-
----@param issues loop.task.TaskIssue[]|nil
----@param proj_dir string
-function M.show_errors(issues, proj_dir)
-    if issues then
-        ---@type loop.pages.ErrorsPage
-        local page = errors_tab.page
-        page:setlist(issues, proj_dir)
-    end
-    create_window(errors_tab)
 end
 
 function M.create_task_buffer()
@@ -326,18 +315,13 @@ function M.setup(_)
     do
         events_tab.page      = EventsPage:new("loop-events", _on_buf_enter)
         tasks_tab.page       = TaskPage:new("loop-tasks", _on_buf_enter)
-        errors_tab.page      = ErrorsPage:new("loop-errors", _on_buf_enter)
+        --errors_tab.page      = ErrorsPage:new("loop-errors", _on_buf_enter)
         breakpoints_tab.page = BreakpointsPage:new("loop-breakpoints", _on_buf_enter)
     end
 
     do
-        -- Define a custom highlight group that inherits from 'WinBar'
-        local winbar_hl = vim.api.nvim_get_hl(0, { name = "WinBar", link = true })
-        local title_hl = vim.api.nvim_get_hl(0, { name = "Title", link = true })
-        vim.api.nvim_set_hl(0, "LoopPluginInactiveTab", { fg = winbar_hl.fg, bg = winbar_hl.bg, })
-        vim.api.nvim_set_hl(0, "LoopPluginActiveTab",
-            { fg = title_hl.fg, bg = title_hl.bg, underline = true, bold = true })
-
+        vim.api.nvim_set_hl(0, "LoopPluginInactiveTab", { link = "WinBar" })
+        vim.api.nvim_set_hl(0, "LoopPluginActiveTab", { link = "Special" })
         vim.api.nvim_set_hl(0, "LoopPluginEventInfo", { link = "Normal" })
         vim.api.nvim_set_hl(0, "LoopPluginEventWarn", { link = "DiagnosticWarn" })
         vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "DiagnosticError" })

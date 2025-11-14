@@ -279,15 +279,13 @@ function M.setup(config)
     vim.api.nvim_create_autocmd("VimEnter", {
         callback = function()
             local args = vim.fn.argv()
-            local has_file = #args > 0 and vim.fn.isdirectory(args[1]) == 0
-            if not has_file then
-                local dir = #args > 0 and args[1] or vim.fn.getcwd()
-                if _is_project_dir(dir) then
-                    vim.schedule(function()
-                        M.open_project(dir)
-                    end
-                    )
+            local has_dir = #args > 0 and vim.fn.isdirectory(args[1]) == 1
+            local dir = has_dir and args[1] or vim.fn.getcwd()
+            if _is_project_dir(dir) then
+                vim.schedule(function()
+                    M.open_project(dir)
                 end
+                )
             end
         end
     })
