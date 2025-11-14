@@ -143,9 +143,8 @@ function M.open_project(dir)
         errors = errors or {}
         table.insert(errors, 1, "Failed to load project")
         window.add_events(errors, "error")
-        window.show_window()
+        window.show_events()
     end
-    window.show_events()
 end
 
 function M.close_project()
