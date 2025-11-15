@@ -44,7 +44,10 @@ local function _load_tasks_file(filepath)
 	return _load_tasks_from_str(contents_or_err)
 end
 local function order_handler(path, attrs)
-	return { "name", "type", "command", "cwd", "depends_on", "quickfix_matcher" }
+    if path == "/" then
+        return {"$schema", "tasks"}
+    end
+	return {"name", "type", "command", "cwd", "depends_on", "quickfix_matcher" }
 end
 
 ---@param config_dir string
@@ -69,7 +72,7 @@ function M.add_task(config_dir, new_task)
 		filetools.write_content(schema_filepath, require("loop.task.tasksschema"))
 		local file_data = {}
 		file_data["$schema"] = 'file://' .. schema_filepath
-		file_data.tasks = tasks
+		file_data["tasks"] = tasks
 		local new_content = jsontools.to_string(file_data, order_handler)
 		new_lines = vim.split(new_content, "\n", { plain = true })
 	else

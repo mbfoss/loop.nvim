@@ -6,7 +6,6 @@ local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
 local uitools = require('loop.tools.uitools')
 local vartools = require('loop.tools.vars')
-local dap = require('loop.dap')
 local breakpoints = require('loop.breakpoints')
 local extensions = require('loop.ext.extensions')
 
@@ -313,8 +312,6 @@ function M.setup(config)
     _setup_done = true
 
     log:log('setup')
-
-    dap.setup(config)
 
     breakpoints.setup()
 

@@ -51,7 +51,7 @@ function Session:init(args)
     end
 
     local dap_cmd  = cmd_and_args[1]
-    local dap_args = { table.unpack(cmd_and_args, 2) }
+    local dap_args = { unpack(cmd_and_args, 2) }
 
     self.base_session = BaseSession:new(name, {
         dap_cmd = dap_cmd, -- dap process

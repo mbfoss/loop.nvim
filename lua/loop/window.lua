@@ -4,7 +4,6 @@ local Page = require('loop.pages.Page')
 local EventsPage = require('loop.pages.EventsPage')
 local TaskPage = require('loop.pages.TaskPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
-local DebugPage = require('loop.pages.DebugPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 
@@ -32,7 +31,6 @@ local tabs_data = {
 local events_tab = tabs_data[1]
 local tasks_tab = tabs_data[2]
 local breakpoints_tab = tabs_data[3]
-local debug_tab = tabs_data[4]
 
 ---@type loop.TabInfo
 local active_tab = events_tab
@@ -316,7 +314,6 @@ function M.setup(_)
         events_tab.page      = EventsPage:new("loop-events", _on_buf_enter)
         tasks_tab.page       = TaskPage:new("loop-tasks", _on_buf_enter)
         breakpoints_tab.page = BreakpointsPage:new("loop-breakpoints", _on_buf_enter)
-        debug_tab.page       = DebugPage:new("loop-debug", _on_buf_enter)
     end
 
     do
