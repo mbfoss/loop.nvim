@@ -3,8 +3,8 @@ local log = require('loop.tools.Logger').create_logger("window")
 local Page = require('loop.pages.Page')
 local EventsPage = require('loop.pages.EventsPage')
 local TaskPage = require('loop.pages.TaskPage')
-local ErrorsPage = require('loop.pages.ErrorsPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
+local DebugPage = require('loop.pages.DebugPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 
@@ -25,14 +25,14 @@ local _loop_win_height_ratio
 local tabs_data = {
     { label = "Events",      page = nil, used = true },
     { label = "Task",        page = nil, used = false },
-    { label = "Errors",      page = nil, used = false },
     { label = "Breakpoints", page = nil, used = false },
+    { label = "Debug",       page = nil, used = false },
 }
 
 local events_tab = tabs_data[1]
 local tasks_tab = tabs_data[2]
---local errors_tab = tabs_data[3]
-local breakpoints_tab = tabs_data[4]
+local breakpoints_tab = tabs_data[3]
+local debug_tab = tabs_data[4]
 
 ---@type loop.TabInfo
 local active_tab = events_tab
@@ -315,8 +315,8 @@ function M.setup(_)
     do
         events_tab.page      = EventsPage:new("loop-events", _on_buf_enter)
         tasks_tab.page       = TaskPage:new("loop-tasks", _on_buf_enter)
-        --errors_tab.page      = ErrorsPage:new("loop-errors", _on_buf_enter)
         breakpoints_tab.page = BreakpointsPage:new("loop-breakpoints", _on_buf_enter)
+        debug_tab.page       = DebugPage:new("loop-debug", _on_buf_enter)
     end
 
     do

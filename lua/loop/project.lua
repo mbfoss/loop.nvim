@@ -8,7 +8,7 @@ local uitools = require('loop.tools.uitools')
 local vartools = require('loop.tools.vars')
 local dap = require('loop.dap')
 local breakpoints = require('loop.breakpoints')
-
+local extensions = require('loop.ext.extensions')
 
 local _setup_done = false
 local _project_dir = nil
@@ -32,15 +32,6 @@ local function _is_project_dir(dir)
     ---@diagnostic disable-next-line: undefined-field
     local stat = vim.loop.fs_stat(config_dir)
     return stat and stat.type == "directory"
-end
-
-function M.add_task()
-    local proj_dir = _get_proj_dir_or_warn()
-    if not proj_dir then
-        return
-    end
-    local config_dir = _get_config_dir(proj_dir)
-    taskmgr.add_task(config_dir)
 end
 
 local function _save_project()
@@ -152,79 +143,87 @@ function M.close_project()
     _close_project()
 end
 
----@param name string|nil
-function M.run_task(name)
-    assert(_setup_done)
-    local proj_dir = _get_proj_dir_or_warn()
-    if not proj_dir then
-        return
-    end
-    local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(proj_dir, config_dir, "task", nil, name)
-end
-
-function M.repeat_task()
-    assert(_setup_done)
-    local proj_dir = _get_proj_dir_or_warn()
-    if not proj_dir then
-        return
-    end
-    local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(proj_dir, config_dir, "repeat")
-end
-
----@param ext_name string
----@param task_name string|nil
-function M.extension_task(ext_name, task_name)
-    assert(_setup_done)
-    local proj_dir = _get_proj_dir_or_warn()
-    if not proj_dir then
-        return
-    end
-    local config_dir = _get_config_dir(proj_dir)
-    taskmgr.run_task(proj_dir, config_dir, "extension", ext_name, task_name)
-end
-
----@param ext_name string
-function M.extension_config(ext_name)
-    assert(_setup_done)
-    local proj_dir = _get_proj_dir_or_warn()
-    if not proj_dir then
-        return
-    end
-    local config_dir = _get_config_dir(proj_dir)
-    taskmgr.create_extension_config(config_dir, ext_name)
-end
-
+---@param args string[]
 ---@return string[]
-function M.tab_names()
-    assert(_setup_done)
-    return window.tab_names()
+function M.task_subcommands(args)
+    if #args == 0 then
+        return { "select", "run", "repeat", "add", "import" }
+    end
+    return {}
 end
 
----@param tabname string
-function M.show_window(tabname)
+---@param command string|nil
+---@param arg1 string|nil
+function M.task_command(command, arg1)
     assert(_setup_done)
-    window.show_window(tabname)
+    local proj_dir = _get_proj_dir_or_warn()
+    if not proj_dir then
+        return
+    end
+
+    command = command and command:match("^%s*(.-)%s*$") or ""
+    command = command ~= "" and command or "select"
+
+    local config_dir = _get_config_dir(proj_dir)
+    if command == "add" then
+        taskmgr.add_task(config_dir)
+    elseif command == "import" then
+        taskmgr.import_task(config_dir, arg1 or "")
+    elseif command == "select" then
+        taskmgr.run_task(proj_dir, config_dir, "task")
+    elseif command == "run" then
+        taskmgr.run_task(proj_dir, config_dir, "task")
+    elseif command == "repeat" then
+        taskmgr.run_task(proj_dir, config_dir, "repeat")
+    else
+        vim.notify('loop.nvim: Invalid task subcommand: ' .. command)
+    end
 end
 
-function M.hide_window()
-    assert(_setup_done)
-    window.hide_window()
+---@param args string[]
+---@return string[]
+function M.extension_subcommands(args)
+    if #args == 0 then
+        return extensions.ext_names()
+    elseif #args == 1 then
+        return { "configure", "task" }
+    end
+    return {}
 end
 
-function M.toggle_window()
+---@param extname string|nil
+---@param extcommand string|nil
+function M.extension_command(extname, extcommand)
     assert(_setup_done)
-    window.toggle_window()
+    local proj_dir = _get_proj_dir_or_warn()
+    if not proj_dir then
+        return
+    end
+    
+    local name = extname and extname:match("^%s*(.-)%s*$") or ""
+    local cmd = extcommand and extcommand:match("^%s*(.-)%s*$") or ""
+
+    local config_dir = _get_config_dir(proj_dir)
+    if cmd == "configure" then
+        taskmgr.create_extension_config(config_dir, name)
+    elseif cmd == "task" then
+        taskmgr.run_extension_task(config_dir, name)
+    else
+        vim.notify('loop.nvim: Invalid extension subcommand: ' .. cmd)
+    end
 end
 
-function M.winbar_click(id, clicks, button, mods)
-    assert(_setup_done)
-    window.winbar_click(id, clicks, button, mods)
+---@param args string[]
+---@return string[]
+function M.breakpoints_subcommands(args)
+    if #args == 0 then
+        return { "toggle", "clear_file", "clear_all" }
+    end
+    return {}
 end
 
 ---@param command nil|"toggle"|"clear_file"|"clear_all"
-function M.update_breakpoints(command)
+function M.breakpoints_command(command)
     assert(_setup_done)
     local proj_dir = _get_proj_dir_or_warn()
     if not proj_dir then
@@ -258,9 +257,50 @@ function M.update_breakpoints(command)
     end
 end
 
+
+---@param args string[]
+---@return string[]
+function M.debug_subcommands(args)
+    if #args == 0 then
+        return { "start", "continue", "restart", "stop", "attach" }
+    end
+    return {}
+end
+
 ---@param command string|nil
 function M.debug_command(command)
+    if command == 'command' then
+    elseif command == 'attach' then
+    end
     vim.notify('loop.nvim: Invalid debug subcommand: ' .. tostring(command))
+end
+
+
+---@return string[]
+function M.tab_names()
+    assert(_setup_done)
+    return window.tab_names()
+end
+
+---@param tabname string
+function M.show_window(tabname)
+    assert(_setup_done)
+    window.show_window(tabname)
+end
+
+function M.hide_window()
+    assert(_setup_done)
+    window.hide_window()
+end
+
+function M.toggle_window()
+    assert(_setup_done)
+    window.toggle_window()
+end
+
+function M.winbar_click(id, clicks, button, mods)
+    assert(_setup_done)
+    window.winbar_click(id, clicks, button, mods)
 end
 
 ---@param config loop.Config

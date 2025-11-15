@@ -4,59 +4,78 @@ local M = {}
 local project = require('loop.project')
 local config = require('loop.config')
 
-local function setup_user_command(calls)
-    -- Command completion: suggest subcommands first
-    local function loop_complete(arg_lead, cmd_line, _)
-        local args = vim.split(cmd_line, "%s+")
-        -- Complete subcommands when typing the first argument
-        if #args == 2 then
-            local matches = {}
-            for _, cmd in ipairs(vim.tbl_keys(calls)) do
-                if not vim.startswith(cmd, '_') and vim.startswith(cmd, arg_lead) then
-                    table.insert(matches, cmd)
-                end
-            end
-            return matches
-        elseif #args == 3 then
-            if args[2] == 'ext' or args[2] == 'configure_ext' then
-                return require('loop.ext.extensions').ext_names()
-            elseif args[2] == 'show' then
-                return project.tab_names()
-            elseif args[2] == 'breakpoints' then
-                return { "toggle", "clear_file", "clear_all" }
-            elseif args[2] == 'debug' then
-                return { "start", "continue", "restart", "stop" }
+-- Command completion: suggest subcommands first
+local function _loop_complete(func_names, arg_lead, cmd_line)
+    local function filter(strs)
+        local arr = {}
+        for _, s in ipairs(strs) do
+            if vim.startswith(s, arg_lead) then
+                table.insert(arr, s)
             end
         end
-        return {}
+        return arr        
     end
-
-    -- Command handler
-    local function loop_command(opts)
-        local args = vim.split(opts.args, "%s+")
-        local subcmd = args[1]
-        if not subcmd or subcmd == "" then
-            vim.notify("Usage: :Loop <subcommand> [args...]", vim.log.levels.WARN)
-            return
-        end
-        local fn = calls[subcmd]
-        if not fn then
-            vim.notify("Unknown subcommand: " .. subcmd, vim.log.levels.ERROR)
-            return
-        end
-        -- Pass any remaining arguments to the function
-        local rest = { unpack(args, 2) }
-        local ok, err = pcall(fn, unpack(rest))
-        if not ok then
-            vim.notify("Loop " .. subcmd .. " failed: " .. tostring(err), vim.log.levels.ERROR)
-        end
+    local args = vim.split(cmd_line, "%s+")
+    if #args == 2 then
+        return filter(func_names)
+    elseif #args >= 3 then
+        local cmd = args[2]
+        local rest = { unpack(args, 3) }
+        rest[#rest] = nil
+        if cmd == "task" then
+            return filter(project.task_subcommands(rest))
+        elseif cmd == "ext" then
+            return filter(project.extension_subcommands(rest))
+        elseif cmd == "breakpoints" then
+            return filter(project.breakpoints_subcommands(rest))
+        elseif cmd == "debug" then
+            return filter(project.debug_subcommands(rest))
+        end        
     end
+    return {}
+end
 
-    vim.api.nvim_create_user_command("Loop", loop_command, {
-        nargs = "*",
-        complete = loop_complete,
-        desc = "Loop.nvim management commands",
-    })
+-- Command handler
+local function _loop_command(calls, opts)
+    local args = vim.split(opts.args, "%s+")
+    local subcmd = args[1]
+    if not subcmd or subcmd == "" then
+        vim.notify("Usage: :Loop <subcommand> [args...]", vim.log.levels.WARN)
+        return
+    end
+    local fn = calls[subcmd]
+    if not fn then
+        vim.notify("Invalid command: " .. subcmd, vim.log.levels.ERROR)
+        return
+    end
+    -- Pass any remaining arguments to the function
+    local rest = { unpack(args, 2) }
+    local ok, err = pcall(fn, unpack(rest))
+    if not ok then
+        vim.notify("Loop " .. subcmd .. " failed: " .. tostring(err), vim.log.levels.ERROR)
+    end
+end
+
+local function _setup_user_command(func_table)
+    
+    local func_names = vim.tbl_keys(func_table)
+    func_names = vim.tbl_filter(function (n) return not vim.startswith(n, '_') end, func_names)
+    table.sort(func_names)
+
+    local calls = {}
+    for _,n in ipairs(func_names) do
+        calls[n] = func_table[n]
+    end        
+    vim.api.nvim_create_user_command("Loop",
+        function(opts)
+            return _loop_command(calls, opts)
+        end, {
+            nargs = "*",
+            complete = function (arg_lead, cmd_line, _)
+                return _loop_complete(func_names, arg_lead, cmd_line)
+            end,
+            desc = "Loop.nvim management commands",
+        })
 end
 
 local setup_done = false
@@ -78,18 +97,17 @@ M.setup = function(args)
         create_project = project.create_project,
         open_project = project.open_project,
         close_project = project.close_project,
-        add_task = project.add_task,
-        task = project.run_task,
-        redo = project.repeat_task,
-        ext = project.extension_task,
-        configure_ext = project.extension_config,
         toggle = project.toggle_window,
         show = project.show_window,
         hide = project.hide_window,
-        breakpoints = project.update_breakpoints,
+
+        task = project.task_command,
+        ext = project.extension_command,
         debug = project.debug_command,
+        breakpoints = project.breakpoints_command,
     }
-    setup_user_command(_G.LoopProject)
+
+    _setup_user_command(_G.LoopProject)
 end
 
 return M
