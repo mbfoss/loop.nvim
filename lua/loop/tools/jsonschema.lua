@@ -140,6 +140,8 @@ function M.validate(schema_str, data)
     if type(data) ~= "table" then
         return { "data must be a table" }
     end
+    assert(schema_obj)
+    assert(type(schema_obj.type) == "string")
     return validate(schema_obj, data, "/")
 end
 

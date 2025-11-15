@@ -148,6 +148,8 @@ end
 function M.task_subcommands(args)
     if #args == 0 then
         return { "select", "run", "repeat", "add", "import", "configure" }
+    elseif #args == 1 and args[1] == 'import' then
+        return extensions.ext_names()
     end
     return {}
 end
