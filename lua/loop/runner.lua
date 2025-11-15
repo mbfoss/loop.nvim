@@ -3,9 +3,12 @@ local M = {}
 require('loop.task.taskdef')
 local qfparsers = require("loop.task.qfparsers")
 local vartools = require('loop.tools.vars')
+local strtools = require('loop.tools.strtools')
 local TermProc = require('loop.job.TermProc')
+local DebugJob = require('loop.job.DebugJob')
 local LuaFunc = require('loop.job.LuaFunc')
 local window = require('loop.window')
+local config = require('loop.config')
 
 ---@class loop.runner.TaskChain
 ---@field tasks loop.Task[]
@@ -73,26 +76,71 @@ function M.get_deps_chain(tasks, main)
     return ordered, nil
 end
 
----@param line string
----@return string
-local function _normalize_string(line)
-    --ansi color codes
-    local pattern = "\27%[%d*;?%d*;?%d*[mGKHK]"
-    line = line:gsub("\r\n?", "\n")
-    line = line:gsub(pattern, "")
-    return line
-end
-
-local function _clear_quickfix()
-    vim.fn.setqflist({}, "r")
-    --_errors_page:clear()
-end
-
----@param items loop.task.QuickFixItem
-local function _add_quickfix_items(items)
-    if #items > 0 then
-        vim.fn.setqflist(items, "a")
+---@param task loop.Task
+---@return function|nil
+---@return string|nil
+local function _make_output_parser(task)
+    if task.type ~= "tool" or not task.quickfix_matcher then
+        return nil
     end
+    ---@param line string
+    ---@return string
+    local function normalize_string(line)
+        --ansi color codes
+        local pattern = "\27%[%d*;?%d*;?%d*[mGKHK]"
+        line = line:gsub("\r\n?", "\n")
+        line = line:gsub(pattern, "")
+        return line
+    end
+
+    local quickfix_parser = qfparsers.get_parser(task.quickfix_matcher)
+    if not quickfix_parser then
+        return nil, "Invalid quickfix matcher: " .. task.quickfix_matcher
+    end
+
+    local first = true
+    local parser_context = {}
+    return function(lines)
+        if first then
+            vim.fn.setqflist({}, "r")
+            first = false
+        end
+        local issues = {}
+        for _, line in ipairs(lines) do
+            local issue = quickfix_parser(normalize_string(line), parser_context)
+            if issue then
+                table.insert(issues, issue)
+            end
+        end
+        if #issues > 0 then
+            vim.fn.setqflist(issues, "a")
+        end
+    end
+end
+
+---@param task loop.Task
+---@return loop.dap.session.Args.DAP|nil
+---@return string|nil
+local function _get_dap_config(task)
+    if not task.debugger then
+        return nil, "Debugger name missing in task config"
+    end
+    local cfg = config.current.debuggers[task.debugger]
+    if not cfg then
+        return nil, "Invalid debugger name: " .. tostring(task.debugger) .. "'"
+    end
+    local cmd = strtools.cmd_to_string_array(cfg.command)
+    if #cmd == 0 or vim.fn.executable(cmd[0]) == 0 then
+        return nil, "Debugger command is not executable: '" .. cmd[0] "'" 
+    end    
+    ---@type loop.dap.session.Args.DAP
+    local dap = {
+        name = task.debugger,
+        cmd = cfg.command,
+        cwd = cfg.cwd,
+        env = cfg.env
+    }
+    return dap, nil
 end
 
 ---@param task loop.Task
@@ -104,42 +152,35 @@ local function _start_one_task(task, task_exit_handler)
     end
 
     local tasktype = task.type
-
-    local quickfix_parser
-    local parser_context = {}
-    local function parse_output_lines(lines)
-        if not quickfix_parser then
-            return
-        end
-        local issues = {}
-        for _, line in ipairs(lines) do
-            local issue = quickfix_parser(_normalize_string(line), parser_context)
-            if issue then
-                table.insert(issues, issue)
-            end
-        end
-        _add_quickfix_items(issues)
-    end
-
-    if task.quickfix_matcher then
-        quickfix_parser = qfparsers.get_parser(task.quickfix_matcher)
-        if not quickfix_parser then
-            return nil, "Invalid quickfix matcher: " .. task.quickfix_matcher
-        end
-        _clear_quickfix()
-    end
+    local output_parser = _make_output_parser(task)
 
     ---@param lines string[]
     local output_handler = function(_, lines)
-        parse_output_lines(lines)
+        if output_parser then
+            output_parser(lines)
+        end
     end
 
     local exit_handler = function(exit_code)
-        parse_output_lines({ "" })
+        if output_parser then
+            output_parser({ "" })
+        end
         task_exit_handler(exit_code)
     end
 
-    if tasktype == "tool" or tasktype == "app" then
+    if tasktype == "lua" then
+        ---@type loop.LuaFunc.StartArgs
+        local args = {
+            command = task.command,
+            on_exit_handler = exit_handler
+        }
+        local job = LuaFunc:new()
+        local ok, err = job:start(args)
+        if not ok then
+            return nil, err
+        end
+        return job, nil
+    elseif tasktype == "tool" or tasktype == "app" then
         local buf = window.create_task_buffer()
         if buf == -1 then
             return nil, "No output buffer for task"
@@ -160,13 +201,31 @@ local function _start_one_task(task, task_exit_handler)
             return nil, err
         end
         return job, nil
-    elseif tasktype == "lua" then
-        ---@type loop.LuaFunc.StartArgs
+    elseif tasktype == "debug" then
+        local buf = window.create_task_buffer()
+        if buf == -1 then
+            return nil, "No output buffer for task"
+        end
+        ---@type loop.dap.session.Args.DAP,string|nil
+        local dap, dap_error = _get_dap_config(task)
+        if not dap then
+            return nil, dap_error or "Invalid debugger config"
+        end
+        ---@type loop.DebugJob.StartArgs
         local args = {
-            command = task.command,
-            on_exit_handler = exit_handler
+            bufnr = buf,
+            name = task.name,
+            debugger = dap,
+            target = {
+                name = task.name,
+                cmd = task.command,
+                cwd = task.cwd,
+                env = task.env
+            },
+            output_handler = output_handler,
+            on_exit_handler = exit_handler,
         }
-        local job = LuaFunc:new()
+        local job = DebugJob:new()
         local ok, err = job:start(args)
         if not ok then
             return nil, err
@@ -220,8 +279,7 @@ local function _start_task_chain(tasks, on_complete)
 
         if job then
             chain.active_job = job
-            ---@diagnostic disable-next-line: param-type-mismatch
-            local cmd_descr = type(task.command) == 'table' and table.concat(task.command, ' ') or task.command
+            local cmd_descr = table.concat(strtools.cmd_to_string_array(task.command), ' ')
             window.add_events({ "Running " .. task.type .. " task", "  " .. cmd_descr })
             window.show_task_output()
         else

@@ -7,4 +7,5 @@
 ---@field cwd string? # optional working directory (supports templates)
 ---@field env table<string,string>? # optional environment variables
 ---@field quickfix_matcher string|nil
+---@field debugger string|nil
 ---@field depends_on string[]? # optional list of dependent task names

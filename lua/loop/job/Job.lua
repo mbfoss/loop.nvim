@@ -20,9 +20,4 @@ function Job:kill()
     error('abstract')
 end
 
-function Job:kill_and_wait()
-    -- kill() must be implemented by a derived class
-    error('abstract')
-end
-
 return Job

@@ -71,15 +71,7 @@ local function _get_configure_tasks(config, ingore_configured)
         if not (ingore_configured and filetools.file_exists(cmakecache_path)) then
             do
                 local cmd = { config.cmake_path }
-                if prof.configure_args then
-                    if type(prof.configure_args) == 'string' then
-                        ---@diagnostic disable-next-line: param-type-mismatch
-                        vim.list_extend(cmd, strtools.split_shell_args(prof.configure_args))
-                    else
-                        ---@diagnostic disable-next-line: param-type-mismatch
-                        vim.list_extend(cmd, prof.configure_args)
-                    end
-                end
+                vim.list_extend(cmd, strtools.cmd_to_string_array(prof.configure_args))
                 vim.list_extend(cmd, { "-B", build_dir, "-S", src_root, "-DCMAKE_BUILD_TYPE=" .. build_type })
                 ---@type loop.Task
                 local task = {

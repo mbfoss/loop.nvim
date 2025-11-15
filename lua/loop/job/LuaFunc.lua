@@ -17,10 +17,6 @@ end
 function LuaFunc:kill()
 end
 
----Kills the running terminal job, if any.
-function LuaFunc:kill_and_wait()
-end
-
 ---@class loop.LuaFunc.StartArgs
 ---@field command string|string[]
 ---@field on_exit_handler fun(code : number)

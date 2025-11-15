@@ -20,7 +20,7 @@ local function _loop_complete(func_names, arg_lead, cmd_line)
         return filter(func_names)
     elseif #args >= 3 then
         local cmd = args[2]
-        local rest = { unpack(args, 3) }
+        local rest = { table.unpack(args, 3) }
         rest[#rest] = nil
         if cmd == "task" then
             return filter(project.task_subcommands(rest))
@@ -49,8 +49,8 @@ local function _loop_command(calls, opts)
         return
     end
     -- Pass any remaining arguments to the function
-    local rest = { unpack(args, 2) }
-    local ok, err = pcall(fn, unpack(rest))
+    local rest = { table.unpack(args, 2) }
+    local ok, err = pcall(fn, table.unpack(rest))
     if not ok then
         vim.notify("Loop " .. subcmd .. " failed: " .. tostring(err), vim.log.levels.ERROR)
     end
@@ -88,8 +88,8 @@ M.setup = function(args)
         error("loop.nvim requires Neovim >= 0.10")
     end
 
-    M.config = vim.tbl_deep_extend("force", config.defaut_config, args or {})
-    project.setup(M.config)
+    config.current = vim.tbl_deep_extend("force", config.defaut_config, args or {})
+    project.setup(config.current)
 
     _G.LoopProject =
     {

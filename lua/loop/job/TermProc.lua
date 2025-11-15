@@ -19,8 +19,6 @@ end
 function TermProc:init()
     ---@type number
     self.job_id = -1
-    ---@type boolean
-    self.started = false
 end
 
 ---@return boolean
@@ -31,14 +29,6 @@ end
 function TermProc:kill()
     if self.job_id ~= -1 then
         vim.fn.jobstop(self.job_id)
-    end
-end
-
----Kills the running terminal job, if any.
-function TermProc:kill_and_wait()
-    if self.job_id ~= -1 then
-        vim.fn.jobstop(self.job_id)
-        vim.fn.jobwait({ self.job_id })
     end
 end
 
@@ -55,14 +45,13 @@ end
 ---@param args loop.TermProc.StartArgs
 ---@return boolean, string|nil
 function TermProc:start(args)
+    if self.job_id ~= -1 then
+        return false, "A job is already running"
+    end
+
     assert(args.on_exit_handler)
     assert(type(args.command) == 'string' or type(args.command) == 'table')
     assert(not args.command_env or type(args.command_env) == 'table')
-    if self.started then
-        return false, "job aleady started"
-    end
-
-    self.started = true
 
 	local command_cwd = args.command_cwd
     if not command_cwd or #command_cwd == 0 then
@@ -77,20 +66,11 @@ function TermProc:start(args)
     command_cwd = vim.fn.fnamemodify(vim.fn.resolve(command_cwd), ':p')
 
 	---@type table<string,string>
-    local command_env = args.command_env or {}
+    local command_env = vim.deepcopy(args.command_env or {})
     command_env.PWD = command_cwd -- required for commands to use cwd in all cases
 
 	---@type string[]
-    local cmd_and_args
-    if type(args.command) == "string" then
-        ---@diagnostic disable-next-line: param-type-mismatch
-        cmd_and_args = strtools.split_shell_args(args.command)
-    elseif type(args.command) == "table" then
-        ---@diagnostic disable-next-line: cast-local-type
-        cmd_and_args = args.command
-    else
-        return false, "Invalid command"
-    end
+    local cmd_and_args = strtools.cmd_to_string_array(args.command)
 
     if #cmd_and_args == 0 then
         return false, "task command is missing"
@@ -111,7 +91,6 @@ function TermProc:start(args)
     -- Call risky_function safely
     local call_ok, result = xpcall(
         function()
-            ---@diagnostic disable-next-line: param-type-mismatch
             return { self:_start_term_job(args.bufnr, cmd_and_args, command_env, command_cwd, args.output_handler,
                 args.on_exit_handler) }
         end,

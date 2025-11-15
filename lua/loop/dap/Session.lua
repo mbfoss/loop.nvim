@@ -1,113 +1,11 @@
-local BaseSession = require("loop.dap.BaseSession")
-local FSM = require("loop.dap.FSM")
-local strtools = require('loop.tools.strtools')
 local class = require('loop.tools.class')
-local Session = class()
+local strtools = require('loop.tools.strtools')
 
-local function create_fsm_data(session)
-	return {
-		initial = "initializing",
-		states = {
-			initializing = {
-				desc = "Initializing",
-				state_handler = function(on_response) session:_send_initialize(on_response) end,
-				on_success = "launching1",
-				--on_error = "disconnecting",
-				triggers = {
-					initialized = "configuring",
-				}
-			},
-			launching1 = {
-				desc = "Launching",
-				state_handler = function(on_response) session:_send_launch(on_response, true) end,
-				on_success = "configuring",
-				-- on_error = "terminating",
-				triggers = {
-					-- terminated = 'terminated',
-					-- disconnect = "disconnect",
-				}
-			},
-			configuring = {
-				state_handler = function(on_response) session:_send_configuration(on_response) end,
-				reponse_handler = nil,
-				on_success = "launching2",
-				--on_error = "disconnect",
-			},
-			launching2 = {
-				state_handler = function(on_response) session:_send_launch(on_response) end,
-				on_success = "running",
-				on_error = nil,
-				triggers = {
-				}
-			},
-			running = {
-				state_handler = function(on_response) on_response(true) end,
-				on_success = nil,
-				on_error = nil,
-				triggers = {
-					stopped = "stopped",
-				}
-			},
-			stopped = {
-				state_handler = function(on_response) on_response(true) end,
-				on_success = nil,
-				on_error = nil,
-				triggers = {
-					stopped = "stopped",
-				}
-			},
-			--[[
-            running = {
-                on_enter = function() session.log:info("DAP: Running") end,
-                triggers = {
-                    terminated = 'disconnect',
-                    pause = "paused",
-                    terminate = "terminated",
-                    disconnect = "disconnect"
-                }
-            },
-            paused = {
-                on_enter = function() session.log:info("DAP: Paused") end,
-                triggers = {
-                    continue = "running",
-                    step_over = "paused",
-                    step_in = "paused",
-                    step_out = "paused",
-                    terminate = "disconnect",
-                    disconnect = "disconnecting"
-                }
-            },
-            terminating = {
-                on_enter = function() session:_send_terminate() end,
-                triggers = {
-                    terminated = 'disconnect',
-                    resp_terminate_ok = "terminated",
-                    resp_terminate_err = "killed"
-                }
-            },
-            disconnect = {
-                on_enter = function() session:_send_disconnect() end,
-                triggers = {
-                    resp_disconnect_ok = "ended",
-                    resp_disconnect_err = "kill"
-                }
-            },
-            disconnected = {
-            },
-            kill = {
-                on_enter = function() session:_kill("kill_ok", "kill_error") end,
-                triggers = {
-                    kill_ok = "ended",
-                    kill_error = "ended"
-                }
-            },
-            ended = {
-                on_enter = function() session.log:info("DAP: session ended") end,
-            },
-            ]] --
-		}
-	}
-end
+local BaseSession = require("loop.dap.BaseSession")
+local FSM = require("loop.tools.FSM")
+
+local fsmdata = require('loop.dap.fsmdata')
+local strtools = require('loop.tools.strtools')
 
 ---@class loop.dap.session.Args.DAP
 ---@field name string
@@ -125,146 +23,153 @@ end
 ---@field name string
 ---@field dap loop.dap.session.Args.DAP
 ---@field target loop.dap.session.Args.Target
----@field breakpoints_provider fun()
 ---@field output_handler fun(msg_body:table)
+---@field exit_handler fun(code:number)
+
+---@class loop.dap.Session
+---@field new fun(self: loop.dap.Session, args:loop.dap.session.Args) : loop.dap.Session
+local Session = class()
 
 ---@param args loop.dap.session.Args
 function Session:init(args)
-	local name = args.name
-	local dap = args.dap
-	local target = args.target
-	local breakpoints_provider = args.breakpoints_provider
+    local name = args.name
+    local dap = args.dap
+    local target = args.target
 
-	assert(name, "session name require")
-	assert(dap.cmd, "dap command required")
-	assert(target.cmd, "target command required")
+    assert(name, "session name require")
+    assert(dap.cmd, "dap command required")
+    assert(target.cmd, "target command required")
 
-	self.log = require('loop.tools.Logger').create_logger("dap.session[" .. name .. ']')
-	self.target = target
-	self.output_handler = args.output_handler
-	self.breakpoints_provider = breakpoints_provider
+    self.log = require('loop.tools.Logger').create_logger("dap.session[" .. name .. ']')
+    self.target = target
+    self.output_handler = args.output_handler
+    self.on_exit = args.exit_handler
 
-	local dap_cmd, dap_args = strtools.get_program_and_args(dap.cmd)
+    local cmd_and_args = strtools.cmd_to_string_array(dap.cmd)
+    if #cmd_and_args == 0 then
+        error("Missing DAP process command")
+    end
 
-	self.base_session = BaseSession:new(name, {
-		dap_cmd = dap_cmd,   -- dap process
-		dap_args = dap_args, -- dap args
-		dap_env = dap.env,
-		dap_cwd = dap.cwd,
-		on_exit = function(code, signal)
-			self.state.exited = true
-			if self.on_exit then
-				self.on_exit(self, code, signal)
-			end
-		end,
-	})
+    local dap_cmd  = cmd_and_args[1]
+    local dap_args = { table.unpack(cmd_and_args, 2) }
 
-	self.base_session:set_event_handler("output", function(msg_body) self.output_handler(msg_body) end)
-	self.base_session:set_event_handler("initialized", function() self.fsm:trigger("initialized") end)
-	self.base_session:set_event_handler("stopped", function() self.fsm:trigger("stopped") end)
+    self.base_session = BaseSession:new(name, {
+        dap_cmd = dap_cmd, -- dap process
+        dap_args = dap_args, -- dap args
+        dap_env = dap.env,
+        dap_cwd = dap.cwd,
+        on_exit = function(code, signal)
+            if self.on_exit then
+                self.on_exit(code)
+            end
+        end,
+    })
 
-	-- start the FSM
-	self.fsm = FSM:new(name, create_fsm_data(self))
-	vim.schedule(function()
-		self.fsm:start()
-	end)
+    self.base_session:set_event_handler("output", function(msg_body) self.output_handler(msg_body) end)
+    self.base_session:set_event_handler("initialized", function() self.fsm:trigger("initialized") end)
+    self.base_session:set_event_handler("stopped", function() self.fsm:trigger("stopped") end)
+
+    -- start the FSM
+    self.fsm = FSM:new(name, fsmdata.create_fsm_data(self))
+    vim.schedule(function()
+        self.fsm:start()
+    end)
 end
 
 function Session:_send_initialize(on_response)
-	self.base_session:request_initialize({}, function(response)
-		if response and response.body and response.body.__lldb and response.body.__lldb.version then
-			if response.body.__lldb.version:match("Apple") then
-				self.log:info("detecting apple lldb")
-				self.is_apple_lldb = true
-			end
-		end
-		on_response(response.success)
-	end)
+    self.base_session:request_initialize({}, function(response)
+        if response and response.body and response.body.__lldb and response.body.__lldb.version then
+            if response.body.__lldb.version:match("Apple") then
+                self.log:info("detecting apple lldb")
+                self.is_apple_lldb = true
+            end
+        end
+        on_response(response.success)
+    end)
 end
 
 function Session:_send_configuration(on_response)
-	assert(self.breakpoints_provider ~= nil)
-	local breakpoints = self.breakpoints_provider()
-	for file, bps in pairs(breakpoints) do
-		self.log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(bps))
-		self.base_session:request_setBreakpoints({
-				source = {
-					name = vim.fn.fnamemodify(file, ":t"),
-					path = file
-				},
-				breakpoints = bps
-			},
-			function(--[[response]])
-				-- breakpoints_response(response.success)    // send the status to the user
-			end)
-	end
-	self.base_session:request_configurationDone(function(response)
-		on_response(response.success)
-	end)
+    local breakpoints = {} --TODO
+    for file, bps in pairs(breakpoints) do
+        self.log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(bps))
+        self.base_session:request_setBreakpoints({
+                source = {
+                    name = vim.fn.fnamemodify(file, ":t"),
+                    path = file
+                },
+                breakpoints = bps
+            },
+            function( --[[response]])
+                -- breakpoints_response(response.success)    // send the status to the user
+            end)
+    end
+    self.base_session:request_configurationDone(function(response)
+        on_response(response.success)
+    end)
 end
 
 function Session:_send_launch(on_response, pre_initialize)
-	if pre_initialize then
-		if not self.is_apple_lldb then
-			on_response(true)
-			return
-		end
-	else
-		if self.is_apple_lldb then
-			on_response(true)
-			return
-		end
-	end
-	if self.launched then
-		self.log:error("Unexpected launch request")
-		on_response(false)
-		return
-	end
-	self.launched                    = true
-	local target                     = self.target
-	local target_program, targe_args = strtools.get_program_and_args(target.cmd)
-	self.log:info('launching: ' .. vim.inspect(target))
-	self.base_session:request_launch({
-			program = target_program,
-			args = targe_args,
-			cwd = target.cwd,
-			env = target.env,
-			-- runInTerminal = true, -- TODO
-			stopOnEntry = false,
-		},
-		function(response)
-			on_response(response.success)
-		end)
+    if pre_initialize then
+        if not self.is_apple_lldb then
+            on_response(true)
+            return
+        end
+    else
+        if self.is_apple_lldb then
+            on_response(true)
+            return
+        end
+    end
+    if self.launched then
+        self.log:error("Unexpected launch request")
+        on_response(false)
+        return
+    end
+    self.launched                    = true
+    local target                     = self.target
+    local target_program, targe_args = strtools.get_program_and_args(target.cmd)
+    self.log:info('launching: ' .. vim.inspect(target))
+    self.base_session:request_launch({
+            program = target_program,
+            args = targe_args,
+            cwd = target.cwd,
+            env = target.env,
+            -- runInTerminal = true, -- TODO
+            stopOnEntry = false,
+        },
+        function(response)
+            on_response(response.success)
+        end)
 end
 
 function Session:_send_terminate()
-	self.base_session:request_terminate(function(response)
-		if response.success then
-			self.fsm:trigger("resp_terminate_ok")
-		else
-			self.log:log("DAP termination error: " .. response.message)
-			self.fsm:trigger("resp_terminate_err")
-		end
-	end)
+    self.base_session:request_terminate(function(response)
+        if response.success then
+            self.fsm:trigger("resp_terminate_ok")
+        else
+            self.log:log("DAP termination error: " .. response.message)
+            self.fsm:trigger("resp_terminate_err")
+        end
+    end)
 end
 
 function Session:_send_disconnect()
-	self.base_session:request_disconnect(function(response)
-		if response.success then
-			self.fsm:trigger("resp_disconnect_ok")
-		else
-			self.log:log("DAP termination error: " .. response.message)
-			self.fsm:trigger("resp_disconnect_err")
-		end
-	end)
+    self.base_session:request_disconnect(function(response)
+        if response.success then
+            self.fsm:trigger("resp_disconnect_ok")
+        else
+            self.log:log("DAP termination error: " .. response.message)
+            self.fsm:trigger("resp_disconnect_err")
+        end
+    end)
 end
 
 function Session:_kill()
-	self.base_session.kill()
+    self.base_session.kill()
 end
 
 function Session:current_state()
-	return self.fsm.current
+    return self.fsm.current
 end
 
 return Session

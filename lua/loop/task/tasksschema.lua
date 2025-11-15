@@ -1,5 +1,4 @@
 return [[
-{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "title": "Task Configuration",
@@ -21,6 +20,7 @@ return [[
             "enum": [
               "tool",
               "app",
+              "lua",
               "debug"
             ],
             "description": "Task type. Use colon for subtypes (e.g., debug:launch)."
@@ -56,6 +56,10 @@ return [[
             "type": "string",
             "description": "Matcher used to fill the quickfix list"
           },
+          "debugger": {
+            "type": "string",
+            "description": "Debugger to use with 'debug' tasks"
+          },          
           "depends_on": {
             "type": "array",
             "items": { "type": "string", "pattern": "^.+$" },
@@ -69,5 +73,4 @@ return [[
   },
   "required": ["$schema", "tasks"],
   "additionalProperties": false
-}
 ]]

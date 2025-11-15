@@ -1,18 +1,26 @@
-
 local M = {}
 
+---@class loop.Config.Debugger
+---@field command string|string[]
+---@field cwd string|nil
+---@field env table<string,string>|nil
+
 ---@class loop.Config
+---@field debuggers loop.Config.Debugger[]
+
+---@type loop.Config
 M.defaut_config = {
     debuggers = {
         lldb = {
             command = "/Library/Developer/CommandLineTools/usr/bin/lldb-dap",
-            args = "",
         },
         pthon = {
-            command = "python",
-            args = "-m debugpy.adapter",
+            command = "python -m debugpy.adapter"
         },
     }
 }
+
+---@type loop.Config
+M.current = nil
 
 return M

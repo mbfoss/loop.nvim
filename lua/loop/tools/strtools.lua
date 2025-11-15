@@ -17,28 +17,6 @@ function M.human_case(str)
     return str
 end
 
----@param str_or_array string|string[]
----@return string, string[]|nil
-function M.get_program_and_args(str_or_array)
-    assert(type(str_or_array) == 'string' or type(str_or_array) == 'table')
-    local cmd
-    local args = nil
-
-    if type(str_or_array) == 'string' then
-        cmd = str_or_array
-    else
-        cmd = str_or_array[1]
-        if #str_or_array > 1 then
-            args = {}
-            for i = 2, #str_or_array do
-                args[#args + 1] = str_or_array[i]
-            end
-        end
-    end
-
-    return cmd, args
-end
-
 -- Escape a single argument only if necessary
 local function _escape_shell_arg(arg)
     arg = arg or ""
@@ -152,7 +130,18 @@ function M.split_shell_args(str)
 end
 
 
-
+---@param cmd string|string[]
+---@return string[]
+function M.cmd_to_string_array(cmd)
+    if type(cmd) == "string" then
+        local arr = M.split_shell_args(cmd)
+        assert(type(arr) == "table")
+        return arr
+    elseif type(cmd) == "table" then
+        return cmd
+    end
+    return {}
+end
 
 
 return M
