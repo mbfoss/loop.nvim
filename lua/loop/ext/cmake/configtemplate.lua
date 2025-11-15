@@ -12,7 +12,7 @@ return [[
         "build_dir": "${PROJDIR}/build/Debug",
         "configure_args": "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "build_tool_args": "-j8",
-        "prob_matcher": "$gcc"
+        "quickfix_matcher": "gcc"
       },
       {
         "name": "Release",
@@ -21,7 +21,7 @@ return [[
         "build_dir": "${PROJDIR}/build/Release",
         "configure_args": "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "build_tool_args": "-j8",
-        "prob_matcher": "$gcc"
+        "quickfix_matcher": "gcc"
       }
     ]
   }

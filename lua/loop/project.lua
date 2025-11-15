@@ -147,7 +147,7 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "select", "run", "repeat", "add", "import" }
+        return { "select", "run", "repeat", "add", "import", "configure" }
     end
     return {}
 end
@@ -169,6 +169,8 @@ function M.task_command(command, arg1)
         taskmgr.add_task(config_dir)
     elseif command == "import" then
         taskmgr.import_task(config_dir, arg1 or "")
+    elseif command == "configure" then
+        taskmgr.open_task_config(config_dir)
     elseif command == "select" then
         taskmgr.run_task(proj_dir, config_dir, "task")
     elseif command == "run" then

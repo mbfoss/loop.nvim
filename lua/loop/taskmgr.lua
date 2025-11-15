@@ -53,6 +53,11 @@ function M.add_task(config_dir)
 end
 
 ---@param config_dir string
+function M.open_task_config(config_dir)
+    taskstore.open_config(config_dir)
+end
+
+---@param config_dir string
 ---@param source string
 function M.import_task(config_dir, source)
     local tasks, errors = taskstore.get_extension_tasks(config_dir, source)

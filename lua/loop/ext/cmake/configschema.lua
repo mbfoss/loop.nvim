@@ -56,58 +56,9 @@ return [[
                     }
                   ]
                 },
-                "prob_matcher": {
-                  "oneOf": [
-                    {
-                      "type": "string",
-                      "enum": [
-                        "$gcc",
-                        "$tsc-watch",
-                        "$eslint-stylish",
-                        "$msCompile",
-                        "$lessCompile"
-                      ]
-                    },
-                    {
-                      "type": "object",
-                      "properties": {
-                        "regexp": { "type": "string", "pattern": "^.+$" },
-                        "file": { "type": "number" },
-                        "line": { "type": "number" },
-                        "column": { "type": "number" },
-                        "severity": { "type": "number" },
-                        "message": { "type": "number" }
-                      },
-                      "required": ["regexp"],
-                      "additionalProperties": false
-                    }
-                  ]
-                },
-                "run": {
-                  "type": "object",
-                  "patternProperties": {
-                    "^.+$": {
-                      "type": "object",
-                      "properties": {
-                        "cwd": { "type": "string" },
-                        "args": {
-                          "oneOf": [
-                            { "type": "string" },
-                            {
-                              "type": "array",
-                              "items": { "type": "string" }
-                            }
-                          ]
-                        },
-                        "env": {
-                          "type": "array",
-                          "items": { "type": "string" }
-                        }
-                      },
-                      "additionalProperties": false
-                    }
-                  },
-                  "additionalProperties": true
+                "quickfix_matcher": {
+                    "type": "string",
+                    "description": "Matcher used to fill the quickfix list"
                 }
               },
               "required": [
@@ -115,7 +66,7 @@ return [[
                 "build_type",
                 "source_dir",
                 "build_dir",
-                "prob_matcher"
+                "quickfix_matcher"
               ],
               "additionalProperties": false
             }

@@ -37,7 +37,7 @@ local function _load_tasks_file(filepath)
 	if not filetools.file_exists(filepath) then
 		return {}, nil -- not an error
 	end
-	local loaded, contents_or_err = filetools.read_content(filepath)
+	local loaded, contents_or_err = uitools.smart_read_file(filepath)
 	if not loaded then
 		return nil, { contents_or_err }
 	end
@@ -103,6 +103,13 @@ function M.add_task(config_dir, new_task)
 	end
 	return true
 end
+
+---@param config_dir string
+function M.open_config(config_dir)
+	local filepath = vim.fs.joinpath(config_dir, "tasks.json")
+    uitools.smart_open_file(filepath)
+end
+
 
 ---@param config_dir string
 ---@return loop.Task[]|nil
@@ -183,7 +190,7 @@ local function _load_extension_config(config_dir, ext_name)
 		return nil, { "Config file does not exist:", filepath } -- not an error
 	end
 
-	local loaded, contents_or_err = filetools.read_content(filepath)
+	local loaded, contents_or_err = uitools.smart_read_file(filepath)
 	if not loaded then
 		return nil, { contents_or_err }
 	end
