@@ -263,10 +263,8 @@ local function _start_task_chain(tasks, on_complete)
             elseif exit_code == 0 then
                 window.add_events({ "Task ended: " .. task.name })
             else
-                local action = chain.interrupted and "interrupted" or "failed"
-                chain.interrupted = true -- set after checking, to distinguish requested interruption
-                window.add_events({ "Task " ..
-                action .. ": " .. task.name .. ', exit code: ' .. tostring(exit_code) })
+                chain.interrupted = true
+                window.add_events({ "Task ended: " .. task.name .. ', exit code: ' .. tostring(exit_code) })
             end
             vim.schedule(function()
                 if chain == _current_task_chain then

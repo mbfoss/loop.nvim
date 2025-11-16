@@ -4,7 +4,7 @@ local uitools = require('loop.tools.uitools')
 
 
 ---@class loop.pages.BreakpointsPage : loop.pages.Page
----@field new fun(self: loop.pages.BreakpointsPage, filetype: string, on_buf_enter: fun(buf: integer)): loop.pages.BreakpointsPage
+---@field new fun(self: loop.pages.BreakpointsPage, filetype: string): loop.pages.BreakpointsPage
 local BreakpointsPage = class(Page)
 
 -- Static namespace for extmarks
@@ -60,8 +60,8 @@ local function format_entry(entry, project_dir)
 	return table.concat(parts, "")
 end
 
-function BreakpointsPage:init(filetype, on_buf_enter)
-	Page.init(self, filetype, on_buf_enter)
+function BreakpointsPage:init(filetype)
+	Page.init(self, filetype)
 	self._items = {}
 end
 

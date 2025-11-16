@@ -50,6 +50,10 @@ local function order_handler(path, attrs)
 	return {"name", "type", "command", "cwd", "depends_on", "quickfix_matcher" }
 end
 
+local function task_order_handler(path, attrs)
+	return {"name", "type", "command", "cwd", "depends_on", "quickfix_matcher" }
+end
+
 ---@param config_dir string
 ---@param new_task loop.Task
 ---@return boolean
@@ -76,7 +80,7 @@ function M.add_task(config_dir, new_task)
 		local new_content = jsontools.to_string(file_data, order_handler)
 		new_lines = vim.split(new_content, "\n", { plain = true })
 	else
-		local task_as_json = jsontools.to_string(new_task, order_handler)
+		local task_as_json = jsontools.to_string(new_task, task_order_handler)
 		local positions = {}
 		for i = 1, #content do
 			if content:sub(i, i) == "}" then

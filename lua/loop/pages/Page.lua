@@ -3,7 +3,7 @@ local log = require('loop.tools.Logger').create_logger("page")
 local class = require('loop.tools.class')
 
 ---@class loop.pages.Page
----@field new fun(self: loop.pages.Page, filetype : string, on_buf_enter : fun(buf : number)): loop.pages.Page
+---@field new fun(self: loop.pages.Page, filetype : string): loop.pages.Page
 local Page = class()
 
 local buffer_flag_key = "loopplugin_page_efc0bed4-145b"
@@ -14,18 +14,21 @@ function Page.is_page(buf)
 end
 
 ---@param filetype string
----@param on_buf_enter fun(page : loop.pages.Page)
-function Page:init(filetype, on_buf_enter)
-    assert(on_buf_enter)
+function Page:init(filetype)
     self.filetype = filetype
-    self.on_buf_enter = on_buf_enter
     self.buf = -1
 end
 
+function Page:follow_last_line()
+    self.follow_last_line = true
+end
+
 function Page:_on_buf_enter()
-    local last_line = vim.api.nvim_buf_line_count(self.buf)
-    vim.api.nvim_win_set_cursor(0, { last_line, 0 })
-    self.on_buf_enter(self)
+    self:_apply_keymaps()
+    if self.follow_last_line then
+        local last_line = vim.api.nvim_buf_line_count(self.buf)
+        vim.api.nvim_win_set_cursor(0, { last_line, 0 })
+    end
 end
 
 ---@param bufnr number
@@ -59,14 +62,14 @@ function Page:_setup_buf()
     assert(self.buf > 0)
 
     vim.api.nvim_buf_set_var(self.buf, buffer_flag_key, 1)
-    
+
     if vim.bo[self.buf].buftype == "" then
         vim.bo[self.buf].buftype = "nofile"
     end
     vim.bo[self.buf].bufhidden = "hide"
     vim.bo[self.buf].swapfile = false
     vim.bo[self.buf].filetype = self.filetype
- 
+
     vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
         buffer = self.buf,
         once = true,
@@ -86,9 +89,23 @@ function Page:_setup_buf()
     })
 end
 
+---@param keymaps table<string,function>
+function Page:set_keymaps(keymaps)
+    self.keymaps = keymaps
+    self:_apply_keymaps()
+end
+
+function Page:_apply_keymaps()
+    if self.keymaps then
+        for key, callback in pairs(self.keymaps) do
+            self:_apply_keymap(key, callback)
+        end
+    end
+end
+
 ---@param key string
 ---@param callback fun()
-function Page:set_keymap(key, callback)
+function Page:_apply_keymap(key, callback)
     if self.buf ~= -1 then
         local modes = { "n", "t" }
         for _, mode in ipairs(modes) do

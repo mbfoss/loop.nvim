@@ -85,6 +85,27 @@ local function _on_win_new_or_close()
     end
 end
 
+local function set_keymaps(page, set_active_tab)
+    local keymaps = {}
+    local idx = 0
+    for _, tab in ipairs(tabs_data) do
+        if tab.page and tab.used then
+            idx = idx + 1
+            if tab.page ~= page then
+                local key = tostring(idx)
+                keymaps[key] = function()
+                    log:log({ "setting active tab: ", tab.label })
+                    if vim.api.nvim_get_current_win() == _loop_win then
+                        set_active_tab(tab)
+                    end
+                end
+            end
+        end
+    end
+    page:set_keymaps(keymaps)
+end
+
+
 ---@param req_tab loop.TabInfo
 local function set_active_tab(req_tab)
     req_tab.used = true
@@ -106,6 +127,7 @@ local function set_active_tab(req_tab)
                 active_tab = tab
                 local buf = tab.page:get_buf()
                 vim.api.nvim_win_set_buf(win, buf)
+                set_keymaps(tab.page, set_active_tab)
             end
             if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
             local label = ' [' .. tostring(tabidx) .. ']' .. tab.label .. ' '
@@ -270,26 +292,6 @@ function M.add_task_buffer(bufnr, name)
     page:assign_buf(bufnr)
 end
 
-local function _on_buf_enter(page)
-    --- don't set keymaps if outside _loop_win
-    if vim.api.nvim_get_current_win() ~= _loop_win then
-        return
-    end
-    local idx = 0
-    for _, tab in ipairs(tabs_data) do
-        if tab.page and tab.used then
-            idx = idx + 1
-            if tab.page ~= page then
-                local key = tostring(idx)
-                page:set_keymap(key, function()
-                    log:log({ "setting active tab: ", tab.label })
-                    set_active_tab(tab)
-                end)
-            end
-        end
-    end
-end
-
 ---@param config_dir string
 function M.save_settings(config_dir)
     local config = { height = _loop_win_height_ratio }
@@ -314,9 +316,9 @@ function M.setup(_)
 
     -- create pages
     do
-        events_tab.page      = EventsPage:new("loop-events", _on_buf_enter)
-        tasks_tab.page       = TaskPage:new("loop-tasks", _on_buf_enter)
-        breakpoints_tab.page = BreakpointsPage:new("loop-breakpoints", _on_buf_enter)
+        events_tab.page      = EventsPage:new("loop-events")
+        tasks_tab.page       = TaskPage:new("loop-tasks")
+        breakpoints_tab.page = BreakpointsPage:new("loop-breakpoints")
     end
 
     do
