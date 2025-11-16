@@ -34,6 +34,7 @@ local function validate(schema, data, path)
         if sch_type == "array" and vim.isarray(data) then ok = true end
         if sch_type == "string" and type(data) == "string" then ok = true end
         if sch_type == "number" and type(data) == "number" then ok = true end
+        if sch_type == "boolean" and type(data) == "boolean" then ok = true end
         if not ok then
             add_error(errors, path, ("expected %s, got %s"):format(sch_type, type(data)))
             return errors
@@ -74,7 +75,9 @@ local function validate(schema, data, path)
             -- Forbid all unknown properties
             for key in pairs(data) do
                 if not props[key] then
-                    add_error(errors, join_path(path, key), "additional property not allowed")
+                    local valid_props = table.concat(vim.tbl_keys(props), ', ')
+                    add_error(errors, join_path(path, key),
+                    "Invalid property name, valid properties are: " .. valid_props)
                 end
             end
         elseif addl and type(addl) == "table" then

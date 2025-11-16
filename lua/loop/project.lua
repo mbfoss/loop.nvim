@@ -230,7 +230,7 @@ function M.breakpoints_command(command)
     if not proj_dir then
         return
     end
-    name = command and command:match("^%s*(.-)%s*$") or ""
+    command = command and command:match("^%s*(.-)%s*$") or ""
     if command == "" or command == "toggle" then
         breakpoints.toggle_breakpoint()
         window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
@@ -255,7 +255,7 @@ function M.breakpoints_command(command)
             end
         end)
     else
-        vim.notify('loop.nvim: Invalid breakpoints subcommand: ' .. command)
+        vim.notify('loop.nvim: Invalid breakpoints subcommand: ' .. tostring(command))
     end
 end
 

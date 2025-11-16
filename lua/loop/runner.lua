@@ -125,20 +125,23 @@ end
 ---@return loop.dap.session.Args.DAP|nil
 ---@return string|nil
 local function _get_dap_config(task)
-    if not task.debugger then
-        return nil, "Debugger name missing in task config"
+    if not task.debug then
+        return nil, "Debugger section missing in task config"
     end
-    local cfg = config.current.debuggers[task.debugger]
+    if not task.debug.adapter then
+        return nil, "Debug adapter name missing in task config"
+    end
+    local cfg = config.current.debuggers[task.debug.adapter]
     if not cfg then
-        return nil, "Invalid debugger name: " .. tostring(task.debugger) .. "'"
+        return nil, "Invalid debugger name: " .. tostring(task.debug.adapter) .. "'"
     end
     local cmd = strtools.cmd_to_string_array(cfg.command)
     if #cmd == 0 or vim.fn.executable(cmd[1]) == 0 then
-        return nil, "Debugger command is not executable: '" .. cmd[1] "'" 
-    end    
+        return nil, "Debugger command is not executable: '" .. cmd[1] "'"
+    end
     ---@type loop.dap.session.Args.DAP
     local dap = {
-        name = task.debugger,
+        name = task.debug.adapter,
         cmd = cfg.command,
         cwd = cfg.cwd,
         env = cfg.env
@@ -206,6 +209,8 @@ local function _start_one_task(task, task_exit_handler)
         if not dap then
             return nil, dap_error or "Invalid debugger config"
         end
+        local run_in_terminal = task.debug and task.debug.run_in_terminal or false
+        local stop_on_entry = task.debug and task.debug.stop_on_entry or false
         ---@type loop.DebugJob.StartArgs
         local args = {
             name = task.name,
@@ -214,7 +219,9 @@ local function _start_one_task(task, task_exit_handler)
                 name = task.name,
                 cmd = task.command,
                 cwd = task.cwd,
-                env = task.env
+                env = task.env,
+                run_in_terminal = run_in_terminal,
+                stop_on_entry = stop_on_entry
             },
             output_handler = output_handler,
             on_exit_handler = exit_handler,
@@ -252,7 +259,7 @@ local function _start_task_chain(tasks, on_complete)
             end)
             return
         end
-        
+
         if not chain.started then
             window.delete_task_buffers()
             chain.started = true
@@ -283,7 +290,7 @@ local function _start_task_chain(tasks, on_complete)
             window.add_events({ "Running " .. task.type .. " task", "  " .. cmd_descr })
             window.show_task_output()
         else
-            window.add_events({ "Task creation failed: " .. task.name, "  " .. tostring(job_err) })
+            window.add_events({ "Task creation failed: " .. task.name, "  " .. tostring(job_err) }, "error")
             chain.interrupted = true
             vim.schedule(function()
                 if chain == _current_task_chain then

@@ -67,7 +67,7 @@ end
 function Channel:send_message(msg)
     assert(msg)
     if msg_log_enabled then
-        log_msg_content("Sending msg: " .. vars.inspect(msg))
+        log_msg_content("\n========\nSending msg: " .. vars.inspect(msg))
     end
 
     local body, encode_err = json.encode(msg)
@@ -125,7 +125,7 @@ function Channel:_on_data(buffer, data)
         end
 
         if msg_log_enabled then
-            log_msg_content("Received msg: " .. vars.inspect(message) .. '\n\n')
+            log_msg_content("\n========\nReceived msg: " .. vars.inspect(message) .. '\n\n')
         end
 
         -- 8. Dispatch the message (in the nvim main thread)

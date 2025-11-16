@@ -74,11 +74,6 @@ function EventsPage:add_events(lines, level)
     end
 
     vim.bo[buf].modifiable = false
-
-    if vim.api.nvim_win_get_buf(0) == buf then
-        local last_line = vim.api.nvim_buf_line_count(buf)
-        vim.api.nvim_win_set_cursor(0, { last_line, 0 })
-    end
 end
 
 return EventsPage

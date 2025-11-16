@@ -58,9 +58,6 @@ function DebugJob:start(args)
         -- this runs in the fast event context, so use schedule hereby
         vim.schedule(function()
             args.on_exit_handler(code)
-            if self.on_sessions_updated then
-                self.on_sessions_updated(false, session_id, nil)
-            end
         end)
     end
 

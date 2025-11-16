@@ -18,6 +18,8 @@ local strtools = require('loop.tools.strtools')
 ---@field cmd string|string[]
 ---@field env table<string,string>|nil
 ---@field cwd string
+---@field run_in_terminal boolean
+---@field stop_on_entry boolean
 
 ---@class loop.dap.session.Args
 ---@field name string
@@ -42,8 +44,9 @@ function Session:init(args)
 
     self.log = require('loop.tools.Logger').create_logger("dap.session[" .. name .. ']')
 
-    self._name = name    
+    self._name = name
     self._target = target
+    self._capabilities = {}
     self._output_handler = args.output_handler
     self._on_exit = args.exit_handler
 
@@ -52,11 +55,11 @@ function Session:init(args)
         error("Missing DAP process command")
     end
 
-    local dap_cmd  = cmd_and_args[1]
-    local dap_args = { unpack(cmd_and_args, 2) }
+    local dap_cmd      = cmd_and_args[1]
+    local dap_args     = { unpack(cmd_and_args, 2) }
 
     self._base_session = BaseSession:new(name, {
-        dap_cmd = dap_cmd, -- dap process
+        dap_cmd = dap_cmd,   -- dap process
         dap_args = dap_args, -- dap args
         dap_env = dap.env,
         dap_cwd = dap.cwd,
@@ -68,9 +71,10 @@ function Session:init(args)
     })
 
     self._base_session:set_event_handler("module", function() end)
-    self._base_session:set_event_handler("output", function(msg_body) self._output_handler(msg_body) end)
-    self._base_session:set_event_handler("initialized", function() self._fsm:trigger("initialized") end)
-    self._base_session:set_event_handler("stopped", function() self._fsm:trigger("stopped") end)
+    self._base_session:set_event_handler("output", function(msg_body) self:_on_output_event(msg_body) end)
+    self._base_session:set_event_handler("initialized", function(msg_body) self:_on_initialized_event(msg_body) end)
+    self._base_session:set_event_handler("stopped", function(msg_body) self:_on_stopped_event(msg_body) end)
+
     -- start the FSM
     self._fsm = FSM:new(name, fsmdata.create_fsm_data(self))
     vim.schedule(function()
@@ -87,20 +91,48 @@ function Session:name()
     return self._name or "(Unnamed session)"
 end
 
-function Session:_send_initialize(on_response)
+function Session:_on_output_event(msg_body)
+
+end
+
+function Session:_on_initialized_event(msg_body)
+
+end
+
+function Session:_on_stopped_event(msg_body)
+
+end
+
+function Session:_on_initializing_state()
     self._base_session:request_initialize({}, function(response)
+        if response.success and response.body then
+            self._capabilities = response.body
+        end
         if response and response.body and response.body.__lldb and response.body.__lldb.version then
             if response.body.__lldb.version:match("Apple") then
-                self.log:info("detecting apple lldb")
-                self.is_apple_lldb = true
+                self.log:info("detected apple lldb")
+                self._is_apple_lldb = true
             end
         end
-        on_response(response.success)
+        local success_trigger = self._is_apple_lldb and "initialize_resp_ok_apple_lldb" or "initialize_resp_ok"
+        self._fsm:trigger(response.success and success_trigger or "initialize_resp_err")
     end)
 end
 
-function Session:_send_configuration(on_response)
+function Session:_on_configuring_state()
     local breakpoints = {} --TODO
+    local nb_breakpoints = vim.tbl_count(breakpoints)
+    local nb_success = 0
+    local nb_failures = 0
+    local success_trigger = self._is_apple_lldb and "configure_success_apple_lldb" or "configure_success"
+
+    if nb_breakpoints == 0 then
+        self._base_session:request_configurationDone(function(configdone_resp)
+            self._fsm:trigger(configdone_resp.success and success_trigger or "configure_error")
+        end)
+        return
+    end
+
     for file, bps in pairs(breakpoints) do
         self.log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(bps))
         self._base_session:request_setBreakpoints({
@@ -110,79 +142,58 @@ function Session:_send_configuration(on_response)
                 },
                 breakpoints = bps
             },
-            function( --[[response]])
-                -- breakpoints_response(response.success)    // send the status to the user
+            function(set_bp_resp)
+                if set_bp_resp.success == true then
+                    nb_success = nb_success + 1
+                else
+                    nb_failures = nb_failures + 1
+                end
+                if nb_success == nb_breakpoints then
+                    self._base_session:request_configurationDone(function(configdone_resp)
+                        self._fsm:trigger(configdone_resp.success and success_trigger or "configure_error")
+                    end)
+                elseif nb_failures > 0. and nb_success + nb_failures == nb_breakpoints then
+                    self._fsm:trigger("configure_error")
+                end
             end)
     end
-    self._base_session:request_configurationDone(function(response)
-        on_response(response.success)
-    end)
 end
 
-function Session:_send_launch(on_response, pre_initialize)
-    if pre_initialize then
-        if not self.is_apple_lldb then
-            on_response(true)
-            return
-        end
-    else
-        if self.is_apple_lldb then
-            on_response(true)
-            return
-        end
-    end
-    if self.launched then
-        self.log:error("Unexpected launch request")
-        on_response(false)
+function Session:_on_launching_state()
+    local target          = self._target
+    local cmdparts        = strtools.cmd_to_string_array(target.cmd)
+    local target_program  = cmdparts[1]
+    local targe_args      = unpack(cmdparts, 2)
+    local run_in_terminal = target.run_in_terminal
+    local stop_on_entry   = target.stop_on_entry
+    
+    if run_in_terminal and not self._capabilities["supportsRunInTerminalRequest"] then
+        self.log:error('run_in_terminal not supported by this adapter')
+        self._fsm:trigger("launch_resp_error")
         return
     end
-    self.launched                    = true
-    local target                     = self._target
-    local cmdparts = strtools.cmd_to_string_array(target.cmd)
-    local target_program = cmdparts[1]
-    local targe_args = unpack(cmdparts, 2)
+
     self.log:info('launching: ' .. vim.inspect(target))
     self._base_session:request_launch({
             program = target_program,
             args = targe_args,
             cwd = target.cwd,
             env = target.env,
-            -- runInTerminal = true, -- TODO
-            stopOnEntry = false,
+            runInTerminal = run_in_terminal,
+            stopOnEntry = stop_on_entry,
         },
         function(response)
-            on_response(response.success)
+            local success_trigger = self._is_apple_lldb and "launch_resp_ok_apple_lldb" or "launch_resp_ok"
+            self._fsm:trigger(response.success and success_trigger or "launch_resp_error")
         end)
 end
 
-function Session:_send_terminate()
-    self._base_session:request_terminate(function(response)
-        if response.success then
-            self._fsm:trigger("resp_terminate_ok")
-        else
-            self.log:log("DAP termination error: " .. response.message)
-            self._fsm:trigger("resp_terminate_err")
-        end
-    end)
+function Session:_on_running_state()
 end
 
-function Session:_send_disconnect()
-    self._base_session:request_disconnect(function(response)
-        if response.success then
-            self._fsm:trigger("resp_disconnect_ok")
-        else
-            self.log:log("DAP termination error: " .. response.message)
-            self._fsm:trigger("resp_disconnect_err")
-        end
-    end)
+function Session:_on_disconnecting_state()
+    
 end
 
-function Session:_kill()
-    self._base_session.kill()
-end
-
-function Session:current_state()
-    return self._fsm.current
-end
 
 return Session

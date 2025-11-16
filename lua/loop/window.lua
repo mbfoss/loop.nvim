@@ -19,11 +19,12 @@ local _loop_win_height_ratio
 ---@field label string
 ---@field pages loop.pages.Page[]
 ---@field active_page_idx number|nil
+---@field follow boolean|nil
 
 
 local _tabs = {
     ---@type loop.TabInfo
-    events = { label = "Events", pages = { EventsPage:new() }, active_page_idx = 1 },
+    events = { label = "Events", pages = { EventsPage:new() }, active_page_idx = 1, follow = true },
     ---@type loop.TabInfo
     tasks = { label = "Tasks", pages = {} },
     ---@type loop.TabInfo
@@ -143,6 +144,10 @@ local function _setup_active_tab(req_tab)
                 _active_tab = tab
                 local buf = tab.pages[page_idx]:get_or_create_buf()
                 vim.api.nvim_win_set_buf(win, buf)
+                if tab.follow then
+                    local last_line = vim.api.nvim_buf_line_count(buf)
+                    vim.api.nvim_win_set_cursor(win, { last_line, 0 })
+                end                
             end
             if #tab.pages > 0 then
                 tabidx = tabidx + 1
@@ -152,7 +157,7 @@ local function _setup_active_tab(req_tab)
                 if active and tab.active_page_idx then
                     local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name()
                     if #tab.pages > 1 then
-                        label = label .. ' - ' .. tab.active_page_idx .. '/' .. #tab.pages         
+                        label = label .. ' - ' .. tab.active_page_idx .. '/' .. #tab.pages
                     end
                     if name then label = label .. ' - ' .. name end
                 elseif #tab.pages > 1 then
@@ -248,6 +253,11 @@ function M.add_events(lines, level)
     assert(page)
     assert(getmetatable(page) == EventsPage)
     page:add_events(lines, level)
+    local buf = page:get_buf()
+    if buf > 0 and _loop_win > 0 and vim.api.nvim_win_get_buf(_loop_win) == buf then
+        local last_line = vim.api.nvim_buf_line_count(buf)
+        vim.api.nvim_win_set_cursor(_loop_win, { last_line, 0 })
+    end
     if level == "error" then
         M.show_events()
     end
@@ -335,11 +345,11 @@ end
 function M.add_debug_task(name, debugjob)
     assert(setup_done)
     assert(type(name) == "string")
-    
+
     local page = DebugTaskPage:new()
     page:set_name(name)
-    
-    local init_sessions = debugjob:track_sessions(function (id, session)
+
+    local init_sessions = debugjob:track_sessions(function(id, session)
         page:add_session(id, session)
     end)
     page:set_session_list(init_sessions)
@@ -347,7 +357,7 @@ function M.add_debug_task(name, debugjob)
     table.insert(_tabs.tasks.pages, page)
     _tabs.tasks.active_page_idx = #_tabs.tasks.pages
 
-    _setup_active_tab(_tabs.tasks)    
+    _setup_active_tab(_tabs.tasks)
 end
 
 ---@param config_dir string
