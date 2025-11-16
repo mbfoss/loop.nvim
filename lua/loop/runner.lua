@@ -12,6 +12,7 @@ local config = require('loop.config')
 
 ---@class loop.runner.TaskChain
 ---@field tasks loop.Task[]
+---@field started boolean
 ---@field interrupted boolean
 ---@field ended boolean
 ---@field active_job loop.job.Job|nil
@@ -183,9 +184,6 @@ local function _start_one_task(task, task_exit_handler)
         end
         return job, nil
     elseif tasktype == "tool" or tasktype == "app" then
-        if buf == -1 then
-            return nil, "No output buffer for task"
-        end
         ---@type loop.TermProc.StartArgs
         local args = {
             name = task.name,
@@ -253,6 +251,11 @@ local function _start_task_chain(tasks, on_complete)
             end)
             return
         end
+        
+        if not chain.started then
+            window.delete_task_buffers()
+            chain.started = true
+        end
 
         local task = table.remove(chain.tasks, 1)
         _current_task_name = task.name
@@ -292,6 +295,7 @@ local function _start_task_chain(tasks, on_complete)
     ---@type loop.runner.TaskChain
     local new_chain = {
         tasks = tasks,
+        started = false,
         interrupted = false,
         ended = false,
         active_job = nil,

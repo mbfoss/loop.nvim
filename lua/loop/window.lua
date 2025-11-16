@@ -17,23 +17,25 @@ local _loop_win_height_ratio
 
 ---@class loop.TabInfo
 ---@field label string
----@field page any
----@field used boolean
+---@field pages loop.pages.Page[]
+---@field active_page_idx number|nil
 
----@type loop.TabInfo[]
-local tabs_data = {
-    { label = "Events",      page = nil, used = true },
-    { label = "Task",        page = nil, used = false },
-    { label = "Breakpoints", page = nil, used = false },
-    { label = "Debug",       page = nil, used = false },
+
+local _tabs = {
+    ---@type loop.TabInfo
+    events = { label = "Events", pages = { EventsPage:new() }, active_page_idx = 1 },
+    ---@type loop.TabInfo
+    tasks = { label = "Tasks", pages = {} },
+    ---@type loop.TabInfo
+    breakpoints = { label = "Breakpoints", pages = {} },
+    ---@type loop.TabInfo
+    debug = { label = "Debug", pages = {} },
 }
 
-local events_tab = tabs_data[1]
-local tasks_tab = tabs_data[2]
-local breakpoints_tab = tabs_data[3]
+local _tabs_arr = { _tabs.events, _tabs.tasks, _tabs.breakpoints, _tabs.debug }
 
 ---@type loop.TabInfo
-local active_tab = events_tab
+local _active_tab = _tabs.events
 
 ---@param vim_tab_id number
 ---@return number
@@ -85,63 +87,96 @@ local function _on_win_new_or_close()
     end
 end
 
-local function set_keymaps(page, set_active_tab)
-    local keymaps = {}
-    local idx = 0
-    for _, tab in ipairs(tabs_data) do
-        if tab.page and tab.used then
-            idx = idx + 1
-            if tab.page ~= page then
+
+---@param tab loop.TabInfo
+local function _tab_key_handler(target_tab, setup_active_tab)
+    if vim.api.nvim_get_current_win() ~= _loop_win then
+        return
+    end
+    if target_tab == _active_tab then
+        if #_active_tab.pages > 1 then
+            local idx = _active_tab.active_page_idx
+            idx = idx and (idx + 1) or 1
+            if idx > #_active_tab.pages then
+                idx = 1
+            end
+            _active_tab.active_page_idx = idx
+        end
+    end
+    setup_active_tab(target_tab)
+end
+
+---@param req_tab loop.TabInfo
+local function _setup_active_tab(req_tab)
+    if #req_tab.pages == 0 then
+        req_tab = _tabs.events
+    end
+
+    log:log({ "setting active page: ", req_tab.label })
+
+    local page_idx = req_tab.active_page_idx or 1
+
+    --- set keymaps
+    do
+        local keymaps = {}
+        local idx = 0
+        for _, tab in ipairs(_tabs_arr) do
+            if #tab.pages > 0 then
+                idx = idx + 1
                 local key = tostring(idx)
                 keymaps[key] = function()
-                    log:log({ "setting active tab: ", tab.label })
-                    if vim.api.nvim_get_current_win() == _loop_win then
-                        set_active_tab(tab)
-                    end
+                    _tab_key_handler(tab, _setup_active_tab)
                 end
             end
         end
+        req_tab.pages[page_idx]:set_keymaps(keymaps)
     end
-    page:set_keymaps(keymaps)
-end
 
-
----@param req_tab loop.TabInfo
-local function set_active_tab(req_tab)
-    req_tab.used = true
-    log:log({ "setting active page: ", req_tab.label })
-    if _loop_win == -1 then
-        log:log({ "no active window" })
-        return
-    end
-    local win = _loop_win
-    local winbar_parts = { "%#LoopPluginInactiveTab#" }
-    local tabidx = 0
-    for arr_idx, tab in ipairs(tabs_data) do
-        if tab.page and tab.used then
-            tabidx = tabidx + 1
-            if tabidx ~= 1 then table.insert(winbar_parts, '|') end
+    -- update window if visible
+    if _loop_win ~= -1 then
+        local win = _loop_win
+        local winbar_parts = { "%#LoopPluginInactiveTab#" }
+        local tabidx = 0
+        for arr_idx, tab in ipairs(_tabs_arr) do
             local active = false
             if req_tab == tab then
                 active = true
-                active_tab = tab
-                local buf = tab.page:get_buf()
+                _active_tab = tab
+                local buf = tab.pages[page_idx]:get_or_create_buf()
                 vim.api.nvim_win_set_buf(win, buf)
-                set_keymaps(tab.page, set_active_tab)
             end
-            if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-            local label = ' [' .. tostring(tabidx) .. ']' .. tab.label .. ' '
-            table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
-            if active then table.insert(winbar_parts, "%#LoopPluginInactiveTab#") end
+            if #tab.pages > 0 then
+                tabidx = tabidx + 1
+                if tabidx ~= 1 then table.insert(winbar_parts, '|') end
+                if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
+                local label = ' [' .. tostring(tabidx) .. ']' .. tab.label .. ' '
+                if active and tab.active_page_idx and #tab.pages > 1 then
+                    local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name()
+                    label = label .. '- ' .. tab.active_page_idx .. '/' .. #tab.pages
+                    if name then label = label .. ' - ' .. name end
+                elseif #tab.pages > 1 then
+                    label = label .. '(' .. #tab.pages .. ')'
+                end
+                table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
+                if active then
+                    table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
+                end
+            end
         end
+        -- add right aligned current page/buffer info
+        --if #_active_tab.pages > 0 then
+        --    local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name() or _active_tab.label
+        --    table.insert(winbar_parts, "%=" .. name)
+        --end
+        -- set the winbar
+        vim.wo[win].winbar = table.concat(winbar_parts, '')
     end
-    vim.wo[win].winbar = table.concat(winbar_parts, '')
 end
 
 local function protect_split_window_buffer(buf)
     if not Page.is_page(buf) then
         vim.schedule(function()
-            set_active_tab(active_tab)
+            _setup_active_tab(_active_tab)
             if vim.api.nvim_buf_is_valid(buf) then
                 uitools.smart_open_buffer(buf)
             end
@@ -150,17 +185,16 @@ local function protect_split_window_buffer(buf)
 end
 
 function M.winbar_click(id, clicks, button, mods)
-    --local message = string.format("Clicked on ID: %s, Clicks: %d, Button: %s, Mods: %s", id, clicks, button, mods)
-    local tab = tabs_data[id]
+    local tab = _tabs_arr[id]
     if tab then
-        set_active_tab(tab)
+        _setup_active_tab(tab)
     end
 end
 
 ---@param tab loop.TabInfo | nil
 local function create_window(tab)
     if _loop_win ~= -1 then
-        set_active_tab(tab or active_tab)
+        _setup_active_tab(tab or _active_tab)
         return
     end
 
@@ -172,7 +206,7 @@ local function create_window(tab)
     _on_win_new_or_close()
     vim.api.nvim_set_current_win(prev_win)
 
-    set_active_tab(tab or active_tab)
+    _setup_active_tab(tab or _active_tab)
 
     vim.api.nvim_create_autocmd("WinResized", {
         --pattern = tostring(_loop_win), -- Only trigger for window ID 1001
@@ -189,7 +223,7 @@ local function create_window(tab)
     })
 end
 
-local function on_window_enter()
+local function _on_window_enter()
     -- do not allow our buffers in another window
     local win = vim.api.nvim_get_current_win()
     if win ~= _loop_win then
@@ -207,8 +241,10 @@ end
 function M.add_events(lines, level)
     assert(setup_done)
 
-    ---@type loop.pages.EventsPage
-    local page = events_tab.page
+    ---@type loop.pages.EventsPage|nil
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    local page = _tabs.events.pages[1]
+    assert(page)
     assert(getmetatable(page) == EventsPage)
     page:add_events(lines, level)
     if level == "error" then
@@ -219,37 +255,23 @@ end
 ---@param breakpoints table<string, integer[]>
 ---@param proj_dir string
 function M.update_breakpoints(breakpoints, proj_dir)
-    ---@type loop.pages.BreakpointsPage
-    local page = breakpoints_tab.page
-    assert(getmetatable(page) == BreakpointsPage)
-    page:setlist(breakpoints, proj_dir)
-    set_active_tab(breakpoints_tab)
-end
-
----@return string[]
-function M.tab_names()
-    local arr = {}
-    for _, t in ipairs(tabs_data) do
-        if t.used then
-            table.insert(arr, t.label)
-        end
-    end
-    return arr
-end
-
----@param tabname? string
-function M.show_window(tabname)
     assert(setup_done)
-    local tab = nil
-    if tabname then
-        for _, t in ipairs(tabs_data) do
-            if tabname == t.label then
-                tab = t
-                break
-            end
-        end
+    if #_tabs.breakpoints.pages == 0 then
+        table.insert(_tabs.breakpoints.pages, BreakpointsPage:new())
     end
-    create_window(tab)
+    ---@type loop.pages.BreakpointsPage
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    local page = _tabs.breakpoints.pages[1]
+    assert(getmetatable(page) == BreakpointsPage)
+    if page then
+        page:setlist(breakpoints, proj_dir)
+        _setup_active_tab(_tabs.breakpoints)
+    end
+end
+
+function M.show_window()
+    assert(setup_done)
+    create_window(nil)
 end
 
 function M.hide_window()
@@ -274,22 +296,40 @@ end
 
 function M.show_events()
     assert(setup_done)
-    create_window(events_tab)
+    create_window(_tabs.events)
 end
 
 function M.show_task_output()
-    create_window(tasks_tab)
+    create_window(_tabs.tasks)
+end
+
+function M.delete_task_buffers()
+    _setup_active_tab(_tabs.events)
+    for _, page in ipairs(_tabs.tasks.pages) do
+        page:destroy()
+    end
+    _tabs.tasks.pages = {}
+    _tabs.tasks.active_page_idx = nil
 end
 
 ---@param bufnr number
 ---@param name string -- task name
 function M.add_task_buffer(bufnr, name)
     assert(setup_done)
-    ---@type loop.pages.TaskPage
-    local page = tasks_tab.page
+    table.insert(_tabs.tasks.pages, TaskPage:new())
+
+    ---@type loop.pages.BreakpointsPage
+    ---@diagnostic disable-next-line: assign-type-mismatch
+
+    local idx = #_tabs.tasks.pages
+    _tabs.tasks.active_page_idx = idx
+    local page = _tabs.tasks.pages[idx]
+    assert(page)
     assert(getmetatable(page) == TaskPage)
-    tasks_tab.label = name
     page:assign_buf(bufnr)
+    page:set_name(name)
+
+    _setup_active_tab(_tabs.tasks)
 end
 
 ---@param config_dir string
@@ -314,13 +354,6 @@ function M.setup(_)
     -- setup only once
     setup_done = true
 
-    -- create pages
-    do
-        events_tab.page      = EventsPage:new("loop-events")
-        tasks_tab.page       = TaskPage:new("loop-tasks")
-        breakpoints_tab.page = BreakpointsPage:new("loop-breakpoints")
-    end
-
     do
         vim.api.nvim_set_hl(0, "LoopPluginInactiveTab", { link = "WinBar" })
         vim.api.nvim_set_hl(0, "LoopPluginActiveTab", { link = "Special" })
@@ -329,7 +362,7 @@ function M.setup(_)
         vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "DiagnosticError" })
     end
 
-    vim.api.nvim_create_autocmd("WinEnter", { callback = on_window_enter })
+    vim.api.nvim_create_autocmd("WinEnter", { callback = _on_window_enter })
 
     vim.api.nvim_create_autocmd("WinNew", {
         callback = function(_)

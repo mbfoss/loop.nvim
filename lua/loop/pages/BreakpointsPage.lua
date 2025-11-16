@@ -4,7 +4,7 @@ local uitools = require('loop.tools.uitools')
 
 
 ---@class loop.pages.BreakpointsPage : loop.pages.Page
----@field new fun(self: loop.pages.BreakpointsPage, filetype: string): loop.pages.BreakpointsPage
+---@field new fun(self: loop.pages.BreakpointsPage): loop.pages.BreakpointsPage
 local BreakpointsPage = class(Page)
 
 -- Static namespace for extmarks
@@ -60,18 +60,18 @@ local function format_entry(entry, project_dir)
 	return table.concat(parts, "")
 end
 
-function BreakpointsPage:init(filetype)
-	Page.init(self, filetype)
+function BreakpointsPage:init()
+	Page.init(self, "loop-breakpoints")
 	self._items = {}
 end
 
-function BreakpointsPage:get_buf()
-	local buf, created = Page.get_buf(self)
+function BreakpointsPage:get_or_create_buf()
+	local buf, created = Page.get_or_create_buf(self)
 	if not created then
 		return buf, false
 	end
 
-	self:_refresh_buffer()
+	self:_refresh_buffer(buf)
 
 	-- Set up <Enter> keymap only once when buffer is created
 	vim.api.nvim_buf_set_keymap(buf, 'n', '<CR>', '', {
@@ -99,7 +99,7 @@ end
 
 ---@return number
 function BreakpointsPage:_get_curr_row()
-	local buf = self.buf
+	local buf = self:get_buf()
 	if not buf or not vim.api.nvim_buf_is_valid(buf) then
 		return 0
 	end
@@ -109,8 +109,8 @@ function BreakpointsPage:_get_curr_row()
 	return vim.api.nvim_win_get_cursor(0)[1] -- 1-based row
 end
 
-function BreakpointsPage:_refresh_buffer()
-	local buf = self.buf
+---@param buf number
+function BreakpointsPage:_refresh_buffer(buf)
 	if not buf or not vim.api.nvim_buf_is_valid(buf) then
 		return
 	end
@@ -165,8 +165,7 @@ function BreakpointsPage:setlist(items, proj_dir)
 		self._idx = #self._items
 	end
 
-	self:get_buf()
-	self:_refresh_buffer()
+    self:_refresh_buffer(self:get_buf())
 end
 
 function BreakpointsPage:get_selected()

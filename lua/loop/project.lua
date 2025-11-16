@@ -278,17 +278,9 @@ function M.debug_command(command)
     vim.notify('loop.nvim: Invalid debug subcommand: ' .. tostring(command))
 end
 
-
----@return string[]
-function M.tab_names()
+function M.show_window()
     assert(_setup_done)
-    return window.tab_names()
-end
-
----@param tabname string
-function M.show_window(tabname)
-    assert(_setup_done)
-    window.show_window(tabname)
+    window.show_window()
 end
 
 function M.hide_window()
