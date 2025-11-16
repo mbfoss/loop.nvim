@@ -28,7 +28,19 @@ function Page:_on_buf_enter()
     self.on_buf_enter(self)
 end
 
----@return number,boolean
+---@param bufnr number
+function Page:assign_buf(bufnr)
+    assert(bufnr > 0)
+    if self.buf ~= -1 then
+        vim.api.nvim_buf_delete(self.buf, { force = true })
+        assert(self.buf == -1)
+    end
+    self.buf = bufnr
+    self:_setup_buf()
+end
+
+---@return number -- buffer number
+---@return boolean -- true if the call triggerered buffer creation
 function Page:get_buf()
     if self.buf ~= -1 then
         return self.buf, false
@@ -37,17 +49,26 @@ function Page:get_buf()
     self.buf = vim.api.nvim_create_buf(false, true)
     log:log('buffer created ' .. self.filetype)
 
-    local buf = self.buf
-    vim.api.nvim_buf_set_var(buf, buffer_flag_key, 1)
+    vim.bo[self.buf].modifiable = false
 
-    vim.bo[buf].buftype = "nofile"
-    vim.bo[buf].bufhidden = "hide"
-    vim.bo[buf].swapfile = false
-    vim.bo[buf].filetype = self.filetype
-    vim.bo[buf].modifiable = false
+    self:_setup_buf()
+    return self.buf, true
+end
 
+function Page:_setup_buf()
+    assert(self.buf > 0)
+
+    vim.api.nvim_buf_set_var(self.buf, buffer_flag_key, 1)
+    
+    if vim.bo[self.buf].buftype == "" then
+        vim.bo[self.buf].buftype = "nofile"
+    end
+    vim.bo[self.buf].bufhidden = "hide"
+    vim.bo[self.buf].swapfile = false
+    vim.bo[self.buf].filetype = self.filetype
+ 
     vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
-        buffer = buf,
+        buffer = self.buf,
         once = true,
         callback = function(ev)
             assert(ev.buf == self.buf)
@@ -57,14 +78,12 @@ function Page:get_buf()
     })
 
     vim.api.nvim_create_autocmd("BufEnter", {
-        buffer = buf,
+        buffer = self.buf,
         callback = function(ev)
             assert(ev.buf == self.buf)
             self:_on_buf_enter()
         end
     })
-
-    return buf, true
 end
 
 ---@param key string

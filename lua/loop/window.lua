@@ -259,12 +259,15 @@ function M.show_task_output()
     create_window(tasks_tab)
 end
 
-function M.create_task_buffer()
+---@param bufnr number
+---@param name string -- task name
+function M.add_task_buffer(bufnr, name)
     assert(setup_done)
     ---@type loop.pages.TaskPage
     local page = tasks_tab.page
     assert(getmetatable(page) == TaskPage)
-    return page:new_buf()
+    tasks_tab.label = name
+    page:assign_buf(bufnr)
 end
 
 local function _on_buf_enter(page)

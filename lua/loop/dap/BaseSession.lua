@@ -162,7 +162,7 @@ end
 --- Public: terminate the debug adapter process
 -- @param signal string (default: "sigterm")
 function BaseSession:kill(signal)
-    self.process:kill(signal or "sigterm")
+    self.channel:kill(signal or "sigterm")
 end
 
 function BaseSession:request_initialize(args, callback)

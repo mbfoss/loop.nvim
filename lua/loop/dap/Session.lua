@@ -76,6 +76,10 @@ function Session:init(args)
     end)
 end
 
+function Session:kill()
+    self.base_session:kill()
+end
+
 function Session:_send_initialize(on_response)
     self.base_session:request_initialize({}, function(response)
         if response and response.body and response.body.__lldb and response.body.__lldb.version then

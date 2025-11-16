@@ -116,7 +116,7 @@ function Channel:_on_data(buffer, data)
         local body = buffer.data:sub(body_start, body_end)
 
         -- 6. Remove processed message from buffer
-        buffer.data = self.buffer:sub(body_end + 1)
+        buffer.data = buffer.data:sub(body_end + 1)
 
         -- 7. Decode the JSON body
         local message, pos, err = json.decode(body)

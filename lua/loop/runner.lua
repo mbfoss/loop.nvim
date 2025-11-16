@@ -20,6 +20,8 @@ local config = require('loop.config')
 
 ---@type loop.runner.TaskChain|nil
 local _current_task_chain = nil
+---@type string|nil
+local _current_task_name
 
 ---@param tasks loop.Task[] all available tasks
 ---@param main loop.Task main task
@@ -130,8 +132,8 @@ local function _get_dap_config(task)
         return nil, "Invalid debugger name: " .. tostring(task.debugger) .. "'"
     end
     local cmd = strtools.cmd_to_string_array(cfg.command)
-    if #cmd == 0 or vim.fn.executable(cmd[0]) == 0 then
-        return nil, "Debugger command is not executable: '" .. cmd[0] "'" 
+    if #cmd == 0 or vim.fn.executable(cmd[1]) == 0 then
+        return nil, "Debugger command is not executable: '" .. cmd[1] "'" 
     end    
     ---@type loop.dap.session.Args.DAP
     local dap = {
@@ -181,13 +183,11 @@ local function _start_one_task(task, task_exit_handler)
         end
         return job, nil
     elseif tasktype == "tool" or tasktype == "app" then
-        local buf = window.create_task_buffer()
         if buf == -1 then
             return nil, "No output buffer for task"
         end
         ---@type loop.TermProc.StartArgs
         local args = {
-            bufnr = buf,
             name = task.name,
             command = task.command,
             command_env = task.env,
@@ -196,24 +196,20 @@ local function _start_one_task(task, task_exit_handler)
             on_exit_handler = exit_handler,
         }
         local job = TermProc:new()
-        local ok, err = job:start(args)
-        if not ok then
+        local bufnr, err = job:start(args)
+        if bufnr <= 0 then
             return nil, err
         end
+        window.add_task_buffer(bufnr, task.name)
         return job, nil
     elseif tasktype == "debug" then
-        local buf = window.create_task_buffer()
-        if buf == -1 then
-            return nil, "No output buffer for task"
-        end
-        ---@type loop.dap.session.Args.DAP,string|nil
+        ---@type loop.dap.session.Args.DAP|nil,string|nil
         local dap, dap_error = _get_dap_config(task)
         if not dap then
             return nil, dap_error or "Invalid debugger config"
         end
         ---@type loop.DebugJob.StartArgs
         local args = {
-            bufnr = buf,
             name = task.name,
             debugger = dap,
             target = {
@@ -252,12 +248,14 @@ local function _start_task_chain(tasks, on_complete)
                     next_job(chain.next_chain)
                 elseif chain == _current_task_chain then
                     _current_task_chain = nil
+                    _current_task_name = nil
                 end
             end)
             return
         end
 
         local task = table.remove(chain.tasks, 1)
+        _current_task_name = task.name
         local job, job_err = _start_one_task(task, function(exit_code)
             if type(exit_code) ~= "number" then
                 window.add_events({ "Invalid task status for " .. task.name })
@@ -305,6 +303,7 @@ local function _start_task_chain(tasks, on_complete)
 
     if _current_task_chain then
         if _current_task_chain.active_job and not _current_task_chain.ended then
+            window.add_events({ "Interrupting current task: " .. tostring(_current_task_name) })
             _current_task_chain.interrupted = true
             _current_task_chain.next_chain = new_chain
             if _current_task_chain.active_job then

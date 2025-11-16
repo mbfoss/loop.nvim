@@ -17,21 +17,23 @@ end
 
 ---Initializes the DebugJob instance.
 function DebugJob:init()
-    ---@type loop.dap.Session[]
+    ---@type table<number,loop.dap.Session>
     self.sessions = {}
+    self.last_session_id = 0
 end
 
 ---@return boolean
 function DebugJob:is_running()
-    return #self.sessions > 0
+    return next(self.sessions) ~= nil
 end
 
 function DebugJob:kill()
-    error("Not implemented")
+    for _, s in pairs(self.sessions) do
+        s:kill()
+    end
 end
 
 ---@class loop.DebugJob.StartArgs
----@field bufnr number
 ---@field name string
 ---@field debugger loop.dap.session.Args.DAP
 ---@field target loop.dap.session.Args.Target
@@ -45,11 +47,21 @@ function DebugJob:start(args)
         return false, "A debug job is already running"
     end
 
-    assert(args.bufnr > 0)
     assert(args.on_exit_handler)
+
+    local function exit_handler(code)
+        -- this runs in the fast event context, so use schedule hereby
+        vim.schedule(function()
+            args.on_exit_handler(code)
+        end)
+    end
+
+    local session_id = self.last_session_id + 1
+    self.last_session_id = session_id
 
     local output_handler = function()
         assert_main_thread()
+        self.sessions[session_id] = nil
         --TODO
     end
 
@@ -59,10 +71,11 @@ function DebugJob:start(args)
         dap = args.debugger,
         target = args.target,
         output_handler = output_handler,
-        exit_handler = args.on_exit_handler
+        exit_handler = exit_handler
     }
+
     local session = Session:new(session_args)
-    table.insert(self.sessions, session)
+    self.sessions[session_id] = session
     return true
 end
 
