@@ -3,6 +3,7 @@ local log = require('loop.tools.Logger').create_logger("window")
 local Page = require('loop.pages.Page')
 local EventsPage = require('loop.pages.EventsPage')
 local TaskPage = require('loop.pages.TaskPage')
+local DebugTaskPage = require('loop.pages.DebugTaskPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
@@ -115,6 +116,7 @@ local function _setup_active_tab(req_tab)
     log:log({ "setting active page: ", req_tab.label })
 
     local page_idx = req_tab.active_page_idx or 1
+    assert(page_idx > 0 and page_idx <= #req_tab.pages)
 
     --- set keymaps
     do
@@ -149,14 +151,17 @@ local function _setup_active_tab(req_tab)
                 tabidx = tabidx + 1
                 if tabidx ~= 1 then table.insert(winbar_parts, '|') end
                 if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-                local label = ' [' .. tostring(tabidx) .. ']' .. tab.label .. ' '
-                if active and tab.active_page_idx and #tab.pages > 1 then
+                local label = ' [' .. tostring(tabidx) .. '] ' .. tab.label
+                if active and tab.active_page_idx then
                     local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name()
-                    label = label .. '- ' .. tab.active_page_idx .. '/' .. #tab.pages
+                    if #tab.pages > 1 then
+                        label = label .. ' - ' .. tab.active_page_idx .. '/' .. #tab.pages         
+                    end
                     if name then label = label .. ' - ' .. name end
                 elseif #tab.pages > 1 then
-                    label = label .. '(' .. #tab.pages .. ')'
+                    label = label .. ' (' .. #tab.pages .. ')'
                 end
+                label = label .. ' '
                 table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
                 if active then
                     table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
@@ -312,24 +317,41 @@ function M.delete_task_buffers()
     _tabs.tasks.active_page_idx = nil
 end
 
----@param bufnr number
 ---@param name string -- task name
-function M.add_task_buffer(bufnr, name)
+---@param bufnr number
+function M.add_term_task(name, bufnr)
     assert(setup_done)
-    table.insert(_tabs.tasks.pages, TaskPage:new())
+    assert(type(name) == "string")
+    assert(vim.api.nvim_buf_is_valid(bufnr))
 
-    ---@type loop.pages.BreakpointsPage
-    ---@diagnostic disable-next-line: assign-type-mismatch
-
-    local idx = #_tabs.tasks.pages
-    _tabs.tasks.active_page_idx = idx
-    local page = _tabs.tasks.pages[idx]
-    assert(page)
-    assert(getmetatable(page) == TaskPage)
-    page:assign_buf(bufnr)
+    local page = TaskPage:new()
     page:set_name(name)
+    page:assign_buf(bufnr)
+
+    table.insert(_tabs.tasks.pages, page)
+    _tabs.tasks.active_page_idx = #_tabs.tasks.pages
 
     _setup_active_tab(_tabs.tasks)
+end
+
+---@param name string -- task name
+---@param debugjob loop.job.DebugJob
+function M.add_debug_task(name, debugjob)
+    assert(setup_done)
+    assert(type(name) == "string")
+    
+    local page = DebugTaskPage:new()
+    page:set_name(name)
+    
+    local init_sessions = debugjob:track_sessions(function (id, session)
+        page:add_session(id, session)
+    end)
+    page:set_session_list(init_sessions)
+
+    table.insert(_tabs.tasks.pages, page)
+    _tabs.tasks.active_page_idx = #_tabs.tasks.pages
+
+    _setup_active_tab(_tabs.tasks)    
 end
 
 ---@param config_dir string

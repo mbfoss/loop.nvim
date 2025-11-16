@@ -41,9 +41,11 @@ function Session:init(args)
     assert(target.cmd, "target command required")
 
     self.log = require('loop.tools.Logger').create_logger("dap.session[" .. name .. ']')
-    self.target = target
-    self.output_handler = args.output_handler
-    self.on_exit = args.exit_handler
+
+    self._name = name    
+    self._target = target
+    self._output_handler = args.output_handler
+    self._on_exit = args.exit_handler
 
     local cmd_and_args = strtools.cmd_to_string_array(dap.cmd)
     if #cmd_and_args == 0 then
@@ -53,35 +55,40 @@ function Session:init(args)
     local dap_cmd  = cmd_and_args[1]
     local dap_args = { unpack(cmd_and_args, 2) }
 
-    self.base_session = BaseSession:new(name, {
+    self._base_session = BaseSession:new(name, {
         dap_cmd = dap_cmd, -- dap process
         dap_args = dap_args, -- dap args
         dap_env = dap.env,
         dap_cwd = dap.cwd,
         on_exit = function(code, signal)
-            if self.on_exit then
-                self.on_exit(code)
+            if self._on_exit then
+                self._on_exit(code)
             end
         end,
     })
 
-    self.base_session:set_event_handler("output", function(msg_body) self.output_handler(msg_body) end)
-    self.base_session:set_event_handler("initialized", function() self.fsm:trigger("initialized") end)
-    self.base_session:set_event_handler("stopped", function() self.fsm:trigger("stopped") end)
+    self._base_session:set_event_handler("output", function(msg_body) self._output_handler(msg_body) end)
+    self._base_session:set_event_handler("initialized", function() self._fsm:trigger("initialized") end)
+    self._base_session:set_event_handler("stopped", function() self._fsm:trigger("stopped") end)
 
     -- start the FSM
-    self.fsm = FSM:new(name, fsmdata.create_fsm_data(self))
+    self._fsm = FSM:new(name, fsmdata.create_fsm_data(self))
     vim.schedule(function()
-        self.fsm:start()
+        self._fsm:start()
     end)
 end
 
 function Session:kill()
-    self.base_session:kill()
+    self._base_session:kill()
+end
+
+---@return string
+function Session:name()
+    return self._name or "(Unnamed session)"
 end
 
 function Session:_send_initialize(on_response)
-    self.base_session:request_initialize({}, function(response)
+    self._base_session:request_initialize({}, function(response)
         if response and response.body and response.body.__lldb and response.body.__lldb.version then
             if response.body.__lldb.version:match("Apple") then
                 self.log:info("detecting apple lldb")
@@ -96,7 +103,7 @@ function Session:_send_configuration(on_response)
     local breakpoints = {} --TODO
     for file, bps in pairs(breakpoints) do
         self.log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(bps))
-        self.base_session:request_setBreakpoints({
+        self._base_session:request_setBreakpoints({
                 source = {
                     name = vim.fn.fnamemodify(file, ":t"),
                     path = file
@@ -107,7 +114,7 @@ function Session:_send_configuration(on_response)
                 -- breakpoints_response(response.success)    // send the status to the user
             end)
     end
-    self.base_session:request_configurationDone(function(response)
+    self._base_session:request_configurationDone(function(response)
         on_response(response.success)
     end)
 end
@@ -130,10 +137,10 @@ function Session:_send_launch(on_response, pre_initialize)
         return
     end
     self.launched                    = true
-    local target                     = self.target
+    local target                     = self._target
     local target_program, targe_args = strtools.get_program_and_args(target.cmd)
     self.log:info('launching: ' .. vim.inspect(target))
-    self.base_session:request_launch({
+    self._base_session:request_launch({
             program = target_program,
             args = targe_args,
             cwd = target.cwd,
@@ -147,33 +154,33 @@ function Session:_send_launch(on_response, pre_initialize)
 end
 
 function Session:_send_terminate()
-    self.base_session:request_terminate(function(response)
+    self._base_session:request_terminate(function(response)
         if response.success then
-            self.fsm:trigger("resp_terminate_ok")
+            self._fsm:trigger("resp_terminate_ok")
         else
             self.log:log("DAP termination error: " .. response.message)
-            self.fsm:trigger("resp_terminate_err")
+            self._fsm:trigger("resp_terminate_err")
         end
     end)
 end
 
 function Session:_send_disconnect()
-    self.base_session:request_disconnect(function(response)
+    self._base_session:request_disconnect(function(response)
         if response.success then
-            self.fsm:trigger("resp_disconnect_ok")
+            self._fsm:trigger("resp_disconnect_ok")
         else
             self.log:log("DAP termination error: " .. response.message)
-            self.fsm:trigger("resp_disconnect_err")
+            self._fsm:trigger("resp_disconnect_err")
         end
     end)
 end
 
 function Session:_kill()
-    self.base_session.kill()
+    self._base_session.kill()
 end
 
 function Session:current_state()
-    return self.fsm.current
+    return self._fsm.current
 end
 
 return Session

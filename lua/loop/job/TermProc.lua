@@ -19,6 +19,7 @@ end
 function TermProc:init()
     ---@type number
     self.job_id = -1
+    self.bufnr = -1
 end
 
 ---@return boolean
@@ -30,6 +31,15 @@ function TermProc:kill()
     if self.job_id ~= -1 then
         vim.fn.jobstop(self.job_id)
     end
+    if self.bufnr ~= -1 then
+        vim.api.nvim_buf_delete(self.bufnr, {force = true})
+        assert(self.bufnr == -1)
+    end
+end
+
+---@return number
+function TermProc:get_bufnr()
+    return self.bufnr
 end
 
 ---@class loop.TermProc.StartArgs
@@ -42,10 +52,10 @@ end
 
 ---Starts a new terminal job.
 ---@param args loop.TermProc.StartArgs
----@return number, string|nil
+---@return boolean, string|nil
 function TermProc:start(args)
     if self.job_id ~= -1 then
-        return -1, "A job is already running"
+        return false, "A job is already running"
     end
 
     assert(args.on_exit_handler)
@@ -58,7 +68,7 @@ function TermProc:start(args)
     end
 
     if vim.fn.isdirectory(command_cwd) == 0 then
-        return -1, string.format("CWD: '%s' is not a valid directory", command_cwd)
+        return false, string.format("CWD: '%s' is not a valid directory", command_cwd)
     end
 
     -- get the real path (no symlinks etc...)
@@ -72,11 +82,11 @@ function TermProc:start(args)
     local cmd_and_args = strtools.cmd_to_string_array(args.command)
 
     if #cmd_and_args == 0 then
-        return -1, "task command is missing"
+        return false, "task command is missing"
     end
 
     if vim.fn.executable(cmd_and_args[1]) == 0 then
-        return -1, "command is not an executable: " .. cmd_and_args[1]
+        return false, "command is not an executable: " .. cmd_and_args[1]
     end
 
     local bufnr = vim.api.nvim_create_buf(false, true)
@@ -108,14 +118,16 @@ function TermProc:start(args)
 
     if not call_ok then
         vim.api.nvim_buf_delete(bufnr, { force = true })
-        return -1, result
+        return false, result
     end
     local started, start_err = result[1], result[2]
     if not started then
         vim.api.nvim_buf_delete(bufnr, { force = true })
-        return -1, start_err
+        return false, start_err
     end
-    return bufnr, nil
+    
+    self.bufnr = bufnr
+    return true, nil
 end
 
 ---@param bufnr number

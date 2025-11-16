@@ -194,11 +194,11 @@ local function _start_one_task(task, task_exit_handler)
             on_exit_handler = exit_handler,
         }
         local job = TermProc:new()
-        local bufnr, err = job:start(args)
-        if bufnr <= 0 then
+        local started, err = job:start(args)
+        if not started then
             return nil, err
         end
-        window.add_task_buffer(bufnr, task.name)
+        window.add_term_task(task.name, job:get_bufnr())
         return job, nil
     elseif tasktype == "debug" then
         ---@type loop.dap.session.Args.DAP|nil,string|nil
@@ -224,6 +224,7 @@ local function _start_one_task(task, task_exit_handler)
         if not ok then
             return nil, err
         end
+        window.add_debug_task(task.name, job)
         return job, nil
     end
 
