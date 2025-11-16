@@ -1,7 +1,6 @@
 local M = {}
 
 require("loop.config")
-local log = require('loop.tools.Logger').create_logger("project")
 local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
 local uitools = require('loop.tools.uitools')
@@ -102,7 +101,6 @@ end
 function M.create_project(dir)
     assert(_setup_done)
     if _project_dir then
-        vim.notify("Loop.nvim: another project is already active", vim.log.levels.ERROR)
         return false
     end
 
@@ -232,7 +230,8 @@ function M.breakpoints_command(command)
     if not proj_dir then
         return
     end
-    if command == nil or command == "toggle" then
+    name = command and command:match("^%s*(.-)%s*$") or ""
+    if command == "" or command == "toggle" then
         breakpoints.toggle_breakpoint()
         window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
     elseif command == "clear_file" then
@@ -302,8 +301,6 @@ end
 function M.setup(config)
     assert(not _setup_done, "Setup alreay done")
     _setup_done = true
-
-    log:log('setup')
 
     breakpoints.setup()
 

@@ -1,5 +1,3 @@
-local log = require('loop.tools.Logger').create_logger("page")
-
 local class = require('loop.tools.class')
 
 ---@class loop.pages.Page
@@ -77,7 +75,6 @@ function Page:get_or_create_buf()
     end
 
     self._buf = vim.api.nvim_create_buf(false, true)
-    log:log('buffer created ' .. self._filetype)
 
     vim.bo[self._buf].modifiable = false
 
@@ -102,7 +99,6 @@ function Page:_setup_buf()
         once = true,
         callback = function(ev)
             assert(ev.buf == self._buf)
-            log:log('buffer deleted ' .. self._filetype)
             self._buf = -1
         end,
     })
@@ -138,7 +134,6 @@ function Page:_apply_keymap(key, callback)
         for _, mode in ipairs(modes) do
             local ok, err = pcall(vim.api.nvim_buf_del_keymap, self._buf, mode, key)
             --vim.notify(vim.inspect { 'remove keymap ', ok, err })
-            log:log({ 'remove keymap ', ok, err })
         end
         --vim.notify(vim.inspect { 'setting keymap', self._filetype, modes, key, self._buf})
         vim.keymap.set(modes, key, function()

@@ -67,10 +67,10 @@ function Session:init(args)
         end,
     })
 
+    self._base_session:set_event_handler("module", function() end)
     self._base_session:set_event_handler("output", function(msg_body) self._output_handler(msg_body) end)
     self._base_session:set_event_handler("initialized", function() self._fsm:trigger("initialized") end)
     self._base_session:set_event_handler("stopped", function() self._fsm:trigger("stopped") end)
-
     -- start the FSM
     self._fsm = FSM:new(name, fsmdata.create_fsm_data(self))
     vim.schedule(function()
@@ -138,7 +138,9 @@ function Session:_send_launch(on_response, pre_initialize)
     end
     self.launched                    = true
     local target                     = self._target
-    local target_program, targe_args = strtools.get_program_and_args(target.cmd)
+    local cmdparts = strtools.cmd_to_string_array(target.cmd)
+    local target_program = cmdparts[1]
+    local targe_args = unpack(cmdparts, 2)
     self.log:info('launching: ' .. vim.inspect(target))
     self._base_session:request_launch({
             program = target_program,

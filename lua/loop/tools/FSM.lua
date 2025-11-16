@@ -3,102 +3,69 @@ local class = require('loop.tools.class')
 local FSM = class()
 
 function FSM:init(name, fsm_data)
-	self.log = require('loop.tools.Logger').create_logger("fsm." .. name)
-	self.states = fsm_data.states or {}
-	self.current = fsm_data.initial
-	self.state_seq = 1
-	self.log:info("FSM created. Current state: " .. (self.current or "nil"))
-	self.started = false
+    self.log = require('loop.tools.Logger').create_logger("fsm." .. name)
+    self.states = fsm_data.states or {}
+    self.current = fsm_data.initial
+    self.log:info("FSM created. Current state: " .. (self.current or "nil"))
+    self.started = false
 end
 
 function FSM:start()
-	assert(self.current ~= nil)
-	assert(self.started == false)
+    assert(self.current ~= nil)
+    assert(self.started == false)
 
-	self.started = true
-	self:_call_state_handler()
+    self.started = true
+    self:_call_state_handler()
 end
 
 function FSM:trigger(trigger)
-	vim.schedule(function()
-		self:_trigger(trigger)
-	end)
-end
-
-function FSM:_callback_response(state, state_seq, success)
-	if state_seq ~= self.state_seq then
-		self.log:info("Ingored out-of-date response callback from satate '" .. state .. "'")
-		return
-	end
-	local state_data = self.states[state]
-	assert(state_data ~= nil)
-
-	if success then
-		local next_state = state_data.on_success
-		if next_state then
-			self:_change_state(next_state, state .. '/on_success')
-		else
-			self.log:info("state '" .. state .. "' have no on_success")
-		end
-	else
-		local next_state = state_data.on_error
-		if next_state then
-			self:_change_state(next_state, state .. '/on_error')
-		else
-			self.log:info("state '" .. state .. "' have no on_error")
-		end
-	end
+    vim.schedule(function()
+        self:_trigger(trigger)
+    end)
 end
 
 function FSM:_trigger(trigger)
-	if not self.current then
-		self.log:warn("FSM has no current state")
-		return
-	end
+    if not self.current then
+        self.log:warn("FSM has no current state")
+        return
+    end
 
-	local data_data = self.states[self.current]
-	local next_state = data_data.triggers and data_data.triggers[trigger]
-	if next_state then
-		self:_change_state(next_state, "trigger: " .. trigger)
-	else
-		self.log:warn("Trigger '" .. trigger .. "' not valid from state '" .. self.current .. "'")
-	end
+    local state_data = self.states[self.current]
+    local next_state = state_data.triggers and state_data.triggers[trigger]
+    if next_state then
+        self:_change_state(next_state, "trigger: " .. trigger)
+    else
+        self.log:warn("Trigger '" .. trigger .. "' not valid from state '" .. self.current .. "'")
+    end
 end
 
 function FSM:_change_state(next_state, reason)
-	assert(next_state ~= nil)
-	self.log:info("State change '" .. self.current .. "' -> '" .. next_state .. "' (" .. reason .. ")")
-	self.state_seq = self.state_seq + 1
-	self.current = next_state
-	self:_call_state_handler()
+    assert(next_state ~= nil)
+    self.log:info("State change '" .. self.current .. "' -> '" .. next_state .. "' (" .. reason .. ")")
+    self.current = next_state
+    self:_call_state_handler()
 end
 
 function FSM:_call_state_handler()
-	local state = self.current
-	local state_data = self.states[state]
-	assert(state_data ~= nil)
+    local state = self.current
+    local state_data = self.states[state]
+    assert(state_data ~= nil)
 
-	local handler = state_data.state_handler
-	if not handler then
-		self.log:error("No state_handler for state '" .. state .. "'")
-		return
-	end
+    local handler = state_data.state_handler
+    if not handler then
+        self.log:error("No state_handler for state '" .. state .. "'")
+        return
+    end
 
-	local state_seq = self.state_seq
+    local cb_error = function(err)
+        self.log:error("In FSM callback for " .. (state or "?") .. "\n" .. debug.traceback(
+            "Error: " .. tostring(err) .. "\n", 2))
+    end
 
-	local on_response = function(success)
-		self:_callback_response(state, state_seq, success)
-	end
-
-	local cb_error = function(err)
-		self.log:error("In FSM callback for " .. (state or "?") .. "\n" .. debug.traceback(
-			"Error: " .. tostring(err) .. "\n", 2))
-	end
-
-	local ok, _ = xpcall(function() handler(on_response) end, cb_error)
-	if not ok then
-		self.log:error({ "Error in state handler for ", state })
-	end
+    local ok, _ = xpcall(handler, cb_error)
+    if not ok then
+        self.log:error({ "Error in state handler for ", state })
+    end
 end
 
 return FSM

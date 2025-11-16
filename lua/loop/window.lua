@@ -1,5 +1,4 @@
 local M = {}
-local log = require('loop.tools.Logger').create_logger("window")
 local Page = require('loop.pages.Page')
 local EventsPage = require('loop.pages.EventsPage')
 local TaskPage = require('loop.pages.TaskPage')
@@ -112,8 +111,6 @@ local function _setup_active_tab(req_tab)
     if #req_tab.pages == 0 then
         req_tab = _tabs.events
     end
-
-    log:log({ "setting active page: ", req_tab.label })
 
     local page_idx = req_tab.active_page_idx or 1
     assert(page_idx > 0 and page_idx <= #req_tab.pages)
@@ -234,7 +231,6 @@ local function _on_window_enter()
     if win ~= _loop_win then
         local buf = vim.api.nvim_win_get_buf(win)
         if Page.is_page(buf) then
-            log:info("dropping buffer from non-split window")
             local bufnr = vim.api.nvim_create_buf(true, true)
             vim.api.nvim_win_set_buf(win, bufnr)
         end
@@ -396,7 +392,6 @@ function M.setup(_)
         callback = function(args)
             local closed_winid = tonumber(args.match)
             if closed_winid == _loop_win then
-                log:log("detected window close")
                 _loop_win = -1
             else
                 _on_win_new_or_close()

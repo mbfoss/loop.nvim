@@ -1,4 +1,3 @@
-local log = require('loop.tools.Logger').create_logger("breakpoints")
 local json = require('loop.tools.json')
 
 --- Breakpoints sign manager for Neovim.
@@ -44,7 +43,6 @@ end
 --- Remove all signs from a given buffer.
 ---@param bufnr integer Buffer number
 local function _remove_buf_signs(bufnr)
-    log:log('removing all buffer signs')
     vim.fn.sign_unplace(signs_group, { buffer = bufnr })
 end
 
@@ -52,7 +50,6 @@ end
 ---@param bufnr integer Buffer number
 ---@param line integer Line number
 local function _add_buf_sign(bufnr, line)
-    log:log('adding buffer sign ' .. line)
     vim.fn.sign_place(
         _sign_id(bufnr, line), -- sign ID
         signs_group,           -- sign group name
@@ -92,7 +89,6 @@ end
 local function _remove_file_sign(file, line)
     local bufnr = _get_loaded_bufnr(file)
     if bufnr >= 0 then
-        log:log('removing buffer sign ' .. line)
         vim.fn.sign_unplace(signs_group, { buffer = bufnr, id = _sign_id(bufnr, line), })
     end
 end
