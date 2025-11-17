@@ -58,6 +58,11 @@ function FSM:trigger(trigger)
     end)
 end
 
+---@return string
+function FSM:curr_state()
+    return self.current
+end
+
 --- Internal trigger handler (synchronous).
 -- Looks up the next state and performs the transition.
 ---@param trigger string

@@ -1,9 +1,9 @@
 local Page = require('loop.pages.Page')
 local class = require('loop.tools.class')
 
----@class loop.pages.EventsPage: loop.pages.Page
----@field new fun(self: loop.pages.EventsPage) : loop.pages.EventsPage
-local EventsPage = class(Page)
+---@class loop.pages.OutputPage: loop.pages.Page
+---@field new fun(self: loop.pages.OutputPage) : loop.pages.OutputPage
+local OutputPage = class(Page)
 
 ---@type integer
 local events_log_ns = vim.api.nvim_create_namespace("events_log")
@@ -27,13 +27,13 @@ local function append_lines(buf, lines)
     vim.api.nvim_buf_set_lines(buf, count, count, false, lines)
 end
 
-function EventsPage:init()
+function OutputPage:init()
     Page.init(self, "loop-events")
 end
 
 ---@param lines string[]
 ---@param level nil|"info"|"warn"|"error"
-function EventsPage:add_events(lines, level)
+function OutputPage:add_events(lines, level)
     local buf = self:get_or_create_buf()
 
     level = level or "info"
@@ -76,4 +76,4 @@ function EventsPage:add_events(lines, level)
     vim.bo[buf].modifiable = false
 end
 
-return EventsPage
+return OutputPage

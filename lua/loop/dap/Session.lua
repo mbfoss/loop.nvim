@@ -21,15 +21,24 @@ local strtools = require('loop.tools.strtools')
 ---@field run_in_terminal boolean
 ---@field stop_on_entry boolean
 
+---@alias loop.session.TrackerEvent "state"|"output"
+---@alias loop.session.Tracker fun(event:loop.session.TrackerEvent, args:any)
+
 ---@class loop.dap.session.Args
 ---@field name string
 ---@field dap loop.dap.session.Args.DAP
 ---@field target loop.dap.session.Args.Target
----@field output_handler fun(msg_body:table)
+---@field tracker loop.session.Tracker
 ---@field exit_handler fun(code:number)
 
 ---@class loop.dap.Session
 ---@field new fun(self: loop.dap.Session, args:loop.dap.session.Args) : loop.dap.Session
+---@field _name string
+---@field _target loop.dap.session.Args.Target
+---@field _capabilities table<string,string>
+---@field _output_handler fun(msg_body:table)
+---@field _on_exit fun(code:number)
+---@field _tracker loop.session.Tracker
 local Session = class()
 
 ---@param args loop.dap.session.Args
@@ -47,8 +56,19 @@ function Session:init(args)
     self._name = name
     self._target = target
     self._capabilities = {}
-    self._output_handler = args.output_handler
+    self._process_ended = false
+    self._tracker = args.tracker
     self._on_exit = args.exit_handler
+
+    local exit_handler = function(code, signal)
+        vim.schedule(function ()
+            self._process_ended = true
+            self:_notify_about_state()
+        end)
+        if self._on_exit then
+            self._on_exit(code)
+        end
+    end
 
     local cmd_and_args = strtools.cmd_to_string_array(dap.cmd)
     if #cmd_and_args == 0 then
@@ -63,11 +83,7 @@ function Session:init(args)
         dap_args = dap_args, -- dap args
         dap_env = dap.env,
         dap_cwd = dap.cwd,
-        on_exit = function(code, signal)
-            if self._on_exit then
-                self._on_exit(code)
-            end
-        end,
+        on_exit = exit_handler,
     })
 
     self._base_session:set_event_handler("module", function() end)
@@ -91,16 +107,33 @@ function Session:name()
     return self._name or "(Unnamed session)"
 end
 
-function Session:_on_output_event(msg_body)
+---@param event loop.session.TrackerEvent
+---@param args any
+function Session:_notify_tracker(event, args)
+    self._tracker(event, args)
+end
 
+---@return string
+function Session:state()
+    local state = self._process_ended and "ended" or self._fsm:curr_state() 
+    return state
+end
+
+function Session:_notify_about_state()
+    local state = self._process_ended and "ended" or self._fsm:curr_state() 
+    self:_notify_tracker("state", { state = state })
+end
+
+function Session:_on_output_event(msg_body)
+    self:_notify_about_state()
 end
 
 function Session:_on_initialized_event(msg_body)
-
+    self:_notify_about_state()
 end
 
 function Session:_on_stopped_event(msg_body)
-
+    self:_notify_about_state()
 end
 
 function Session:_on_initializing_state()
@@ -166,7 +199,7 @@ function Session:_on_launching_state()
     local targe_args      = unpack(cmdparts, 2)
     local run_in_terminal = target.run_in_terminal
     local stop_on_entry   = target.stop_on_entry
-    
+
     if run_in_terminal and not self._capabilities["supportsRunInTerminalRequest"] then
         self.log:error('run_in_terminal not supported by this adapter')
         self._fsm:trigger("launch_resp_error")
@@ -189,11 +222,11 @@ function Session:_on_launching_state()
 end
 
 function Session:_on_running_state()
+    self:_notify_about_state()
 end
 
 function Session:_on_disconnecting_state()
-    
+    self:_notify_about_state()
 end
-
 
 return Session

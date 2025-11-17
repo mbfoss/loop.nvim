@@ -62,7 +62,9 @@ end
 
 ---@return number -- buffer number
 function Page:get_buf()
-    assert(not self._destroyed)
+    if self._destroyed then
+        return -1
+    end
     return self._buf
 end
 
@@ -132,7 +134,8 @@ function Page:_apply_keymap(key, callback)
     if self._buf ~= -1 then
         local modes = { "n", "t" }
         for _, mode in ipairs(modes) do
-            local ok, err = pcall(vim.api.nvim_buf_del_keymap, self._buf, mode, key)
+            --local ok, err = 
+            pcall(vim.api.nvim_buf_del_keymap, self._buf, mode, key)
             --vim.notify(vim.inspect { 'remove keymap ', ok, err })
         end
         --vim.notify(vim.inspect { 'setting keymap', self._filetype, modes, key, self._buf})

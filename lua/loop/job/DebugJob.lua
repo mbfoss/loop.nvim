@@ -4,10 +4,12 @@ local uitools        = require('loop.tools.uitools')
 local strtools       = require('loop.tools.strtools')
 local Session        = require('loop.dap.Session')
 
----@alias loop.job.DebugJob.NewSessionHandler fun(id:number, session:loop.dap.Session)
+---@alias loop.job.DebugJob.TrackingEvent "session_add"|"session_del"|"session_event"
+---@alias loop.job.DebugJob.Tracker fun(event: loop.job.DebugJob.TrackingEvent, args : any)
 
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
+---@field _tracker loop.job.DebugJob.Tracker
 local DebugJob       = class(Job)
 
 ---@diagnostic disable-next-line: undefined-field
@@ -33,6 +35,7 @@ function DebugJob:kill()
     for _, s in pairs(self._sessions) do
         s:kill()
     end
+    self._sessions = {}
 end
 
 ---@class loop.DebugJob.StartArgs
@@ -54,17 +57,22 @@ function DebugJob:start(args)
     local session_id = self._last_session_id + 1
     self._last_session_id = session_id
 
-    local function exit_handler(code)
+    local function session_exit_handler(code)
         -- this runs in the fast event context, so use schedule hereby
         vim.schedule(function()
-            args.on_exit_handler(code)
+            self:_notify_tracker("session_del", { id = session_id })
+            self._sessions[session_id] = nil
+            if next(self._sessions) == nil then
+                ---no more sessions
+                args.on_exit_handler(code)
+            end
         end)
     end
 
-    local output_handler = function()
-        assert_main_thread()
-        self._sessions[session_id] = nil
-        --TODO
+    ---@param session_event loop.session.TrackerEvent
+    ---@param session_args any
+    local tracker = function(session_event, session_args)
+        self:_notify_tracker("session_event", { id = session_id, event = session_event, event_args = session_args })
     end
 
     ---@type loop.dap.session.Args
@@ -72,35 +80,35 @@ function DebugJob:start(args)
         name = args.name,
         dap = args.debugger,
         target = args.target,
-        output_handler = output_handler,
-        exit_handler = exit_handler
+        tracker = tracker,
+        exit_handler = session_exit_handler
     }
 
     local session = Session:new(session_args)
     self._sessions[session_id] = session
 
-    if self._new_session_handlers then
-        for _,handler in ipairs(self._new_session_handlers) do
-            handler(session_id, session)
-        end
-    end
-    
+    self:_notify_tracker("session_add", { id = session_id, name = session:name(), state = session:state() })
+
     return true
 end
 
----@param on_new_session loop.job.DebugJob.NewSessionHandler
----@return table<number,loop.dap.Session>
-function DebugJob:track_sessions(on_new_session)
-    --shallow clone
-    local copy = {}
-    for k, v in pairs(self._sessions) do
-        copy[k] = v
+---@param tracker loop.job.DebugJob.Tracker
+function DebugJob:track(tracker)
+    assert(not self._tracker)
+    self._tracker = tracker
+    for id, session in pairs(self._sessions) do
+        self._tracker("session_add", { id = id, name = session:name(), state = session:state() })
     end
-    if not self._new_session_handlers then
-        self._new_session_handlers = {}
+end
+
+---@param event loop.job.DebugJob.TrackingEvent
+---@param args any
+function DebugJob:_notify_tracker(event, args)
+    if self._tracker then -- before schedule to sync with DebugJob:track()
+        vim.schedule(function()
+            self._tracker(event, args)
+        end)
     end
-    table.insert(self._new_session_handlers, on_new_session)
-    return copy
 end
 
 return DebugJob
