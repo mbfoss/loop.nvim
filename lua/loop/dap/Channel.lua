@@ -1,5 +1,5 @@
 local json = (vim and vim.json) or require('dkjson')
-local vars = require("loop.tools.vars")
+local strtools = require("loop.tools.strtools")
 local Process = require("loop.dap.Process")
 
 local class = require('loop.tools.class')
@@ -67,7 +67,7 @@ end
 function Channel:send_message(msg)
     assert(msg)
     if msg_log_enabled then
-        log_msg_content("\n========\nSending msg: " .. vars.inspect(msg))
+        log_msg_content("\n========\nSending msg: " .. strtools.to_pretty_str(msg))
     end
 
     local body, encode_err = json.encode(msg)
@@ -125,7 +125,7 @@ function Channel:_on_data(buffer, data)
         end
 
         if msg_log_enabled then
-            log_msg_content("\n========\nReceived msg: " .. vars.inspect(message) .. '\n\n')
+            log_msg_content("\n========\nReceived msg: " .. strtools.to_pretty_str(message) .. '\n\n')
         end
 
         -- 8. Dispatch the message (in the nvim main thread)

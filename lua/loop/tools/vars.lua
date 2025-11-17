@@ -2,22 +2,32 @@ local M = {}
 
 local _project_dir = nil
 
-local function is_regular_file()
+local function _is_regular_file()
 	local buftype = vim.bo.buftype
 	local name = vim.fn.expand("%:p")
 	return buftype == "" and name ~= ""
 end
 
+local vars_requiring_active_file =
+{
+    FILE = true,
+    FILENAME = true,
+    FILEEXT = true,
+    FILEROOT = true,
+    FILEDIR = true,
+    FILETYPE = true,
+}
+
 local user_vars_resolvers = {
 	HOME      = function(_) return os.getenv("HOME") end,
-	FILE      = function(_) return is_regular_file() and vim.fn.expand("%:p") or nil end,
-	FILENAME  = function(_) return is_regular_file() and vim.fn.expand("%:t") or nil end,
-	FILEEXT   = function(_) return is_regular_file() and vim.fn.expand("%:e") or nil end,
-	FILEROOT  = function(_) return is_regular_file() and vim.fn.expand("%:p:r") or nil end,
-	FILEDIR   = function(_) return is_regular_file() and vim.fn.expand("%:p:h") or nil end,
+	FILE      = function(_) return vim.fn.expand("%:p") end,
+	FILENAME  = function(_) return vim.fn.expand("%:t") end,
+	FILEEXT   = function(_) return vim.fn.expand("%:e") end,
+	FILEROOT  = function(_) return vim.fn.expand("%:p:r") end,
+	FILEDIR   = function(_) return vim.fn.expand("%:p:h") end,
 	PROJDIR   = function(args) return _project_dir end,
 	CWD       = function(_) return vim.fn.getcwd() end,
-	FILETYPE  = function(_) return is_regular_file() and vim.bo.filetype or nil end,
+	FILETYPE  = function(_) return vim.bo.filetype end,
 	TMPDIR    = function(_) return os.getenv("TMPDIR") end,
 	DATE      = function(_) return os.date("%F") end,
 	TIME      = function(_) return os.date("%T") end,
@@ -37,6 +47,7 @@ local function try_expand_string(str, check_only)
 		return str, false
 	end
 
+    local is_regular_file = _is_regular_file()
 	local success = true
 	local unresolved_vars = {}
 
@@ -58,6 +69,11 @@ local function try_expand_string(str, check_only)
 			end
 		end
 		-- Handle ${VAR}
+        if not is_regular_file and vars_requiring_active_file[content] == true then
+			success = false
+			table.insert(unresolved_vars, content)
+			return ''            
+        end
 		local resolver = user_vars_resolvers[content]
 		if not resolver then
 			success = false
@@ -142,79 +158,31 @@ local function _expand_strings(tbl, seen, unresolved)
 	return ok
 end
 
-local function value_to_string(t, indent, seen)
-	indent = indent or 0
-	seen = seen or {}
-	local lines = {}
-
-	local function indent_str(level)
-		return string.rep("  ", level)
-	end
-
-	local function is_seen(tbl)
-		for _, v in ipairs(seen) do
-			if v == tbl then return true end
-		end
-		return false
-	end
-
-	if type(t) ~= "table" then
-		return indent_str(indent) .. tostring(t)
-	end
-
-	if is_seen(t) then
-		return indent_str(indent) .. "*recursive table*"
-	end
-
-	table.insert(seen, t)
-	table.insert(lines, indent_str(indent) .. "{")
-
-	for k, v in pairs(t) do
-		local keyStr = "[" .. tostring(k) .. "]"
-		local valueStr
-
-		if type(v) == "table" then
-			valueStr = value_to_string(v, indent + 1, seen)
-		elseif type(v) == "string" then
-			valueStr = '"' .. v .. '"'
-		else
-			valueStr = tostring(v)
-		end
-
-		table.insert(lines, indent_str(indent + 1) .. keyStr .. " = " .. valueStr)
-	end
-
-	table.insert(lines, indent_str(indent) .. "}")
-	return table.concat(lines, "\n")
-end
-
 ---@param proj_dir string
 function M.set_context(proj_dir)
 	_project_dir = proj_dir
 end
 
----@param str string
-function M.expand_string(str)
-	assert(type(str) == 'string')
-	return try_expand_string(str, false)
-end
 
 ---@param tbl table
----@return boolean
----@return string[]
+---@return boolean resolved or not
+---@return string[] unresoved variables
+---@return string explanation|nil
 function M.expand_strings(tbl)
 	if tbl == nil then
-		return false, { "invalid input" }
+		return false, {}, "Invalid input"
 	end
 	assert(type(tbl) == 'table')
 	local unresolved = {}
 	local ok = _expand_strings(tbl, {}, unresolved)
-	return ok, unresolved
-end
-
----@param var any
-function M.inspect(var)
-	return value_to_string(var)
+    explanation = nil
+    for _,v in ipairs(unresolved) do
+        if vars_requiring_active_file[v] then
+            explanation = "No active file"
+            break
+        end
+    end
+	return ok, unresolved, explanation
 end
 
 return M

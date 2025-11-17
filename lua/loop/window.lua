@@ -1,5 +1,6 @@
 local M = {}
 local Page = require('loop.pages.Page')
+local EventsPage = require('loop.pages.EventsPage')
 local OutputPage = require('loop.pages.OutputPage')
 local TaskPage = require('loop.pages.TaskPage')
 local DebugTaskPage = require('loop.pages.DebugTaskPage')
@@ -24,7 +25,7 @@ local _loop_win_height_ratio
 
 local _tabs = {
     ---@type loop.TabInfo
-    events = { label = "Messages", pages = { OutputPage:new("") }, active_page_idx = 1, follow = true },
+    events = { label = "Messages", pages = { EventsPage:new("") }, active_page_idx = 1, follow = true },
     ---@type loop.TabInfo
     tasks = { label = "Tasks", pages = {} },
     ---@type loop.TabInfo
@@ -163,7 +164,7 @@ local function _setup_active_tab(req_tab)
                     if #tab.pages > 1 then
                         label = label .. '(' .. #tab.pages .. ') '
                     end
-                     label = label .. tab.label .. ' '
+                    label = label .. tab.label .. ' '
                 else
                     local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name()
                     if not name or #name == 0 then name = tab.label end
@@ -186,6 +187,17 @@ local function _setup_active_tab(req_tab)
         -- set the winbar
         vim.wo[win].winbar = table.concat(winbar_parts, '')
     end
+end
+
+---@param tab loop.TabInfo
+function _delete_tab_pages(tab)
+    assert(tab ~= _tabs.events)
+    _setup_active_tab(_tabs.events)
+    for _, page in ipairs(tab) do
+        page:destroy()
+    end
+    tab.pages = {}
+    tab.active_page_idx = nil
 end
 
 ---@param tab loop.TabInfo
@@ -263,11 +275,11 @@ end
 function M.add_events(lines, level)
     assert(setup_done)
 
-    ---@type loop.pages.OutputPage|nil
+    ---@type loop.pages.EventsPage|nil
     ---@diagnostic disable-next-line: assign-type-mismatch
     local page = _tabs.events.pages[1]
     assert(page)
-    assert(getmetatable(page) == OutputPage)
+    assert(getmetatable(page) == EventsPage)
     page:add_events(lines, level)
     local buf = page:get_buf()
     if buf > 0 and _loop_win > 0 and vim.api.nvim_win_get_buf(_loop_win) == buf then
@@ -332,12 +344,8 @@ function M.show_task_output()
 end
 
 function M.delete_task_buffers()
-    _setup_active_tab(_tabs.events)
-    for _, page in ipairs(_tabs.tasks.pages) do
-        page:destroy()
-    end
-    _tabs.tasks.pages = {}
-    _tabs.tasks.active_page_idx = nil
+    _delete_tab_pages(_tabs.tasks)
+    _delete_tab_pages(_tabs.debug_output)
 end
 
 ---@param name string -- task name
@@ -370,8 +378,7 @@ function _add_debug_output(context, sess_id, sess_name, output)
         context.output_page[sess_id] = page
         _add_tab_page(_tabs.debug_output, page)
     end
-    output = output:gsub("\r\n?", "\n")
-    page:add_events({ output })
+    page:add_lines({ output })
 end
 
 ---@param page loop.pages.DebugTaskPage
@@ -394,7 +401,7 @@ end
 function _track_debug_job(job, page, context)
     ---@type loop.job.DebugJob.Tracker
     local tracker = function(event, args)
-        vim.notify("debug job event: " .. event .. ', args: ' .. vim.inspect(args))
+        --vim.notify("debug job event: " .. event .. ', args: ' .. vim.inspect(args))
         if event == "session_add" then
             page:add_session(args.id, args.name, args.state)
         elseif event == "session_del" then

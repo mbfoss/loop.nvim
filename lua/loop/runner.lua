@@ -336,11 +336,16 @@ function M.start_task_chain(tasks, on_complete)
 
     local is_unresolved = false
     for _, task in ipairs(chain) do
-        local expand_ok, unresolved = vartools.expand_strings(task)
+        local name = task.name -- keep because the expand_strings may change it
+        local expand_ok, unresolved, explanation = vartools.expand_strings(task)
         if not expand_ok then
             is_unresolved = true
-            window.add_events({ "Failed to resolve variable(s) in task '" .. task.name .. "':", '  ' ..
-            table.concat(unresolved or {}, ', ') }, "error")
+            if explanation then
+                window.add_events({ "Failed to resolve variable(s) in task '" .. name .. "', " .. explanation }, "error")
+            else
+                window.add_events({ "Failed to resolve variable(s) in task '" .. name .. "':", '  ' ..
+                table.concat(unresolved or {}, ', ') }, "error")
+            end
         end
     end
     if is_unresolved then

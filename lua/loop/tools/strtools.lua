@@ -54,81 +54,79 @@ function M.indent_errors(errors, parent_msg)
     return errors
 end
 
-
 ---@param str string
 ---@return string[]
 function M.split_shell_args(str)
-  local args = {}
-  local i = 1
-  local len = #str
+    local args = {}
+    local i = 1
+    local len = #str
 
-  local function skip_ws()
-    while i <= len and str:sub(i, i):match("%s") do
-      i = i + 1
+    local function skip_ws()
+        while i <= len and str:sub(i, i):match("%s") do
+            i = i + 1
+        end
     end
-  end
 
-  local function add(part)
-    if part ~= "" then table.insert(args, part) end
-  end
-
-  while i <= len do
-    skip_ws()
-    if i > len then break end
-
-    local part = {}
-    local in_quote = nil
+    local function add(part)
+        if part ~= "" then table.insert(args, part) end
+    end
 
     while i <= len do
-      local c = str:sub(i, i)
-      local nxt = str:sub(i + 1, i + 1)
+        skip_ws()
+        if i > len then break end
 
-      -- whitespace ends token (unless inside quotes)
-      if not in_quote and c:match("%s") then break end
+        local part = {}
+        local in_quote = nil
 
-      -- start quoted section
-      if not in_quote and (c == '"' or c == "'") then
-        in_quote = c
-        i = i + 1
-        goto continue
-      end
+        while i <= len do
+            local c = str:sub(i, i)
+            local nxt = str:sub(i + 1, i + 1)
 
-      -- end quote
-      if in_quote and c == in_quote then
-        in_quote = nil
-        i = i + 1
-        goto continue
-      end
+            -- whitespace ends token (unless inside quotes)
+            if not in_quote and c:match("%s") then break end
 
-      -- handle backslash escapes
-      if c == "\\" and i + 1 <= len then
-        local esc = nxt
-        -- include escaped char literally
-        if esc == "\n" then
-          i = i + 2  -- line continuation
-        else
-          table.insert(part, esc)
-          i = i + 2
+            -- start quoted section
+            if not in_quote and (c == '"' or c == "'") then
+                in_quote = c
+                i = i + 1
+                goto continue
+            end
+
+            -- end quote
+            if in_quote and c == in_quote then
+                in_quote = nil
+                i = i + 1
+                goto continue
+            end
+
+            -- handle backslash escapes
+            if c == "\\" and i + 1 <= len then
+                local esc = nxt
+                -- include escaped char literally
+                if esc == "\n" then
+                    i = i + 2 -- line continuation
+                else
+                    table.insert(part, esc)
+                    i = i + 2
+                end
+                goto continue
+            end
+
+            table.insert(part, c)
+            i = i + 1
+            ::continue::
         end
-        goto continue
-      end
 
-      table.insert(part, c)
-      i = i + 1
-      ::continue::
+        -- unterminated quote → keep literal opening quote
+        if in_quote then
+            table.insert(part, 1, in_quote)
+        end
+
+        add(table.concat(part))
     end
 
-    -- unterminated quote → keep literal opening quote
-    if in_quote then
-      table.insert(part, 1, in_quote)
-    end
-
-    add(table.concat(part))
-  end
-
-  return args
+    return args
 end
-
 
 ---@param cmd string|string[]
 ---@return string[]
@@ -143,5 +141,64 @@ function M.cmd_to_string_array(cmd)
     return {}
 end
 
+function M.clean_and_split_lines(lines)
+    local result = {}
+    for _, line in ipairs(lines) do
+        -- remove all \r
+        line = line:gsub("\r", "")
+        -- split on \n
+        for part in line:gmatch("([^\n]*)\n?") do
+            if part ~= "" then
+                table.insert(result, part)
+            end
+        end
+    end
+    return result
+end
+
+local function _value_to_string(t, indent, seen)
+    indent = indent or 0
+    seen = seen or {}
+    local lines = {}
+    local function indent_str(level)
+        return string.rep("  ", level)
+    end
+    local function is_seen(tbl)
+        for _, v in ipairs(seen) do
+            if v == tbl then return true end
+        end
+        return false
+    end
+    if type(t) ~= "table" then
+        return indent_str(indent) .. tostring(t)
+    end
+    if is_seen(t) then
+        return indent_str(indent) .. "*recursive table*"
+    end
+    table.insert(seen, t)
+    table.insert(lines, indent_str(indent) .. "{")
+    for k, v in pairs(t) do
+        local keyStr = "[" .. tostring(k) .. "]"
+        local valueStr
+
+        if type(v) == "table" then
+            valueStr = _value_to_string(v, indent + 1, seen)
+        elseif type(v) == "string" then
+            valueStr = '"' .. v .. '"'
+        else
+            valueStr = tostring(v)
+        end
+
+        table.insert(lines, indent_str(indent + 1) .. keyStr .. " = " .. valueStr)
+    end
+    table.insert(lines, indent_str(indent) .. "}")
+    return table.concat(lines, "\n")
+end
+
+
+---@param val any
+function M.to_pretty_str(val)
+    return _value_to_string(val)
+end
 
 return M
