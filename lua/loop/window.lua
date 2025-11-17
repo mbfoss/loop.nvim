@@ -24,16 +24,21 @@ local _loop_win_height_ratio
 
 local _tabs = {
     ---@type loop.TabInfo
-    events = { label = "Messages", pages = { OutputPage:new() }, active_page_idx = 1, follow = true },
+    events = { label = "Messages", pages = { OutputPage:new("") }, active_page_idx = 1, follow = true },
     ---@type loop.TabInfo
     tasks = { label = "Tasks", pages = {} },
     ---@type loop.TabInfo
     breakpoints = { label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
-    debug_output = { label = "Debug output", pages = {} },
+    debug_output = { label = "Debug", pages = {} },
 }
 
-local _tabs_arr = { _tabs.events, _tabs.tasks, _tabs.breakpoints, _tabs.debug }
+local _tabs_arr = {
+    _tabs.events,
+    _tabs.tasks,
+    _tabs.breakpoints,
+    _tabs.debug_output
+}
 
 ---@type loop.TabInfo
 local _active_tab = _tabs.events
@@ -151,19 +156,22 @@ local function _setup_active_tab(req_tab)
             end
             if #tab.pages > 0 then
                 tabidx = tabidx + 1
-                if tabidx ~= 1 then table.insert(winbar_parts, '|') end
+                if tabidx ~= 1 then table.insert(winbar_parts, '| ') end
                 if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-                local label = ' [' .. tostring(tabidx) .. '] ' .. tab.label
-                if active and tab.active_page_idx then
-                    local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name()
+                local label = '[' .. tostring(tabidx) .. '] '
+                if not active then
                     if #tab.pages > 1 then
-                        label = label .. ' - ' .. tab.active_page_idx .. '/' .. #tab.pages
+                        label = label .. '(' .. #tab.pages .. ') '
                     end
-                    if name then label = label .. ' - ' .. name end
-                elseif #tab.pages > 1 then
-                    label = label .. ' (' .. #tab.pages .. ')'
+                     label = label .. tab.label .. ' '
+                else
+                    local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name()
+                    if not name or #name == 0 then name = tab.label end
+                    if #tab.pages > 1 then
+                        label = label .. '(' .. tab.active_page_idx .. '/' .. #tab.pages .. ') '
+                    end
+                    label = label .. name .. ' '
                 end
-                label = label .. ' '
                 table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
                 if active then
                     table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
@@ -178,6 +186,14 @@ local function _setup_active_tab(req_tab)
         -- set the winbar
         vim.wo[win].winbar = table.concat(winbar_parts, '')
     end
+end
+
+---@param tab loop.TabInfo
+---@param page loop.pages.Page
+function _add_tab_page(tab, page)
+    table.insert(tab.pages, page)
+    tab.active_page_idx = #tab.pages
+    _setup_active_tab(tab)
 end
 
 local function protect_split_window_buffer(buf)
@@ -267,12 +283,13 @@ end
 ---@param proj_dir string
 function M.update_breakpoints(breakpoints, proj_dir)
     assert(setup_done)
-    if #_tabs.breakpoints.pages == 0 then
-        table.insert(_tabs.breakpoints.pages, BreakpointsPage:new())
-    end
     ---@type loop.pages.BreakpointsPage
     ---@diagnostic disable-next-line: assign-type-mismatch
     local page = _tabs.breakpoints.pages[1]
+    if not page then
+        page = BreakpointsPage:new()
+        _add_tab_page(_tabs.breakpoints, page)
+    end
     assert(getmetatable(page) == BreakpointsPage)
     if page then
         page:setlist(breakpoints, proj_dir)
@@ -330,38 +347,60 @@ function M.add_term_task(name, bufnr)
     assert(type(name) == "string")
     assert(vim.api.nvim_buf_is_valid(bufnr))
 
-    local page = TaskPage:new()
-    page:set_name(name)
+    local page = TaskPage:new(name)
     page:assign_buf(bufnr)
 
-    table.insert(_tabs.tasks.pages, page)
-    _tabs.tasks.active_page_idx = #_tabs.tasks.pages
+    _add_tab_page(_tabs.tasks, page)
+end
 
-    _setup_active_tab(_tabs.tasks)
+---@param context table
+---@param sess_id number
+---@param sess_name string
+---@param output any
+function _add_debug_output(context, sess_id, sess_name, output)
+    assert(setup_done)
+
+    context.output_page = context.output_page or {}
+
+    ---@type loop.pages.OutputPage|nil
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    local page = context.output_page[sess_id] or nil
+    if not page then
+        page = OutputPage:new(sess_name)
+        context.output_page[sess_id] = page
+        _add_tab_page(_tabs.debug_output, page)
+    end
+    output = output:gsub("\r\n?", "\n")
+    page:add_events({ output })
 end
 
 ---@param page loop.pages.DebugTaskPage
+---@param context table
 ---@param sess_id number
+---@param sess_name string
 ---@param event loop.session.TrackerEvent
 ---@param args any
-function _process_debug_session_event(page, sess_id, event, args)
-    if event == "state" then    
+function _process_debug_session_event(page, context, sess_id, sess_name, event, args)
+    if event == "state" then
         page:set_session_state(sess_id, args.state)
+    elseif event == "output" then
+        _add_debug_output(context, sess_id, sess_name, args.output)
     end
 end
 
 ---@param job loop.job.DebugJob
 ---@param page loop.pages.DebugTaskPage
-function _track_debug_job(job, page)
+---@param context table
+function _track_debug_job(job, page, context)
     ---@type loop.job.DebugJob.Tracker
     local tracker = function(event, args)
-        --vim.notify("debug job event: " .. event .. ', args: ' .. vim.inspect(args))
+        vim.notify("debug job event: " .. event .. ', args: ' .. vim.inspect(args))
         if event == "session_add" then
             page:add_session(args.id, args.name, args.state)
         elseif event == "session_del" then
             page:remove_session(args.id)
         elseif event == "session_event" then
-            _process_debug_session_event(page, args.id, args.event, args.event_args)
+            _process_debug_session_event(page, context, args.id, args.name, args.event, args.event_args)
         end
     end
     job:track(tracker)
@@ -373,14 +412,10 @@ function M.add_debug_task(name, debugjob)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = DebugTaskPage:new()
-    page:set_name(name)
-    -- add page
-    table.insert(_tabs.tasks.pages, page)
-    _tabs.tasks.active_page_idx = #_tabs.tasks.pages
-    _setup_active_tab(_tabs.tasks)
+    local page = DebugTaskPage:new(name)
+    _add_tab_page(_tabs.tasks, page)
     -- track job events
-    _track_debug_job(debugjob, page)
+    _track_debug_job(debugjob, page, {})
 end
 
 ---@param config_dir string

@@ -69,15 +69,19 @@ function DebugJob:start(args)
         end)
     end
 
+    ---@param session loop.dap.Session
     ---@param session_event loop.session.TrackerEvent
     ---@param session_args any
-    local tracker = function(session_event, session_args)
-        self:_notify_tracker("session_event", { id = session_id, event = session_event, event_args = session_args })
+    local tracker = function(session, session_event, session_args)
+        self:_notify_tracker("session_event", { id = session_id, name = session:name(), event = session_event, event_args = session_args })
     end
+
+    local cmd_parts = strtools.cmd_to_string_array(args.target.cmd)
+    local name = vim.fn.fnamemodify(cmd_parts[1] or "", ":t")
 
     ---@type loop.dap.session.Args
     local session_args = {
-        name = args.name,
+        name = name,
         dap = args.debugger,
         target = args.target,
         tracker = tracker,

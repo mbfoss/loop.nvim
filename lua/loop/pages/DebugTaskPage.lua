@@ -3,7 +3,7 @@ local TaskPage = require('loop.pages.TaskPage')
 local uitools = require('loop.tools.uitools')
 
 ---@class loop.pages.DebugTaskPage : loop.pages.TaskPage
----@field new fun(self: loop.pages.DebugTaskPage): loop.pages.DebugTaskPage
+---@field new fun(self: loop.pages.DebugTaskPage, name:string): loop.pages.DebugTaskPage
 local DebugTaskPage = class(TaskPage)
 
 -- ----------------------------------------------------------------------
@@ -12,19 +12,20 @@ local DebugTaskPage = class(TaskPage)
 local function format_entry(entry)
     local parts = {}
     -- 2. File + line
-    table.insert(parts, "[Session ")
+    table.insert(parts, "[")
     table.insert(parts, tostring(entry.id))
+    table.insert(parts, ': ')
+    table.insert(parts, entry.name)
+    table.insert(parts, "] ")
     if entry.state then
-        table.insert(parts, "][")        
         table.insert(parts, entry.state)
     end
-    table.insert(parts, "] - ")
-    table.insert(parts, entry.name)
     return table.concat(parts, "")
 end
 
-function DebugTaskPage:init()
-    TaskPage.init(self)
+---@param name string
+function DebugTaskPage:init(name)
+    TaskPage.init(self, name)
     self._items = {}
 end
 
@@ -32,7 +33,7 @@ end
 ---@param name string
 ---@param state string
 function DebugTaskPage:add_session(id, name, state)
-    table.insert(self._items, { id = id, name = name, state = state })
+    table.insert(self._items, { id = id, name=name, state = state })
     self:_refresh_buffer(self:get_buf())
 end
 
@@ -77,11 +78,14 @@ function DebugTaskPage:_refresh_buffer(buf)
     end
 
     -- 1. Build lines
-    local lines = {"Debug sessions:"}
-    for _, entry in ipairs(self._items) do
-        lines[#lines + 1] = format_entry(entry)
+    local lines = {"Debug task: " .. self:get_name()}
+    if #self._items == 0 then
+        lines[#lines] = "No active sessions"
+    else
+        for _, entry in ipairs(self._items) do
+            lines[#lines + 1] = format_entry(entry)
+        end
     end
-
     -- 2. Update buffer
     vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)

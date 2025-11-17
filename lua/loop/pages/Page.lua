@@ -1,7 +1,7 @@
 local class = require('loop.tools.class')
 
 ---@class loop.pages.Page
----@field new fun(self: loop.pages.Page, filetype : string): loop.pages.Page
+---@field new fun(self: loop.pages.Page, filetype : string, name:string): loop.pages.Page
 local Page = class()
 
 local buffer_flag_key = "loopplugin_page_efc0bed4-145b"
@@ -12,8 +12,10 @@ function Page.is_page(buf)
 end
 
 ---@param filetype string
-function Page:init(filetype)
+---@param name string
+function Page:init(filetype, name)
     self._filetype = filetype
+    self._name = name
     self._buf = -1
 end
 
@@ -38,14 +40,9 @@ function Page:_on_buf_enter()
     end
 end
 
----@param name string
-function Page:set_name(name)
-    self.name = name
-end
-
 ---@return string|nil
 function Page:get_name()
-    return self.name
+    return self._name
 end
 
 ---@param bufnr number

@@ -2,7 +2,7 @@ local Page = require('loop.pages.Page')
 local class = require('loop.tools.class')
 
 ---@class loop.pages.OutputPage: loop.pages.Page
----@field new fun(self: loop.pages.OutputPage) : loop.pages.OutputPage
+---@field new fun(self: loop.pages.OutputPage, name:string) : loop.pages.OutputPage
 local OutputPage = class(Page)
 
 ---@type integer
@@ -27,8 +27,9 @@ local function append_lines(buf, lines)
     vim.api.nvim_buf_set_lines(buf, count, count, false, lines)
 end
 
-function OutputPage:init()
-    Page.init(self, "loop-events")
+---@param name string
+function OutputPage:init(name)
+    Page.init(self, "loop-events", name)
 end
 
 ---@param lines string[]

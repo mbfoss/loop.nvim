@@ -22,7 +22,7 @@ local strtools = require('loop.tools.strtools')
 ---@field stop_on_entry boolean
 
 ---@alias loop.session.TrackerEvent "state"|"output"
----@alias loop.session.Tracker fun(event:loop.session.TrackerEvent, args:any)
+---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.Args
 ---@field name string
@@ -110,7 +110,7 @@ end
 ---@param event loop.session.TrackerEvent
 ---@param args any
 function Session:_notify_tracker(event, args)
-    self._tracker(event, args)
+    self._tracker(self, event, args)
 end
 
 ---@return string
@@ -125,15 +125,14 @@ function Session:_notify_about_state()
 end
 
 function Session:_on_output_event(msg_body)
-    self:_notify_about_state()
+    self:_notify_tracker("output", { category = msg_body.category, output =msg_body.output })
 end
 
 function Session:_on_initialized_event(msg_body)
-    self:_notify_about_state()
 end
 
 function Session:_on_stopped_event(msg_body)
-    self:_notify_about_state()
+    self._fsm:trigger("stopped")
 end
 
 function Session:_on_initializing_state()
@@ -228,5 +227,10 @@ end
 function Session:_on_disconnecting_state()
     self:_notify_about_state()
 end
+
+function Session:_on_stopped_state()
+    self:_notify_about_state()
+end
+
 
 return Session

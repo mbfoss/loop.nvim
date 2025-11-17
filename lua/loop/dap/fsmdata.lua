@@ -44,7 +44,6 @@ function M.create_fsm_data(session)
             stopped = {
                 state_handler = function() session:_on_stopped_state() end,
                 triggers = {
-                    stopped = "stopped",
                 }
             },
             terminating = {
