@@ -32,6 +32,10 @@ function TermProc:kill()
     end
 end
 
+function TermProc:get_pid()
+    return vim.fn.jobpid(self.job_id)
+end
+
 ---@class loop.TermProc.StartArgs
 ---@field name string
 ---@field command string|string[]
@@ -116,7 +120,7 @@ function TermProc:start(args)
         vim.api.nvim_buf_delete(bufnr, { force = true })
         return -1, start_err
     end
-    
+
     return bufnr, nil
 end
 
@@ -150,6 +154,7 @@ function TermProc:_start_term_job(bufnr, cmd_and_args, command_env, command_cwd,
     assert(type(cmd_and_args) ~= 'string')
     self.job_id = vim.fn.jobstart(cmd_and_args, {
         term = true,
+        pty = true,
         cwd = command_cwd,
         env = command_env,
         on_stdout = function(_, data, _)

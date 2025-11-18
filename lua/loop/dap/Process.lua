@@ -38,7 +38,9 @@ function Process:init(name, opts)
     self.stderr = uv.new_pipe(false)
 
     self:_spawn()
-
+    if not self.handle then
+        self:_close_all()
+    end
     return self
 end
 
@@ -81,7 +83,9 @@ function Process:_spawn()
         end
     end)
 
-    assert(handle, "Failed to spawn process")
+    if not handle then
+        return
+    end
 
     self.handle = handle
     self.pid = pid
@@ -132,6 +136,10 @@ function Process:write(data)
     return true
 end
 
+function Process:running()
+    return self.handle ~= nil
+end
+
 -------------------------------------------------
 -- Graceful kill: term → wait → kill
 -------------------------------------------------
@@ -173,6 +181,11 @@ function Process:_close_all()
     safe_close(self.stdout)
     safe_close(self.stderr)
     safe_close(self.handle)
+
+    self.stdin = nil
+    self.stdout = nil
+    self.stderr = nil
+    self.handle = nil
 end
 
 return Process

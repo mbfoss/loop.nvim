@@ -1,10 +1,10 @@
 local class = require('loop.tools.class')
-local TaskPage = require('loop.pages.TaskPage')
+local Page = require('loop.pages.Page')
 local uitools = require('loop.tools.uitools')
 
----@class loop.pages.DebugTaskPage : loop.pages.TaskPage
----@field new fun(self: loop.pages.DebugTaskPage, name:string): loop.pages.DebugTaskPage
-local DebugTaskPage = class(TaskPage)
+---@class loop.pages.DebugTaskPage : loop.pages.Page
+---@field new fun(self: loop.pages.DebugTaskPage, name:string): loop.pages.Page
+local DebugTaskPage = class(Page)
 
 -- ----------------------------------------------------------------------
 -- Format a breakpoint entry for UI (e.g. Telescope, quickfix, etc.)
@@ -25,7 +25,7 @@ end
 
 ---@param name string
 function DebugTaskPage:init(name)
-    TaskPage.init(self, name)
+    Page.init(self, "loop-task", name)
     self._items = {}
 end
 
@@ -63,7 +63,7 @@ function DebugTaskPage:set_session_state(id, state)
 end
 
 function DebugTaskPage:get_or_create_buf()
-    local buf, created = TaskPage.get_or_create_buf(self)
+    local buf, created = Page.get_or_create_buf(self)
     if not created then
         return buf, false
     end

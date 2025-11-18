@@ -21,7 +21,7 @@ local strtools = require('loop.tools.strtools')
 ---@field run_in_terminal boolean
 ---@field stop_on_entry boolean
 
----@alias loop.session.TrackerEvent "state"|"output"
+---@alias loop.session.TrackerEvent "state"|"output"|"runInTerminal_request"
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.Args
@@ -32,7 +32,7 @@ local strtools = require('loop.tools.strtools')
 ---@field exit_handler fun(code:number)
 
 ---@class loop.dap.Session
----@field new fun(self: loop.dap.Session, args:loop.dap.session.Args) : loop.dap.Session
+---@field new fun(self: loop.dap.Session) : loop.dap.Session
 ---@field _name string
 ---@field _target loop.dap.session.Args.Target
 ---@field _capabilities table<string,string>
@@ -41,8 +41,16 @@ local strtools = require('loop.tools.strtools')
 ---@field _tracker loop.session.Tracker
 local Session = class()
 
+function Session:init()
+    self._started = false
+end
+
 ---@param args loop.dap.session.Args
-function Session:init(args)
+---@return boolean,string|nil
+function Session:start(args)
+    assert(not self._started)
+    self._started = true
+
     local name = args.name
     local dap = args.dap
     local target = args.target
@@ -61,7 +69,7 @@ function Session:init(args)
     self._on_exit = args.exit_handler
 
     local exit_handler = function(code, signal)
-        vim.schedule(function ()
+        vim.schedule(function()
             self._process_ended = true
             self:_notify_about_state()
         end)
@@ -72,12 +80,17 @@ function Session:init(args)
 
     local cmd_and_args = strtools.cmd_to_string_array(dap.cmd)
     if #cmd_and_args == 0 then
-        error("Missing DAP process command")
+        return false, "Missing DAP process command"
     end
 
-    local dap_cmd      = cmd_and_args[1]
-    local dap_args     = { unpack(cmd_and_args, 2) }
+    local dap_cmd  = vim.fn.exepath(cmd_and_args[1])
+    if dap_cmd == "" then
+        return false, "Debugger command is not executable: " .. tostring(cmd_and_args[1])
+    end
 
+    local dap_args = { unpack(cmd_and_args, 2) }
+
+    assert(dap_cmd ~= "")
     self._base_session = BaseSession:new(name, {
         dap_cmd = dap_cmd,   -- dap process
         dap_args = dap_args, -- dap args
@@ -86,16 +99,28 @@ function Session:init(args)
         on_exit = exit_handler,
     })
 
+    if not self._base_session:running() then
+        return false, "Failed to start debuger process: " .. tostring(cmd_and_args[1])
+    end
+
     self._base_session:set_event_handler("module", function() end)
     self._base_session:set_event_handler("output", function(msg_body) self:_on_output_event(msg_body) end)
     self._base_session:set_event_handler("initialized", function(msg_body) self:_on_initialized_event(msg_body) end)
     self._base_session:set_event_handler("stopped", function(msg_body) self:_on_stopped_event(msg_body) end)
+
+    self._base_session:set_reverse_request_handler("runInTerminal",
+        function(req_args, on_success, on_failure)
+            self:_on_runInTerminal_request(req_args, on_success, on_failure)
+        end
+    )
 
     -- start the FSM
     self._fsm = FSM:new(name, fsmdata.create_fsm_data(self))
     vim.schedule(function()
         self._fsm:start()
     end)
+
+    return true
 end
 
 function Session:kill()
@@ -115,17 +140,27 @@ end
 
 ---@return string
 function Session:state()
-    local state = self._process_ended and "ended" or self._fsm:curr_state() 
+    local state = self._process_ended and "ended" or self._fsm:curr_state()
     return state
 end
 
 function Session:_notify_about_state()
-    local state = self._process_ended and "ended" or self._fsm:curr_state() 
+    local state = self._process_ended and "ended" or self._fsm:curr_state()
     self:_notify_tracker("state", { state = state })
 end
 
+---@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
+function Session:_on_runInTerminal_request(args, on_success, on_failure)
+    self:_notify_tracker("runInTerminal_request", {
+        args = args,
+        on_success = function(pid) on_success({ processId = pid }) end,
+        on_failure = on_failure
+    }
+    )
+end
+
 function Session:_on_output_event(msg_body)
-    self:_notify_tracker("output", { category = msg_body.category, output =msg_body.output })
+    self:_notify_tracker("output", { category = msg_body.category, output = msg_body.output })
 end
 
 function Session:_on_initialized_event(msg_body)
@@ -140,13 +175,13 @@ function Session:_on_initializing_state()
         if response.success and response.body then
             self._capabilities = response.body
         end
-        if response and response.body and response.body.__lldb and response.body.__lldb.version then
-            if response.body.__lldb.version:match("Apple") then
-                self.log:info("detected apple lldb")
-                self._is_apple_lldb = true
+        if response and response.body and response.body.__lldb ~= nil then
+            if vim.fn.has("mac") == 1 then
+                self.log:info("macos lldb")
+                self._is_macos_lldb = true
             end
         end
-        local success_trigger = self._is_apple_lldb and "initialize_resp_ok_apple_lldb" or "initialize_resp_ok"
+        local success_trigger = self._is_macos_lldb and "initialize_resp_ok_macos_lldb" or "initialize_resp_ok"
         self._fsm:trigger(response.success and success_trigger or "initialize_resp_err")
     end)
 end
@@ -156,7 +191,7 @@ function Session:_on_configuring_state()
     local nb_breakpoints = vim.tbl_count(breakpoints)
     local nb_success = 0
     local nb_failures = 0
-    local success_trigger = self._is_apple_lldb and "configure_success_apple_lldb" or "configure_success"
+    local success_trigger = self._is_macos_lldb and "configure_success_macos_lldb" or "configure_success"
 
     if nb_breakpoints == 0 then
         self._base_session:request_configurationDone(function(configdone_resp)
@@ -215,7 +250,7 @@ function Session:_on_launching_state()
             stopOnEntry = stop_on_entry,
         },
         function(response)
-            local success_trigger = self._is_apple_lldb and "launch_resp_ok_apple_lldb" or "launch_resp_ok"
+            local success_trigger = self._is_macos_lldb and "launch_resp_ok_macos_lldb" or "launch_resp_ok"
             self._fsm:trigger(response.success and success_trigger or "launch_resp_error")
         end)
 end
@@ -231,6 +266,5 @@ end
 function Session:_on_stopped_state()
     self:_notify_about_state()
 end
-
 
 return Session

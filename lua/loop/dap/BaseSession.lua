@@ -1,7 +1,9 @@
 local Channel = require("loop.dap.Channel")
 
+---@alias loop.dap.EventHandler fun(msg_body:table)
+---@alias loop.dap.ReverseRequestHandler fun(req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
+
 local class = require('loop.tools.class')
-local BaseSession = class()
 
 ---@class loop.dap.BaseSession.Opts
 ---@field dap_cmd string
@@ -9,6 +11,15 @@ local BaseSession = class()
 ---@field dap_env string[]|nil
 ---@field dap_cwd string
 ---@field on_exit fun(code:number, signal:number)
+
+
+---@class loop.dap.BaseSession
+---@field new fun(self: loop.dap.BaseSession, name:string, opts : loop.dap.BaseSession.Opts): loop.dap.BaseSession
+---@field request_seq number
+---@field callbacks table<number,function>
+---@field event_handlers table<string,loop.dap.EventHandler>
+---@field reverse_request_handlers table<string,loop.dap.ReverseRequestHandler>
+local BaseSession = class()
 
 ---@param name string
 ---@param opts loop.dap.BaseSession.Opts
@@ -34,6 +45,10 @@ function BaseSession:init(name, opts)
     return self
 end
 
+function BaseSession:running()
+    return self.channel:running()
+end
+
 function BaseSession:_kill()
     self.channel.kill()
 end
@@ -47,8 +62,8 @@ function BaseSession:set_event_handler(event_name, handler)
 end
 
 --- Register a reverse request handler (e.g., "runInTerminal")
--- @param command string
--- @param handler function(arguments) => body
+---@param command string
+---@param handler loop.dap.ReverseRequestHandler
 function BaseSession:set_reverse_request_handler(command, handler)
     assert(not self.event_handlers[command], "another handler exists for command " .. command)
     self.reverse_request_handlers[command] = handler
@@ -61,17 +76,16 @@ function BaseSession:_on_message(msg)
     elseif msg.type == "response" then
         self:_handle_resp(msg)
     elseif msg.type == "request" then
-        local ok, result_or_err = self:_handle_rev_req(msg)
-        self:_response(msg.command, msg.seq, ok, result_or_err)
+        self:_handle_rev_req(msg)
     else
-        self.log:log("Unknown DAP message type:", msg.type)
+        self.log:warn("Unknown DAP message type:" .. msg.type)
     end
 end
 
 function BaseSession:_handle_event(msg)
     local handler = self.event_handlers[msg.event]
     if not handler then
-        self.log:log("Unhandled DAP event: " .. msg.event)
+        self.log:warn("Unhandled DAP event: " .. msg.event)
         return
     end
     local cb_error = function(err)
@@ -102,23 +116,36 @@ function BaseSession:_handle_resp(msg)
 end
 
 function BaseSession:_handle_rev_req(msg)
-    local handler = self.reverse_request_handlers[msg.command]
-    local ok = false
-    local result_or_err = nil
-    if handler then
-        local cb_error = function(err)
-            self.log:error("In rev-request handler for " .. (msg.command or "?") .. "\n" .. debug.traceback(
-                "Error: " .. tostring(err) .. "\n", 2))
+    local resp_sent = false
+    local on_success = function(resp_body)
+        if not resp_sent then
+            self:_response(msg.command, msg.seq, true, resp_body)
+            resp_sent = true
         end
-		local err
-        ok,err = xpcall(function() handler(msg.arguments) end, cb_error)
-        if not ok then
-            self.log:error({ "Error in response handler reverse request ", msg.command, err })
-        end
-    else
-        result_or_err = "No handler for reverse request: " .. tostring(msg.command)
     end
-    return ok, result_or_err
+    ---@param reason string
+    local on_failure = function(reason)
+        if not resp_sent then
+            self:_response(msg.command, msg.seq, false, reason)
+            resp_sent = true
+        end
+    end
+
+    ---@type loop.dap.ReverseRequestHandler
+    local handler = self.reverse_request_handlers[msg.command]
+    if not handler then
+        on_failure("No handler for reverse request")
+        return
+    end
+
+    local cb_error = function(err)
+        self.log:error("In rev-request handler for " .. (msg.command or "?") .. "\n" .. debug.traceback(
+            "Error: " .. tostring(err) .. "\n", 2))
+    end
+    ok = xpcall(function() handler(msg.arguments, on_success, on_failure) end, cb_error)
+    if not ok then
+        on_failure("Error in reverse request handler")
+    end
 end
 
 --- Public: send a DAP request

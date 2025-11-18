@@ -137,7 +137,7 @@ local function _get_dap_config(task)
     end
     local cmd = strtools.cmd_to_string_array(cfg.command)
     if #cmd == 0 or vim.fn.executable(cmd[1]) == 0 then
-        return nil, "Debugger command is not executable: '" .. cmd[1] "'"
+        return nil, "Debugger command is not executable: '" .. tostring(cmd[1]) .. "'"
     end
     ---@type loop.dap.session.Args.DAP
     local dap = {

@@ -12,7 +12,7 @@ function M.create_fsm_data(session)
                 desc = "Initializing",
                 state_handler = function() session:_on_initializing_state() end,
                 triggers = {
-                    initialize_resp_ok_apple_lldb = "launching",
+                    initialize_resp_ok_macos_lldb = "launching",
                     initialize_resp_ok = "configuring",
                     initialize_resp_err = "disconnecting",
                 }
@@ -21,7 +21,7 @@ function M.create_fsm_data(session)
                 state_handler = function() session:_on_configuring_state() end,
                 triggers = {
                     configure_success = "launching",
-                    configure_success_apple_lldb = "running",
+                    configure_success_macos_lldb = "running",
                     configure_error = "terminating",
                     terminated = 'terminating',
                     disconnect = "disconnecting",
@@ -31,7 +31,7 @@ function M.create_fsm_data(session)
                 state_handler = function() session:_on_launching_state() end,
                 triggers = {
                     launch_resp_ok = "running",
-                    launch_resp_ok_apple_lldb = "configuring",
+                    launch_resp_ok_macos_lldb = "configuring",
                     launch_resp_error = "disconnecting",
                 }
             },

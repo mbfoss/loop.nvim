@@ -12,7 +12,7 @@ local M = {}
 M.defaut_config = {
     debuggers = {
         lldb = {
-            command = "/Library/Developer/CommandLineTools/usr/bin/lldb-dap",
+            command = "lldb-dap",
         },
         pthon = {
             command = "python -m debugpy.adapter"

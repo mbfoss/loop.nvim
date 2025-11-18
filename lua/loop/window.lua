@@ -2,11 +2,11 @@ local M = {}
 local Page = require('loop.pages.Page')
 local EventsPage = require('loop.pages.EventsPage')
 local OutputPage = require('loop.pages.OutputPage')
-local TaskPage = require('loop.pages.TaskPage')
 local DebugTaskPage = require('loop.pages.DebugTaskPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
+local TermProc = require('loop.job.TermProc')
 
 ---@type boolean
 local setup_done = false
@@ -27,18 +27,21 @@ local _tabs = {
     ---@type loop.TabInfo
     events = { label = "Messages", pages = { EventsPage:new("") }, active_page_idx = 1, follow = true },
     ---@type loop.TabInfo
-    tasks = { label = "Tasks", pages = {} },
+    tasks = { label = "Task", pages = {} },
     ---@type loop.TabInfo
     breakpoints = { label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
-    debug_output = { label = "Debug", pages = {} },
+    debug_output = { label = "Debug Output", pages = {} },
+    ---@type loop.TabInfo
+    debug_term = { label = "Debug Term", pages = {} },
 }
 
 local _tabs_arr = {
     _tabs.events,
     _tabs.tasks,
     _tabs.breakpoints,
-    _tabs.debug_output
+    _tabs.debug_output,
+    _tabs.debug_term,
 }
 
 ---@type loop.TabInfo
@@ -355,7 +358,7 @@ function M.add_term_task(name, bufnr)
     assert(type(name) == "string")
     assert(vim.api.nvim_buf_is_valid(bufnr))
 
-    local page = TaskPage:new(name)
+    local page = Page:new("loop-task", name)
     page:assign_buf(bufnr)
 
     _add_tab_page(_tabs.tasks, page)
@@ -368,17 +371,50 @@ end
 function _add_debug_output(context, sess_id, sess_name, output)
     assert(setup_done)
 
-    context.output_page = context.output_page or {}
+    context.output_pages = context.output_pages or {}
 
     ---@type loop.pages.OutputPage|nil
     ---@diagnostic disable-next-line: assign-type-mismatch
-    local page = context.output_page[sess_id] or nil
+    local page = context.output_pages[sess_id] or nil
     if not page then
         page = OutputPage:new(sess_name)
-        context.output_page[sess_id] = page
+        context.output_pages[sess_id] = page
         _add_tab_page(_tabs.debug_output, page)
     end
     page:add_lines({ output })
+end
+
+---@param name string
+---@param args table
+---@param on_success fun(pid:number)
+---@param on_failure fun(reason:string)
+function _add_debug_term(name, args, on_success, on_failure)
+    --vim.notify(vim.inspect{name, args, on_success, on_failure})
+
+    assert(setup_done)
+    assert(type(name) == "string")
+    assert(type(args) == "table")
+    assert(type(on_success) == "function")
+    assert(type(on_failure) == "function")
+
+    local proc = TermProc:new()
+    local bufnr, proc_err = proc:start({
+        name = name,
+        command = args.args,
+        env = args.env,
+        cwd = args.cwd,
+        on_exit_handler = function (code)            
+        end
+    })
+    if bufnr <= 0 then
+        on_failure(proc_err or "target startup error")
+        return
+    end
+    local pid = proc:get_pid()
+    local page = Page:new("loop-term", name)
+    page:assign_buf(bufnr)
+    _add_tab_page(_tabs.debug_term, page)
+    on_success(pid)
 end
 
 ---@param page loop.pages.DebugTaskPage
@@ -392,6 +428,11 @@ function _process_debug_session_event(page, context, sess_id, sess_name, event, 
         page:set_session_state(sess_id, args.state)
     elseif event == "output" then
         _add_debug_output(context, sess_id, sess_name, args.output)
+    elseif event == "runInTerminal_request" then
+        --vim.notify(vim.inspect(args))
+        _add_debug_term(sess_name, args.args, args.on_success, args.on_failure)
+    else
+        error("unhandled dap session event: " .. event)
     end
 end
 

@@ -54,6 +54,13 @@ function DebugJob:start(args)
 
     assert(args.on_exit_handler)
 
+    local cmd_parts = strtools.cmd_to_string_array(args.target.cmd)
+    local name = vim.fn.fnamemodify(cmd_parts[1] or "", ":t")
+
+    if vim.fn.executable(cmd_parts[1]) == 0 then
+        return false, "Debug target is not an executable: " .. tostring(cmd_parts[1])
+    end    
+
     local session_id = self._last_session_id + 1
     self._last_session_id = session_id
 
@@ -76,9 +83,6 @@ function DebugJob:start(args)
         self:_notify_tracker("session_event", { id = session_id, name = session:name(), event = session_event, event_args = session_args })
     end
 
-    local cmd_parts = strtools.cmd_to_string_array(args.target.cmd)
-    local name = vim.fn.fnamemodify(cmd_parts[1] or "", ":t")
-
     ---@type loop.dap.session.Args
     local session_args = {
         name = name,
@@ -88,7 +92,12 @@ function DebugJob:start(args)
         exit_handler = session_exit_handler
     }
 
-    local session = Session:new(session_args)
+    local session = Session:new()
+    local started, start_err = session:start(session_args)
+    if not started then
+        return false, "Failed to start debug session, " .. start_err
+    end
+
     self._sessions[session_id] = session
 
     self:_notify_tracker("session_add", { id = session_id, name = session:name(), state = session:state() })

@@ -32,6 +32,10 @@ function Channel:init(name, opts)
     return self
 end
 
+function Channel:running()
+    return self.process:running()
+end
+
 function Channel:kill()
     self.process:kill()
 end
