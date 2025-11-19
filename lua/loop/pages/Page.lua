@@ -118,7 +118,11 @@ function Page:_setup_buf()
     })
 end
 
----@param keymaps table<string,function>
+---@class loop.pages.page.KeyMapItem
+---@field callback fun()
+---@field desc string
+
+---@param keymaps table<string,loop.pages.page.KeyMapItem>
 function Page:set_keymaps(keymaps)
     self.keymaps = keymaps
     self:_apply_keymaps()
@@ -126,15 +130,15 @@ end
 
 function Page:_apply_keymaps()
     if self.keymaps then
-        for key, callback in pairs(self.keymaps) do
-            self:_apply_keymap(key, callback)
+        for key, item in pairs(self.keymaps) do
+            self:_apply_keymap(key, item)
         end
     end
 end
 
 ---@param key string
----@param callback fun()
-function Page:_apply_keymap(key, callback)
+---@param item loop.pages.page.KeyMapItem
+function Page:_apply_keymap(key, item)
     if self._buf ~= -1 then
         local modes = { "n", "t" }
         for _, mode in ipairs(modes) do
@@ -144,8 +148,8 @@ function Page:_apply_keymap(key, callback)
         end
         --vim.notify(vim.inspect { 'setting keymap', self._type, modes, key, self._buf})
         vim.keymap.set(modes, key, function()
-            callback()
-        end, { buffer = self._buf })
+            item.callback()
+        end, { buffer = self._buf , desc = item.desc})
     end
 end
 

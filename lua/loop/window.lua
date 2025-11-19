@@ -33,7 +33,6 @@ local _tabs = {
     ---@type loop.TabInfo
     debug_term = { label = "Debug Term", pages = {} },
 }
-
 local _tabs_arr = {
     _tabs.events,
     _tabs.tasks,
@@ -41,9 +40,8 @@ local _tabs_arr = {
     _tabs.debug_output,
     _tabs.debug_term,
 }
-
----@type loop.TabInfo
-local _active_tab = _tabs.events
+---@type number
+local _active_tab_idx = 1
 
 ---@param vim_tab_id number
 ---@return number
@@ -95,24 +93,8 @@ local function _on_win_new_or_close()
     end
 end
 
-
----@param target_tab loop.TabInfo
-local function _tab_key_handler(target_tab, setup_active_tab)
-    if vim.api.nvim_get_current_win() ~= _loop_win then
-        return
-    end
-    if target_tab == _active_tab then
-        if #_active_tab.pages > 1 then
-            local idx = _active_tab.active_page_idx
-            idx = idx and (idx + 1) or 1
-            if idx > #_active_tab.pages then
-                idx = 1
-            end
-            _active_tab.active_page_idx = idx
-        end
-    end
-    setup_active_tab(target_tab)
-end
+---@type fun(action: "next"|"prev")
+local _cycle_pages
 
 ---@param req_tab loop.TabInfo
 local function _setup_active_tab(req_tab)
@@ -124,20 +106,18 @@ local function _setup_active_tab(req_tab)
     assert(page_idx > 0 and page_idx <= #req_tab.pages)
 
     --- set keymaps
-    do
-        local keymaps = {}
-        local idx = 0
-        for _, tab in ipairs(_tabs_arr) do
-            if #tab.pages > 0 then
-                idx = idx + 1
-                local key = tostring(idx)
-                keymaps[key] = function()
-                    _tab_key_handler(tab, _setup_active_tab)
-                end
-            end
-        end
-        req_tab.pages[page_idx]:set_keymaps(keymaps)
-    end
+    ---@type table<string,loop.pages.page.KeyMapItem>
+    local keymaps = {
+        ["<c-p>"] = {
+            callback = function() _cycle_pages("prev") end,
+            desc = "Move to previous page",
+        },
+        ["<c-n>"] = {
+            callback = function() _cycle_pages("next") end,
+            desc = "Move to previous page",
+        },
+    }
+    req_tab.pages[page_idx]:set_keymaps(keymaps)
 
     -- update window if visible
     if _loop_win ~= -1 then
@@ -147,6 +127,7 @@ local function _setup_active_tab(req_tab)
         for arr_idx, tab in ipairs(_tabs_arr) do
             local active = false
             if req_tab == tab then
+                _active_tab_idx = arr_idx
                 active = true
                 _active_tab = tab
                 local buf = tab.pages[page_idx]:get_or_create_buf()
@@ -156,15 +137,14 @@ local function _setup_active_tab(req_tab)
                 tabidx = tabidx + 1
                 if tabidx ~= 1 then table.insert(winbar_parts, '| ') end
                 if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-                local label = '[' .. tostring(tabidx) .. '] '
+                local label = tab.label
                 if #tab.pages > 1 then
                     if not active then
-                        label = label .. '(' .. #tab.pages .. ') '
+                        label = label .. ' (' .. #tab.pages .. ') '
                     else
-                        label = label .. '(' .. tab.active_page_idx .. '/' .. #tab.pages .. ') '
+                        label = label .. ' (' .. tab.active_page_idx .. '/' .. #tab.pages .. ') '
                     end
                 end
-                label = label .. tab.label .. ' '
                 table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
                 if active then
                     table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
@@ -179,6 +159,48 @@ local function _setup_active_tab(req_tab)
         -- set the winbar
         vim.wo[win].winbar = table.concat(winbar_parts, '')
     end
+end
+
+
+---@param req_tabidx number
+---@param req_pageidx number|nil
+local function _setup_active_tab_idx(req_tabidx, req_pageidx)
+    local req_tab = _tabs_arr[req_tabidx]
+    assert(req_tab)
+    if not req_tab or #req_tab.pages == 0 then
+        return
+    end
+    if req_pageidx and req_pageidx > 0 and req_pageidx <= #req_tab.pages then
+        req_tab.active_page_idx = req_pageidx
+    end
+    _setup_active_tab(req_tab)
+end
+
+---@param action "next"|"prev"
+_cycle_pages = function(action)
+    if vim.api.nvim_get_current_win() ~= _loop_win then return end
+
+    local tabidx = _active_tab_idx
+    local tab = _tabs_arr[tabidx]
+    local pageidx = tab.active_page_idx or 1
+
+    local dir = action == "next" and 1 or -1
+
+    if (#tab.pages > 0) then
+        pageidx = pageidx + dir
+    end
+
+    -- if page goes out of bounds, move to next/prev tab with pages
+    if pageidx < 1 or pageidx > #tab.pages then
+        local start_idx = tabidx
+        repeat
+            tabidx = (tabidx - 1 + dir) % #_tabs_arr + 1
+            tab = _tabs_arr[tabidx]
+        until (#tab.pages > 0) or (tabidx == start_idx)
+        pageidx = dir == 1 and 1 or #tab.pages
+    end
+
+    _setup_active_tab_idx(tabidx, pageidx)
 end
 
 ---@param tab loop.TabInfo
@@ -203,7 +225,7 @@ end
 local function protect_split_window_buffer(buf)
     if not Page.is_page(buf) then
         vim.schedule(function()
-            _setup_active_tab(_active_tab)
+            _setup_active_tab_idx(_active_tab_idx, nil)
             if vim.api.nvim_buf_is_valid(buf) then
                 uitools.smart_open_buffer(buf)
             end
@@ -411,10 +433,10 @@ end
 ---@param args any
 function _process_debug_session_event(page, context, sess_id, sess_name, event, args)
     if event == "state" then
-        page:add_lines({"Session " .. sess_id .. " state: " .. args.state})
+        page:add_lines({ "Session " .. sess_id .. " state: " .. args.state })
     elseif event == "output" then
         if args.category == "console" then
-             page:add_lines({"Session " .. sess_id .. ": " .. args.output})
+            page:add_lines({ "Session " .. sess_id .. ": " .. args.output })
         else
             _add_debug_output(context, sess_id, sess_name, args.category, args.output)
         end
@@ -434,10 +456,10 @@ function _track_debug_job(job, page, context)
     local tracker = function(event, args)
         --vim.notify("debug job event: " .. event .. ', args: ' .. vim.inspect(args))
         if event == "session_add" then
-            page:add_lines({"New session created: " .. tostring(args.id) .. ' - ' .. tostring(args.name)})            
-            page:add_lines({"Session " .. tostring(args.id) .. " state: " .. args.state})
+            page:add_lines({ "New session created: " .. tostring(args.id) .. ' - ' .. tostring(args.name) })
+            page:add_lines({ "Session " .. tostring(args.id) .. " state: " .. args.state })
         elseif event == "session_del" then
-            page:add_lines({"Session removed: " .. tostring(args.id) .. ' - ' .. tostring(args.name)})            
+            page:add_lines({ "Session removed: " .. tostring(args.id) .. ' - ' .. tostring(args.name) })
         elseif event == "session_event" then
             _process_debug_session_event(page, context, args.id, args.name, args.event, args.event_args)
         end
