@@ -43,6 +43,17 @@ function EventsPage:add_events(lines, level)
     local timestamp = os.date("%H:%M:%S")
     local line_count = vim.api.nvim_buf_line_count(buf)
 
+    local on_last_line = false
+    local cur_win = vim.api.nvim_get_current_win()
+    if vim.api.nvim_win_get_buf(cur_win) == buf then
+        -- Get current cursor position
+        local cur = vim.api.nvim_win_get_cursor(cur_win)
+        local cur_line = cur[1]
+        if cur_line == line_count then
+            on_last_line = true
+        end
+    end
+
     -- Prepare formatted lines
     local formatted_lines = {}
     local prefixes = {}
@@ -74,18 +85,9 @@ function EventsPage:add_events(lines, level)
         })
     end
 
-    if buf > 0 then
-        local win = vim.api.nvim_get_current_win()
-        if vim.api.nvim_win_get_buf(win) == buf then
-            local last_line = vim.api.nvim_buf_line_count(buf)
-            -- Get current cursor position
-            local cur = vim.api.nvim_win_get_cursor(win)
-            local cur_line = cur[1]
-            if cur_line == last_line then
-                -- Move cursor to last line, col 0
-                vim.api.nvim_win_set_cursor(win, { last_line, 0 })
-            end
-        end
+    if on_last_line and vim.api.nvim_win_get_buf(cur_win) == buf then
+        local last_line = vim.api.nvim_buf_line_count(buf)
+        vim.api.nvim_win_set_cursor(cur_win, { last_line, 0 })
     end
 
     vim.bo[buf].modifiable = false

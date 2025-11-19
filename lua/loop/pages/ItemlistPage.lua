@@ -2,13 +2,10 @@ local class = require('loop.tools.class')
 local Page = require('loop.pages.Page')
 local uitools = require('loop.tools.uitools')
 
----@class loop.pages.DebugTaskPage : loop.pages.Page
----@field new fun(self: loop.pages.DebugTaskPage, name:string): loop.pages.Page
-local DebugTaskPage = class(Page)
+---@class loop.pages.ItemListPage : loop.pages.Page
+---@field new fun(self: loop.pages.ItemListPage, name:string): loop.pages.Page
+local ItemListPage = class(Page)
 
--- ----------------------------------------------------------------------
--- Format a breakpoint entry for UI (e.g. Telescope, quickfix, etc.)
--- ----------------------------------------------------------------------
 local function format_entry(entry)
     local parts = {}
     -- 2. File + line
@@ -17,28 +14,24 @@ local function format_entry(entry)
     table.insert(parts, ': ')
     table.insert(parts, entry.name)
     table.insert(parts, "] ")
-    if entry.state then
-        table.insert(parts, entry.state)
-    end
     return table.concat(parts, "")
 end
 
 ---@param name string
-function DebugTaskPage:init(name)
+function ItemListPage:init(name)
     Page.init(self, "task", name)
     self._items = {}
 end
 
 ---@param id number
 ---@param name string
----@param state string
-function DebugTaskPage:add_session(id, name, state)
-    table.insert(self._items, { id = id, name=name, state = state })
+function ItemListPage:add_item(id, name)
+    table.insert(self._items, { id = id, name=name})
     self:_refresh_buffer(self:get_buf())
 end
 
 ---@param id number
-function DebugTaskPage:remove_session(id)
+function ItemListPage:remove_item(id)
     vim.defer_fn(function ()
         for idx,item in ipairs(self._items) do
             if item.id == id then
@@ -50,19 +43,7 @@ function DebugTaskPage:remove_session(id)
     end, 15000)
 end
 
----@param id number
----@param state string
-function DebugTaskPage:set_session_state(id, state)
-    for idx,item in ipairs(self._items) do
-        if item.id == id then
-            item.state = state
-            self:_refresh_buffer(self:get_buf())
-            break
-        end
-    end
-end
-
-function DebugTaskPage:get_or_create_buf()
+function ItemListPage:get_or_create_buf()
     local buf, created = Page.get_or_create_buf(self)
     if not created then
         return buf, false
@@ -72,7 +53,7 @@ function DebugTaskPage:get_or_create_buf()
 end
 
 ---@param buf number
-function DebugTaskPage:_refresh_buffer(buf)
+function ItemListPage:_refresh_buffer(buf)
     if not buf or not vim.api.nvim_buf_is_valid(buf) then
         return
     end
@@ -92,4 +73,4 @@ function DebugTaskPage:_refresh_buffer(buf)
     vim.bo[buf].modifiable = false
 end
 
-return DebugTaskPage
+return ItemListPage

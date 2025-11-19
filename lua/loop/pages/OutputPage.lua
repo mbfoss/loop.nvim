@@ -8,7 +8,8 @@ local OutputPage = class(Page)
 
 ---@param buf integer
 ---@param lines string[]
-local function append_lines(buf, lines)
+---@param error_highlight boolean|nil
+local function append_lines(buf, lines, error_highlight)
     lines = strtools.clean_and_split_lines(lines)
     local count = vim.api.nvim_buf_line_count(buf)
     -- If buffer is empty and first line is "", replace instead of append
@@ -29,11 +30,12 @@ function OutputPage:init(name)
 end
 
 ---@param lines string[]
-function OutputPage:add_lines(lines)
+---@param error_highlight boolean|nil
+function OutputPage:add_lines(lines, error_highlight)
     local buf = self:get_or_create_buf()
 
     vim.bo[buf].modifiable = true
-    append_lines(buf, lines)
+    append_lines(buf, lines, error_highlight)
     vim.bo[buf].modifiable = false
 end
 
