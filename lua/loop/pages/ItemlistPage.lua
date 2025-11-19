@@ -26,21 +26,19 @@ end
 ---@param id number
 ---@param name string
 function ItemListPage:add_item(id, name)
-    table.insert(self._items, { id = id, name=name})
+    table.insert(self._items, { id = id, name = name })
     self:_refresh_buffer(self:get_buf())
 end
 
 ---@param id number
 function ItemListPage:remove_item(id)
-    vim.defer_fn(function ()
-        for idx,item in ipairs(self._items) do
-            if item.id == id then
-                self._items[idx] = nil
-                self:_refresh_buffer(self:get_buf())
-                break
-            end
-        end        
-    end, 15000)
+    for idx, item in ipairs(self._items) do
+        if item.id == id then
+            self._items[idx] = nil
+            self:_refresh_buffer(self:get_buf())
+            break
+        end
+    end
 end
 
 function ItemListPage:get_or_create_buf()
@@ -59,7 +57,7 @@ function ItemListPage:_refresh_buffer(buf)
     end
 
     -- 1. Build lines
-    local lines = {"Debug task: " .. self:get_name()}
+    local lines = { "Debug task: " .. self:get_name() }
     if #self._items == 0 then
         lines[#lines] = "No active sessions"
     else

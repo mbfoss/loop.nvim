@@ -2,7 +2,6 @@ local M = {}
 local Page = require('loop.pages.Page')
 local EventsPage = require('loop.pages.EventsPage')
 local OutputPage = require('loop.pages.OutputPage')
-local DebugTaskPage = require('loop.pages.DebugTaskPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
@@ -334,6 +333,7 @@ end
 function M.delete_task_buffers()
     _delete_tab_pages(_tabs.tasks)
     _delete_tab_pages(_tabs.debug_output)
+    _delete_tab_pages(_tabs.debug_term)
 end
 
 ---@param name string -- task name
@@ -367,7 +367,7 @@ function _add_debug_output(context, sess_id, sess_name, category, output)
         context.output_pages[sess_id] = page
         _add_tab_page(_tabs.debug_output, page)
     end
-    page:add_lines({ output })
+    page:add_lines({ output }, category == "stderr")
 end
 
 ---@param name string
@@ -403,7 +403,7 @@ function _add_debug_term(name, args, on_success, on_failure)
     on_success(pid)
 end
 
----@param page loop.pages.DebugTaskPage
+---@param page loop.pages.OutputPage
 ---@param context table
 ---@param sess_id number
 ---@param sess_name string
@@ -411,9 +411,13 @@ end
 ---@param args any
 function _process_debug_session_event(page, context, sess_id, sess_name, event, args)
     if event == "state" then
-        page:set_session_state(sess_id, args.state)
+        page:add_lines({"Session " .. sess_id .. " state: " .. args.state})
     elseif event == "output" then
-        _add_debug_output(context, sess_id, sess_name, args.category, args.output)
+        if args.category == "console" then
+             page:add_lines({"Session " .. sess_id .. ": " .. args.output})
+        else
+            _add_debug_output(context, sess_id, sess_name, args.category, args.output)
+        end
     elseif event == "runInTerminal_request" then
         --vim.notify(vim.inspect(args))
         _add_debug_term(sess_name, args.args, args.on_success, args.on_failure)
@@ -423,16 +427,17 @@ function _process_debug_session_event(page, context, sess_id, sess_name, event, 
 end
 
 ---@param job loop.job.DebugJob
----@param page loop.pages.DebugTaskPage
+---@param page loop.pages.OutputPage
 ---@param context table
 function _track_debug_job(job, page, context)
     ---@type loop.job.DebugJob.Tracker
     local tracker = function(event, args)
         --vim.notify("debug job event: " .. event .. ', args: ' .. vim.inspect(args))
         if event == "session_add" then
-            page:add_session(args.id, args.name, args.state)
+            page:add_lines({"New session created: " .. tostring(args.id) .. ' - ' .. tostring(args.name)})            
+            page:add_lines({"Session " .. tostring(args.id) .. " state: " .. args.state})
         elseif event == "session_del" then
-            page:remove_session(args.id)
+            page:add_lines({"Session removed: " .. tostring(args.id) .. ' - ' .. tostring(args.name)})            
         elseif event == "session_event" then
             _process_debug_session_event(page, context, args.id, args.name, args.event, args.event_args)
         end
@@ -446,7 +451,7 @@ function M.add_debug_task(name, debugjob)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = DebugTaskPage:new(name)
+    local page = OutputPage:new(name)
     _add_tab_page(_tabs.tasks, page)
     -- track job events
     _track_debug_job(debugjob, page, {})

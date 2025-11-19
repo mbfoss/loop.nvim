@@ -8,7 +8,7 @@ local uitools = require('loop.tools.uitools')
 local BreakpointsPage = class(Page)
 
 -- Static namespace for extmarks
-local NS_ID = vim.api.nvim_create_namespace('loop-breakpoints-hl')
+local NS_ID = vim.api.nvim_create_namespace('LoopPluginBreakpointsPageHl')
 
 -- ----------------------------------------------------------------------
 -- Helper: pick the right sign for a breakpoint

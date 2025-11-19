@@ -86,14 +86,12 @@ function Page:_setup_buf()
 
     vim.api.nvim_buf_set_var(self._buf, buffer_flag_key, 1)
 
-    if vim.api.nvim_buf_get_name(self._buf) == "" then
-        local bufname = "loop://" .. tostring(self._buf) .. '/' .. self._type
-        if self._name and #self._name > 0 then
-            bufname = bufname .. '/' .. self._name
-        end
-        vim.notify(bufname)
-        vim.api.nvim_buf_set_name(self._buf, bufname)
+    local bufname = "loop://" .. tostring(self._buf) .. '/' .. self._type
+    if self._name and #self._name > 0 then
+        bufname = bufname .. '/' .. self._name
     end
+    --vim.notify(bufname)
+    vim.api.nvim_buf_set_name(self._buf, bufname)
 
     if vim.bo[self._buf].buftype == "" then
         vim.bo[self._buf].buftype = "nofile"

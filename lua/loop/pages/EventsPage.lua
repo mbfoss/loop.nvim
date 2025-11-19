@@ -7,7 +7,7 @@ local class = require('loop.tools.class')
 local EventsPage = class(Page)
 
 ---@type integer
-local events_log_ns = vim.api.nvim_create_namespace("events_log")
+local events_log_ns = vim.api.nvim_create_namespace("LoopPluginEventsPageHl")
 
 ---@param buf integer
 ---@param lines string[]
@@ -41,9 +41,9 @@ function EventsPage:add_events(lines, level)
     vim.bo[buf].modifiable = true
 
     local timestamp = os.date("%H:%M:%S")
-    local line_count = vim.api.nvim_buf_line_count(buf)
 
     local on_last_line = false
+    local line_count = vim.api.nvim_buf_line_count(buf)
     local cur_win = vim.api.nvim_get_current_win()
     if vim.api.nvim_win_get_buf(cur_win) == buf then
         -- Get current cursor position
