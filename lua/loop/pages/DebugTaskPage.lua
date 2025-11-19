@@ -25,7 +25,7 @@ end
 
 ---@param name string
 function DebugTaskPage:init(name)
-    Page.init(self, "loop-task", name)
+    Page.init(self, "task", name)
     self._items = {}
 end
 

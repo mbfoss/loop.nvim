@@ -20,12 +20,11 @@ local _loop_win_height_ratio
 ---@field label string
 ---@field pages loop.pages.Page[]
 ---@field active_page_idx number|nil
----@field follow boolean|nil
 
 
 local _tabs = {
     ---@type loop.TabInfo
-    events = { label = "Messages", pages = { EventsPage:new("") }, active_page_idx = 1, follow = true },
+    events = { label = "Messages", pages = { EventsPage:new("Messages") }, active_page_idx = 1 },
     ---@type loop.TabInfo
     tasks = { label = "Task", pages = {} },
     ---@type loop.TabInfo
@@ -153,29 +152,20 @@ local function _setup_active_tab(req_tab)
                 _active_tab = tab
                 local buf = tab.pages[page_idx]:get_or_create_buf()
                 vim.api.nvim_win_set_buf(win, buf)
-                if tab.follow then
-                    local last_line = vim.api.nvim_buf_line_count(buf)
-                    vim.api.nvim_win_set_cursor(win, { last_line, 0 })
-                end
             end
             if #tab.pages > 0 then
                 tabidx = tabidx + 1
                 if tabidx ~= 1 then table.insert(winbar_parts, '| ') end
                 if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
                 local label = '[' .. tostring(tabidx) .. '] '
-                if not active then
-                    if #tab.pages > 1 then
+                if #tab.pages > 1 then
+                    if not active then
                         label = label .. '(' .. #tab.pages .. ') '
-                    end
-                    label = label .. tab.label .. ' '
-                else
-                    local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name()
-                    if not name or #name == 0 then name = tab.label end
-                    if #tab.pages > 1 then
+                    else
                         label = label .. '(' .. tab.active_page_idx .. '/' .. #tab.pages .. ') '
                     end
-                    label = label .. name .. ' '
                 end
+                label = label .. tab.label .. ' '
                 table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
                 if active then
                     table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
@@ -284,11 +274,6 @@ function M.add_events(lines, level)
     assert(page)
     assert(getmetatable(page) == EventsPage)
     page:add_events(lines, level)
-    local buf = page:get_buf()
-    if buf > 0 and _loop_win > 0 and vim.api.nvim_win_get_buf(_loop_win) == buf then
-        local last_line = vim.api.nvim_buf_line_count(buf)
-        vim.api.nvim_win_set_cursor(_loop_win, { last_line, 0 })
-    end
     if level == "error" then
         M.show_events()
     end
@@ -358,7 +343,7 @@ function M.add_term_task(name, bufnr)
     assert(type(name) == "string")
     assert(vim.api.nvim_buf_is_valid(bufnr))
 
-    local page = Page:new("loop-task", name)
+    local page = Page:new("task", name)
     page:assign_buf(bufnr)
 
     _add_tab_page(_tabs.tasks, page)
@@ -367,8 +352,9 @@ end
 ---@param context table
 ---@param sess_id number
 ---@param sess_name string
----@param output any
-function _add_debug_output(context, sess_id, sess_name, output)
+---@param category string
+---@param output string
+function _add_debug_output(context, sess_id, sess_name, category, output)
     assert(setup_done)
 
     context.output_pages = context.output_pages or {}
@@ -403,7 +389,7 @@ function _add_debug_term(name, args, on_success, on_failure)
         command = args.args,
         env = args.env,
         cwd = args.cwd,
-        on_exit_handler = function (code)            
+        on_exit_handler = function(code)
         end
     })
     if bufnr <= 0 then
@@ -411,7 +397,7 @@ function _add_debug_term(name, args, on_success, on_failure)
         return
     end
     local pid = proc:get_pid()
-    local page = Page:new("loop-term", name)
+    local page = Page:new("term", name)
     page:assign_buf(bufnr)
     _add_tab_page(_tabs.debug_term, page)
     on_success(pid)
@@ -427,7 +413,7 @@ function _process_debug_session_event(page, context, sess_id, sess_name, event, 
     if event == "state" then
         page:set_session_state(sess_id, args.state)
     elseif event == "output" then
-        _add_debug_output(context, sess_id, sess_name, args.output)
+        _add_debug_output(context, sess_id, sess_name, args.category, args.output)
     elseif event == "runInTerminal_request" then
         --vim.notify(vim.inspect(args))
         _add_debug_term(sess_name, args.args, args.on_success, args.on_failure)

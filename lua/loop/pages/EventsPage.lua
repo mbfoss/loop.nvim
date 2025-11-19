@@ -11,7 +11,7 @@ local events_log_ns = vim.api.nvim_create_namespace("events_log")
 
 ---@param buf integer
 ---@param lines string[]
-local function append_lines(buf, lines)    
+local function append_lines(buf, lines)
     lines = strtools.clean_and_split_lines(lines)
     local count = vim.api.nvim_buf_line_count(buf)
     -- If buffer is empty and first line is "", replace instead of append
@@ -28,7 +28,8 @@ end
 
 ---@param name string
 function EventsPage:init(name)
-    Page.init(self, "loop-events", name)
+    Page.init(self, "events", name)
+    self:follow_last_line()
 end
 
 ---@param lines string[]
@@ -71,6 +72,20 @@ function EventsPage:add_events(lines, level)
             end_col = end_col,
             hl_group = hl_group,
         })
+    end
+
+    if buf > 0 then
+        local win = vim.api.nvim_get_current_win()
+        if vim.api.nvim_win_get_buf(win) == buf then
+            local last_line = vim.api.nvim_buf_line_count(buf)
+            -- Get current cursor position
+            local cur = vim.api.nvim_win_get_cursor(win)
+            local cur_line = cur[1]
+            if cur_line == last_line then
+                -- Move cursor to last line, col 0
+                vim.api.nvim_win_set_cursor(win, { last_line, 0 })
+            end
+        end
     end
 
     vim.bo[buf].modifiable = false

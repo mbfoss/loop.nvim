@@ -25,7 +25,7 @@ end
 
 ---@param name string
 function OutputPage:init(name)
-    Page.init(self, "loop-output", name)
+    Page.init(self, "output", name)
 end
 
 ---@param lines string[]
