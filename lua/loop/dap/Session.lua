@@ -138,17 +138,23 @@ function Session:_notify_tracker(event, data)
     self._tracker(self, event, data)
 end
 
+function Session:_notify_about_state()
+    local state = self._process_ended and "ended" or self._fsm:curr_state()
+    ---@class loop.dap.session.notify.StateData
+    local data = { state = state }
+    self:_notify_tracker("state", data)
+end
+
 ---@return string
 function Session:state()
     local state = self._process_ended and "ended" or self._fsm:curr_state()
     return state
 end
 
-function Session:_notify_about_state()
-    local state = self._process_ended and "ended" or self._fsm:curr_state()
-    ---@class loop.dap.session.notify.StateData
-    local data = { state = state }
-    self:_notify_tracker("state", data)
+function Session:debug_continue()
+    self._base_session:request_continue({}, function (response)
+        
+    end)
 end
 
 ---@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))

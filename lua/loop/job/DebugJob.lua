@@ -124,4 +124,10 @@ function DebugJob:_notify_tracker(event, data)
     end
 end
 
+function DebugJob:debug_continue()
+    for _,s in pairs(self._sessions) do
+        s:debug_continue()
+    end
+end
+
 return DebugJob

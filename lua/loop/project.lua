@@ -271,10 +271,7 @@ end
 
 ---@param command string|nil
 function M.debug_command(command)
-    if command == 'command' then
-    elseif command == 'attach' then
-    end
-    vim.notify('loop.nvim: Invalid debug command: ' .. tostring(command))
+    taskmgr.debug_task_command(command)
 end
 
 function M.show_window()
