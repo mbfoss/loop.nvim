@@ -6,6 +6,7 @@ local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local TermProc = require('loop.job.TermProc')
+local selector = require("loop.selector")
 
 ---@type boolean
 local setup_done = false
@@ -116,6 +117,10 @@ local function _setup_active_tab(req_tab)
             callback = function() _cycle_pages("next") end,
             desc = "Move to previous page",
         },
+        ["<c-l>"] = {
+            callback = _ui_select_page,
+            desc = "Select page",
+        },
     }
     req_tab.pages[page_idx]:set_keymaps(keymaps)
 
@@ -201,6 +206,30 @@ _cycle_pages = function(action)
     end
 
     _setup_active_tab_idx(tabidx, pageidx)
+end
+
+function _ui_select_page()
+    local choices = {}
+    for tabidx, tab in ipairs(_tabs_arr) do
+        for pageidx, page in ipairs(tab.pages) do
+            local label = tab.label 
+            local name = page:get_name()
+            if name and name ~= "" and name ~= label then
+                label = label .. ': ' .. name        
+            end
+            ---@type loop.SelectorItem
+            local item = {
+                label = label,
+                data = {tabidx = tabidx, pageidx = pageidx},
+            }
+            table.insert(choices, item)
+        end
+    end
+    selector.select("Select page", choices, nil, function(data)
+        if data and data.tabidx then
+            _setup_active_tab_idx(data.tabidx, data.pageix)
+        end
+    end)
 end
 
 ---@param tab loop.TabInfo

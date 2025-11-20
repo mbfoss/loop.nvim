@@ -1,14 +1,13 @@
 -- File: lua/selector_menu.lua
 -- A unified selector menu that uses Telescope if available, otherwise falls back to a simple native picker.
--- Items must have: { label = string, content = table }
+-- Items must have: { label = string, data = table }
 -- Callback now receives the selected item (or nil) instead of index.
 
 ---@class loop.SelectorItem
 ---@field label string The display label in the picker
----@field content table The table to show in preview via vim.inspect()
----@field formatter function(fun(content:table):string) Convert the content into json for display in the preview
+---@field data table The table to show in preview via vim.inspect()
 
----@alias loop.SelectorCallback fun(item: loop.SelectorItem|nil): nil
+---@alias loop.SelectorCallback fun(data:table|nil): nil
 
 local M = {}
 
@@ -37,7 +36,7 @@ local function default_select(prompt, items, callback)
         end
         for _, item in ipairs(items) do
             if item.label == selected_label then
-                callback(item)
+                callback(item.data)
                 return
             end
         end
@@ -64,35 +63,25 @@ local function load_telescope()
     return false
 end
 --- Use Telescope to show the selector
---- @param prompt string The prompt title
---- @param items loop.SelectorItem[] List of items
---- @param callback fun(item: loop.SelectorItem|nil) Called with selected item or nil
-local function telescope_select(prompt, items, callback)
+---@param prompt string The prompt title
+---@param items loop.SelectorItem[] List of items
+---@param formatter (fun(data:table):string)|nil Convert the data into text for display in the preview
+---@param callback fun(data:table|nil) Called with selected item or nil
+local function telescope_select(prompt, items, formatter, callback)
     -- Ensure Telescope is loaded
     if not (pickers and finders and previewers and conf and actions and action_state) then
         return
     end
-    pickers.new({}, {
-        prompt_title = prompt,
-        finder = finders.new_table({
-            results = items,
-            --- @param entry loop.SelectorItem
-            entry_maker = function(entry)
-                return {
-                    value = entry,
-                    display = entry.label,
-                    ordinal = entry.label,
-                }
-            end,
-        }),
+    local previewer
+    if formatter then
         previewer = previewers.new_buffer_previewer({
             title = "Details",
             --- @param self table
             --- @param entry table
             --- @param status table
             define_preview = function(self, entry, status)
-                -- Format and split content into lines
-                local formatted = entry.value.formatter(entry.value.content)
+                -- Format and split data into lines
+                local formatted = formatter(entry.value.data)
                 local lines = vim.split(formatted, "\n")
                 -- Set lines in the preview buffer
                 vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
@@ -107,7 +96,21 @@ local function telescope_select(prompt, items, callback)
                 vim.wo[win].spell = false
             end,
         })
-        ,
+    end
+    pickers.new({}, {
+        prompt_title = prompt,
+        finder = finders.new_table({
+            results = items,
+            --- @param entry loop.SelectorItem
+            entry_maker = function(entry)
+                return {
+                    value = entry,
+                    display = entry.label,
+                    ordinal = entry.label,
+                }
+            end,
+        }),
+        previewer = previewer,
         sorter = conf.generic_sorter({}),
         attach_mappings = function(prompt_bufnr, map)
             -- Replace default select action
@@ -115,8 +118,8 @@ local function telescope_select(prompt, items, callback)
                 actions.close(prompt_bufnr)
                 local selection = action_state.get_selected_entry()
                 local item = selection and selection.value or nil
-                if callback then
-                    callback(item)
+                if item and callback then
+                    callback(item.data)
                 end
             end)
             -- Optional: allow <C-c> to cancel
@@ -139,10 +142,11 @@ local function load_snacks()
 end
 
 -- Use Snacks.nvim picker as fallback
---- @param prompt string
---- @param items loop.SelectorItem[]
---- @param callback loop.SelectorCallback
-local function snacks_select(prompt, items, callback)
+---@param prompt string
+---@param items loop.SelectorItem[]
+---@param formatter (fun(data:table):string)|nil Convert the data into text for display in the preview
+---@param callback loop.SelectorCallback
+local function snacks_select(prompt, items, formatter, callback)
     local snacks = require("snacks")
 
     -- Map items for Snacks.nvim
@@ -151,9 +155,20 @@ local function snacks_select(prompt, items, callback)
         table.insert(snack_items, {
             text = item.label,
             value = item,
-            file = "",
-            formatter = item.formatter
+            file = ""
         })
+    end
+
+    local previewer
+    if formatter then
+        previewer = function(ctx)
+            local jsonstr = formatter(ctx.item.value.data)
+            vim.bo[ctx.buf].modifiable = true
+            vim.api.nvim_buf_set_lines(ctx.buf, 0, -1, false, vim.split(jsonstr, "\n"))
+            vim.bo[ctx.buf].modifiable = false
+            vim.bo[ctx.buf].filetype = "json"
+            return true
+        end
     end
 
     -- Show the picker
@@ -161,31 +176,25 @@ local function snacks_select(prompt, items, callback)
         title = prompt,
         items = snack_items,
         format = "text",
-        preview = function(ctx)
-            local jsonstr = ctx.item.formatter(ctx.item.value.content)
-            vim.bo[ctx.buf].modifiable = true
-            vim.api.nvim_buf_set_lines(ctx.buf, 0, -1, false, vim.split(jsonstr, "\n"))
-            vim.bo[ctx.buf].modifiable = false
-            vim.bo[ctx.buf].filetype = "json"
-            return true
-        end,
+        preview = previewer,
         confirm = function(picker, item)
             vim.schedule(function()
                 picker:close()
-                if callback and item then
-                    callback(item.value)
+                if callback and item and item.value then
+                    callback(item.value.data)
                 end
             end)
         end
     })
 end
 
---- Select an item from a list with label and content preview.
+--- Select an item from a list with label and data preview.
 --- Uses Telescope if available; otherwise falls back to a simple native picker.
---- @param prompt string The prompt/title to display
---- @param items loop.SelectorItem[] List of items with label and content table
---- @param callback loop.SelectorCallback Called with selected item or nil if cancelled
-function M.select(prompt, items, callback)
+---@param prompt string The prompt/title to display
+---@param items loop.SelectorItem[] List of items with label and data table
+---@param formatter (fun(data:table):string)|nil Convert the data into text for display in the preview
+---@param callback loop.SelectorCallback Called with selected item or nil if cancelled
+function M.select(prompt, items, formatter, callback)
     -- Input validation
     if type(prompt) ~= "string" or prompt == "" then
         prompt = "Select an item"
@@ -199,14 +208,14 @@ function M.select(prompt, items, callback)
     end
     -- Validate item structure
     for i, item in ipairs(items) do
-        if type(item) ~= "table" or type(item.label) ~= "string" or type(item.content) ~= "table" then
-            error(string.format("selector_menu.select: item %d must have .label (string) and .content (table)", i))
+        if type(item) ~= "table" or type(item.label) ~= "string" or type(item.data) ~= "table" then
+            error(string.format("selector_menu.select: item %d must have .label (string) and .data (table)", i))
         end
     end
     if load_telescope() then
-        telescope_select(prompt, items, callback)
+        telescope_select(prompt, items, formatter, callback)
     elseif load_snacks() then
-        snacks_select(prompt, items, callback)
+        snacks_select(prompt, items, formatter, callback)
     else
         default_select(prompt, items, callback)
     end

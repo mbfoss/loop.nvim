@@ -25,18 +25,12 @@ function _add_task(config_dir, templates, prompt)
         ---@type loop.SelectorItem
         local item = {
             label = '[' .. template.type .. '] ' .. template.name,
-            content = template,
-            formatter = _task_as_json
+            data = template,
         }
         table.insert(choices, item)
     end
-    selector.select(prompt, choices, function(item)
-        if item then
-            local template = item.content
-            if not template then
-                vim.notify("Loop.nvim: Failed to load project task template\n")
-                return
-            end
+    selector.select(prompt, choices, _task_as_json, function(template)
+        if template then
             local ok, errors = taskstore.add_task(config_dir, template)
             if not ok then
                 window.add_events(strtools.indent_errors(errors, "Failed to add task"), "error")
@@ -83,15 +77,12 @@ local function _select_task(args, task_handler)
         ---@type loop.SelectorItem
         local item = {
             label = task.name,
-            content = task,
-            formatter = _task_as_json
+            data = task,
         }
         table.insert(choices, item)
     end
-    selector.select(args.prompt, choices, function(item)
-        if item then
-            local task = item.content
-            assert(task)
+    selector.select(args.prompt, choices, _task_as_json, function(task)
+        if task then
             task_handler(task)
         end
     end)
