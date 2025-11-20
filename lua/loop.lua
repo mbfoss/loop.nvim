@@ -40,7 +40,7 @@ local function _loop_command(calls, opts)
     local args = vim.split(opts.args, "%s+")
     local subcmd = args[1]
     if not subcmd or subcmd == "" then
-        vim.notify("Usage: :Loop <subcommand> [args...]", vim.log.levels.WARN)
+        vim.notify("Usage: :Loop <command> [args...]", vim.log.levels.WARN)
         return
     end
     local fn = calls[subcmd]

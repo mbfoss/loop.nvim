@@ -2,20 +2,14 @@ local class = require('loop.tools.class')
 local Page = require('loop.pages.Page')
 local uitools = require('loop.tools.uitools')
 
+---@class loop.pages.ItemListPage.Item
+---@field id number
+---@field text string
+
 ---@class loop.pages.ItemListPage : loop.pages.Page
 ---@field new fun(self: loop.pages.ItemListPage, name:string): loop.pages.Page
+---@field _items loop.pages.ItemListPage.Item[]
 local ItemListPage = class(Page)
-
-local function format_entry(entry)
-    local parts = {}
-    -- 2. File + line
-    table.insert(parts, "[")
-    table.insert(parts, tostring(entry.id))
-    table.insert(parts, ': ')
-    table.insert(parts, entry.name)
-    table.insert(parts, "] ")
-    return table.concat(parts, "")
-end
 
 ---@param name string
 function ItemListPage:init(name)
@@ -23,10 +17,16 @@ function ItemListPage:init(name)
     self._items = {}
 end
 
+---@param items loop.pages.ItemListPage.Item[]
+function ItemListPage:set_items(items)
+    self._items = items
+    self:_refresh_buffer(self:get_buf())
+end
+
 ---@param id number
 ---@param name string
 function ItemListPage:add_item(id, name)
-    table.insert(self._items, { id = id, name = name })
+    table.insert(self._items, { id = id, text = name })
     self:_refresh_buffer(self:get_buf())
 end
 
@@ -57,13 +57,9 @@ function ItemListPage:_refresh_buffer(buf)
     end
 
     -- 1. Build lines
-    local lines = { "Debug task: " .. self:get_name() }
-    if #self._items == 0 then
-        lines[#lines] = "No active sessions"
-    else
-        for _, entry in ipairs(self._items) do
-            lines[#lines + 1] = format_entry(entry)
-        end
+    local lines = {}
+    for _, item in ipairs(self._items) do
+        lines[#lines + 1] = item.text
     end
     -- 2. Update buffer
     vim.bo[buf].modifiable = true

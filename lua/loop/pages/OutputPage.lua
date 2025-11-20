@@ -9,19 +9,31 @@ local _error_hl_ns = vim.api.nvim_create_namespace("LoopPluginOutputPageHl")
 ---@field new fun(self: loop.pages.OutputPage, name:string) : loop.pages.OutputPage
 local OutputPage = class(Page)
 
+
+local _hl_groups = {
+    warn = "LoopPluginEventWarn",
+    error = "LoopPluginEventsError"
+};
+
 ---@param buf integer
 ---@param lines string[]
----@param error_highlight boolean|nil
-local function append_lines(buf, lines, error_highlight)
+---@param highlight nil|"warn"|"error"
+---@param highligh_endcol nil|number
+local function append_lines(buf, lines, highlight, highligh_endcol)
     lines = strtools.clean_and_split_lines(lines)
     local count = vim.api.nvim_buf_line_count(buf)
+
+    local hl_group = _hl_groups[highlight]
 
     local _highlight_line = function(row)
         local line_text = vim.api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ""
         local end_col = #line_text
+        if highligh_endcol then
+            end_col = math.min(end_col, highligh_endcol)
+        end
         vim.api.nvim_buf_set_extmark(buf, _error_hl_ns, row, 0, {
             end_col = end_col,
-            hl_group = 'ErrorMsg',
+            hl_group = hl_group,
         })
     end
 
@@ -30,9 +42,8 @@ local function append_lines(buf, lines, error_highlight)
         local firstln = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
         if firstln == "" then
             vim.api.nvim_buf_set_lines(buf, 0, 1, false, lines)
-
             -- highlight replacement if requested
-            if error_highlight then
+            if highlight then
                 for i = 0, #lines - 1 do
                     _highlight_line(i)
                 end
@@ -46,7 +57,7 @@ local function append_lines(buf, lines, error_highlight)
     vim.api.nvim_buf_set_lines(buf, count, count, false, lines)
 
     -- Highlight newly added lines if requested
-    if error_highlight then
+    if highlight then
         for i = 0, #lines - 1 do
             local row = count + i
             _highlight_line(row)
@@ -61,8 +72,9 @@ function OutputPage:init(name)
 end
 
 ---@param lines string[]
----@param error_highlight boolean|nil
-function OutputPage:add_lines(lines, error_highlight)
+---@param highlight nil|"warn"|"error"
+---@param highligh_endcol nil|number
+function OutputPage:add_lines(lines, highlight, highligh_endcol)
     local buf = self:get_or_create_buf()
 
     local on_last_line = false
@@ -78,7 +90,7 @@ function OutputPage:add_lines(lines, error_highlight)
     end
 
     vim.bo[buf].modifiable = true
-    append_lines(buf, lines, error_highlight)
+    append_lines(buf, lines, highlight, highligh_endcol)
     vim.bo[buf].modifiable = false
 
     if on_last_line and vim.api.nvim_win_get_buf(cur_win) == buf then

@@ -1,7 +1,7 @@
 local M = {}
 local Page = require('loop.pages.Page')
-local EventsPage = require('loop.pages.EventsPage')
 local OutputPage = require('loop.pages.OutputPage')
+local ItemListPage = require('loop.pages.ItemListPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
@@ -25,20 +25,22 @@ local _loop_win_height_ratio
 
 local _tabs = {
     ---@type loop.TabInfo
-    events = { label = "Messages", pages = { EventsPage:new("Messages") }, active_page_idx = 1 },
-    ---@type loop.TabInfo
-    tasks = { label = "Task", pages = {}, list_prefix = "[Task]"},
+    events = { label = "Messages", pages = { OutputPage:new("Messages") }, active_page_idx = 1 },
     ---@type loop.TabInfo
     breakpoints = { label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
-    debug = { label = "Debug", pages = {} , list_prefix = "[Debug]"},
+    tasks = { label = "Task", pages = {}, list_prefix = "[Task]" },
     ---@type loop.TabInfo
+    debug = { label = "Debug", pages = {}, list_prefix = "[Debug]" },
+    ---@type loop.TabInfo
+    threads = { label = "Threads", pages = {}, list_prefix = "[Threads]" },
 }
 local _tabs_arr = {
     _tabs.events,
-    _tabs.tasks,
     _tabs.breakpoints,
+    _tabs.tasks,
     _tabs.debug,
+    _tabs.threads,
 }
 ---@type number
 local _active_tab_idx = 1
@@ -146,11 +148,12 @@ local function _setup_active_tab(req_tab)
                 local label = tab.label
                 if #tab.pages > 1 then
                     if not active then
-                        label = label .. ' (' .. #tab.pages .. ') '
+                        label = label .. ' (' .. #tab.pages .. ')'
                     else
-                        label = label .. ' (' .. tab.active_page_idx .. '/' .. #tab.pages .. ') '
+                        label = label .. ' (' .. tab.active_page_idx .. '/' .. #tab.pages .. ')'
                     end
                 end
+                label = label .. ' '
                 table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
                 if active then
                     table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
@@ -213,15 +216,15 @@ function _ui_select_page()
     local choices = {}
     for tabidx, tab in ipairs(_tabs_arr) do
         for pageidx, page in ipairs(tab.pages) do
-            local label = tab.label 
+            local label = tab.label
             local name = page:get_name()
             if name and name ~= "" and name ~= label then
-                label = label .. ': ' .. name        
+                label = label .. ': ' .. name
             end
             ---@type loop.SelectorItem
             local item = {
                 label = label,
-                data = {tabidx = tabidx, pageidx = pageidx},
+                data = { tabidx = tabidx, pageidx = pageidx },
             }
             table.insert(choices, item)
         end
@@ -315,16 +318,21 @@ local function _on_window_enter()
 end
 
 ---@param lines string[]
----@param level nil|"info"|"warn"|"error"
+---@param level nil|"warn"|"error"
 function M.add_events(lines, level)
     assert(setup_done)
 
-    ---@type loop.pages.EventsPage|nil
+    ---@type loop.pages.OutputPage|nil
     ---@diagnostic disable-next-line: assign-type-mismatch
     local page = _tabs.events.pages[1]
     assert(page)
-    assert(getmetatable(page) == EventsPage)
-    page:add_events(lines, level)
+    assert(getmetatable(page) == OutputPage)
+    local timestamp = os.date("%H:%M:%S")
+    local output = {}
+    for _, line in ipairs(lines) do
+        table.insert(output, timestamp .. ' ' .. line)
+    end
+    page:add_lines(output, level, #timestamp)
     if level == "error" then
         M.show_events()
     end
@@ -418,7 +426,39 @@ function _add_debug_output(context, sess_id, sess_name, category, output)
         context.output_pages[sess_id] = page
         _add_tab_page(_tabs.debug, page)
     end
-    page:add_lines({ output }, category == "stderr")
+
+    local level = category == "stderr" and "error" or nil
+    page:add_lines({ output }, level)
+end
+
+---@param context table
+---@param sess_id number
+---@param sess_name string
+---@param threads table<number,table>
+function _show_debug_threads(context, sess_id, sess_name, threads)
+    assert(setup_done)
+    context.threads_pages = context.threads_pages or {}
+
+    ---@type loop.pages.ItemListPage|nil
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    local page = context.threads_pages[sess_id] or nil
+    if not page then
+        page = ItemListPage:new(sess_name)
+        context.threads_pages[sess_id] = page
+        _add_tab_page(_tabs.threads, page)
+    end
+    ---@type loop.pages.ItemListPage.Item[]
+    items = {}
+    vim.notify(vim.inspect(threads))
+    for _, thread in ipairs(threads) do
+        ---@type loop.pages.ItemListPage.Item
+        local item = {
+            id = thread.id,
+            text = tostring(thread.id) .. ': ' .. tostring(thread.name)
+        }
+        table.insert(items, item)
+    end
+    page:set_items(items)
 end
 
 ---@param name string
@@ -460,18 +500,31 @@ end
 ---@param sess_name string
 ---@param event loop.session.TrackerEvent
 ---@param args any
-function _process_debug_session_event(page, context, sess_id, sess_name, event, args)
-    if event == "state" then
-        page:add_lines({ "Session " .. sess_id .. " state: " .. args.state })
+function _process_debug_session_event(page, context, sess_id, sess_name, event, data)
+    if event == "log" then
+        ---@type loop.dap.session.notify.LogData
+        local log = data
+        page:add_lines(vim.list_extend({ "Session " .. sess_id .. " " }, log.lines), log.level)
+    elseif event == "state" then
+        ---@type loop.dap.session.notify.StateData
+        local state = data
+        page:add_lines({ "Session " .. sess_id .. " state: " .. state.state })
     elseif event == "output" then
-        if args.category == "console" then
-            page:add_lines({ "Session " .. sess_id .. ": " .. args.output })
+        ---@type loop.dap.session.notify.OutputData
+        local output = data
+        if output.category == "stdout" or output.category == "stderr" then
+            _add_debug_output(context, sess_id, sess_name, output.category, output.output)
+        elseif output.category == "console" then
+            page:add_lines({ "Session " .. sess_id .. ": " .. output.output })
         else
-            _add_debug_output(context, sess_id, sess_name, args.category, args.output)
+            page:add_lines({ "Session " .. sess_id .. ": (" .. output.category ") " .. output.output })
         end
     elseif event == "runInTerminal_request" then
-        --vim.notify(vim.inspect(args))
-        _add_debug_term(sess_name, args.args, args.on_success, args.on_failure)
+        ---@type loop.dap.session.notify.RunInTerminalReq
+        local request = data
+        _add_debug_term(sess_name, request.args, request.on_success, request.on_failure)
+    elseif event == "threads" then
+        _show_debug_threads(context, sess_id, sess_name, data.threads or {})
     else
         error("unhandled dap session event: " .. event)
     end
@@ -490,10 +543,10 @@ function _track_debug_job(job, page, context)
         elseif event == "session_del" then
             page:add_lines({ "Session removed: " .. tostring(args.id) .. ' - ' .. tostring(args.name) })
         elseif event == "session_event" then
-            _process_debug_session_event(page, context, args.id, args.name, args.event, args.event_args)
+            _process_debug_session_event(page, context, args.id, args.name, args.event, args.event_data)
         end
     end
-    page:add_lines({"Debug task started"}, true)
+    page:add_lines({ "Debug task started" }, "warn")
     job:track(tracker)
 end
 
@@ -534,9 +587,8 @@ function M.setup(_)
     do
         vim.api.nvim_set_hl(0, "LoopPluginInactiveTab", { link = "WinBar" })
         vim.api.nvim_set_hl(0, "LoopPluginActiveTab", { link = "Special" })
-        vim.api.nvim_set_hl(0, "LoopPluginEventInfo", { link = "Normal" })
-        vim.api.nvim_set_hl(0, "LoopPluginEventWarn", { link = "DiagnosticWarn" })
-        vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "DiagnosticError" })
+        vim.api.nvim_set_hl(0, "LoopPluginEventWarn", { link = "WarningMsg" })
+        vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "ErrorMsg" })
     end
 
     vim.api.nvim_create_autocmd("WinEnter", { callback = _on_window_enter })

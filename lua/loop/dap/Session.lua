@@ -21,7 +21,7 @@ local strtools = require('loop.tools.strtools')
 ---@field run_in_terminal boolean
 ---@field stop_on_entry boolean
 
----@alias loop.session.TrackerEvent "state"|"output"|"runInTerminal_request"
+---@alias loop.session.TrackerEvent "log"|"state"|"output"|"runInTerminal_request"|"threads"
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.Args
@@ -133,9 +133,9 @@ function Session:name()
 end
 
 ---@param event loop.session.TrackerEvent
----@param args any
-function Session:_notify_tracker(event, args)
-    self._tracker(self, event, args)
+---@param data any
+function Session:_notify_tracker(event, data)
+    self._tracker(self, event, data)
 end
 
 ---@return string
@@ -146,21 +146,26 @@ end
 
 function Session:_notify_about_state()
     local state = self._process_ended and "ended" or self._fsm:curr_state()
-    self:_notify_tracker("state", { state = state })
+    ---@class loop.dap.session.notify.StateData
+    local data = { state = state }
+    self:_notify_tracker("state", data)
 end
 
 ---@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
-function Session:_on_runInTerminal_request(args, on_success, on_failure)
-    self:_notify_tracker("runInTerminal_request", {
-        args = args,
+function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
+    ---@class loop.dap.session.notify.RunInTerminalReq
+    local data =  {
+        args = req_args,
         on_success = function(pid) on_success({ processId = pid }) end,
         on_failure = on_failure
     }
-    )
+    self:_notify_tracker("runInTerminal_request", data)
 end
 
 function Session:_on_output_event(msg_body)
-    self:_notify_tracker("output", { category = msg_body.category, output = msg_body.output })
+    ---@class loop.dap.session.notify.OutputData
+    local data =  { category = msg_body.category, output = msg_body.output }
+    self:_notify_tracker("output", data)
 end
 
 function Session:_on_initialized_event(msg_body)
@@ -168,6 +173,17 @@ end
 
 function Session:_on_stopped_event(msg_body)
     self._fsm:trigger("stopped")
+    self._base_session:request_threads(function(response)
+        if response.success then
+            ---@type table<number,table>
+            local data = response.body
+            self:_notify_tracker("threads", data)
+        else
+            ---@class loop.dap.session.notify.LogData
+            local data = {level = "error", lines={"Failed to query threads", response.message}}
+            self:_notify_tracker("log", data)
+        end
+    end)
 end
 
 function Session:_on_initializing_state()

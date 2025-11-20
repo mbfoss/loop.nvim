@@ -5,7 +5,7 @@ local strtools       = require('loop.tools.strtools')
 local Session        = require('loop.dap.Session')
 
 ---@alias loop.job.DebugJob.TrackingEvent "session_add"|"session_del"|"session_event"
----@alias loop.job.DebugJob.Tracker fun(event: loop.job.DebugJob.TrackingEvent, args : any)
+---@alias loop.job.DebugJob.Tracker fun(event: loop.job.DebugJob.TrackingEvent, data : any)
 
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
@@ -78,9 +78,9 @@ function DebugJob:start(args)
 
     ---@param session loop.dap.Session
     ---@param session_event loop.session.TrackerEvent
-    ---@param session_args any
-    local tracker = function(session, session_event, session_args)
-        self:_notify_tracker("session_event", { id = session_id, name = session:name(), event = session_event, event_args = session_args })
+    ---@param session_event_data any
+    local tracker = function(session, session_event, session_event_data)
+        self:_notify_tracker("session_event", { id = session_id, name = session:name(), event = session_event, event_data = session_event_data })
     end
 
     ---@type loop.dap.session.Args
@@ -115,11 +115,11 @@ function DebugJob:track(tracker)
 end
 
 ---@param event loop.job.DebugJob.TrackingEvent
----@param args any
-function DebugJob:_notify_tracker(event, args)
+---@param data any
+function DebugJob:_notify_tracker(event, data)
     if self._tracker then -- before schedule to sync with DebugJob:track()
         vim.schedule(function()
-            self._tracker(event, args)
+            self._tracker(event, data)
         end)
     end
 end

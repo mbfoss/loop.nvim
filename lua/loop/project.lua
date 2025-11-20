@@ -177,7 +177,7 @@ function M.task_command(command, arg1)
     elseif command == "repeat" then
         taskmgr.run_task(proj_dir, config_dir, "repeat")
     else
-        vim.notify('loop.nvim: Invalid task subcommand: ' .. command)
+        vim.notify('loop.nvim: Invalid task command: ' .. command)
     end
 end
 
@@ -205,12 +205,12 @@ function M.extension_command(extname, extcommand)
     local cmd = extcommand and extcommand:match("^%s*(.-)%s*$") or ""
 
     local config_dir = _get_config_dir(proj_dir)
-    if cmd == "configure" then
-        taskmgr.create_extension_config(config_dir, name)
-    elseif cmd == "task" then
+    if cmd == "" or cmd == "task" then
         taskmgr.run_extension_task(config_dir, name)
+    elseif cmd == "configure" then
+        taskmgr.create_extension_config(config_dir, name)
     else
-        vim.notify('loop.nvim: Invalid extension subcommand: ' .. cmd)
+        vim.notify('loop.nvim: Invalid extension command: ' .. extname .. ' ' .. cmd)
     end
 end
 
@@ -274,7 +274,7 @@ function M.debug_command(command)
     if command == 'command' then
     elseif command == 'attach' then
     end
-    vim.notify('loop.nvim: Invalid debug subcommand: ' .. tostring(command))
+    vim.notify('loop.nvim: Invalid debug command: ' .. tostring(command))
 end
 
 function M.show_window()
