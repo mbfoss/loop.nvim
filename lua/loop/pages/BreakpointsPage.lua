@@ -61,7 +61,7 @@ local function format_entry(entry, project_dir)
 end
 
 function BreakpointsPage:init()
-	Page.init(self, "breakpoints", "")
+	Page.init(self, "breakpoints", "Breakpoints")
 	self._items = {}
 end
 

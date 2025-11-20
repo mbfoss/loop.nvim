@@ -29,11 +29,11 @@ local _tabs = {
     ---@type loop.TabInfo
     breakpoints = { label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
-    tasks = { label = "Task", pages = {}, list_prefix = "[Task]" },
+    tasks = { label = "Task", pages = {}, list_prefix = "Task - " },
     ---@type loop.TabInfo
-    debug = { label = "Debug", pages = {}, list_prefix = "[Debug]" },
+    debug = { label = "Debug", pages = {}, list_prefix = "Debug - " },
     ---@type loop.TabInfo
-    threads = { label = "Threads", pages = {}, list_prefix = "[Threads]" },
+    threads = { label = "Threads", pages = {}, list_prefix = "Threads - " },
 }
 local _tabs_arr = {
     _tabs.events,
@@ -143,17 +143,19 @@ local function _setup_active_tab(req_tab)
             end
             if #tab.pages > 0 then
                 tabidx = tabidx + 1
-                if tabidx ~= 1 then table.insert(winbar_parts, '| ') end
+                if tabidx ~= 1 then table.insert(winbar_parts, '|') end
                 if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-                local label = tab.label
+                local labelparts = {' '}
+                table.insert(labelparts, tab.label)
                 if #tab.pages > 1 then
                     if not active then
-                        label = label .. ' (' .. #tab.pages .. ')'
+                        vim.list_extend(labelparts, {' (', tostring(#tab.pages), ')'})
                     else
-                        label = label .. ' (' .. tab.active_page_idx .. '/' .. #tab.pages .. ')'
+                        vim.list_extend(labelparts, {' (', tostring(tab.active_page_idx), '/', tostring(#tab.pages), ')'})
                     end
                 end
-                label = label .. ' '
+                table.insert(labelparts, ' ')
+                local label = table.concat(labelparts, '')
                 table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
                 if active then
                     table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
@@ -216,11 +218,8 @@ function _ui_select_page()
     local choices = {}
     for tabidx, tab in ipairs(_tabs_arr) do
         for pageidx, page in ipairs(tab.pages) do
-            local label = tab.label
-            local name = page:get_name()
-            if name and name ~= "" and name ~= label then
-                label = label .. ': ' .. name
-            end
+            local label = tab.list_prefix or ''
+            label = label .. page:get_name()
             ---@type loop.SelectorItem
             local item = {
                 label = label,
