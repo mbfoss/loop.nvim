@@ -16,6 +16,15 @@ local function append_lines(buf, lines, error_highlight)
     lines = strtools.clean_and_split_lines(lines)
     local count = vim.api.nvim_buf_line_count(buf)
 
+    local _highlight_line = function(row)
+        local line_text = vim.api.nvim_buf_get_lines(buf, row, row + 1, false)[1] or ""
+        local end_col = #line_text
+        vim.api.nvim_buf_set_extmark(buf, _error_hl_ns, row, 0, {
+            end_col = end_col,
+            hl_group = 'ErrorMsg',
+        })
+    end
+
     -- If buffer is empty and first line is "", replace instead of append
     if count == 1 then
         local firstln = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
@@ -25,10 +34,7 @@ local function append_lines(buf, lines, error_highlight)
             -- highlight replacement if requested
             if error_highlight then
                 for i = 0, #lines - 1 do
-                    vim.api.nvim_buf_set_extmark(buf, _error_hl_ns, i, 0, {
-                        hl_group = "ErrorMsg",
-                        hl_eol = true,
-                    })
+                    _highlight_line(i)
                 end
             end
 
@@ -42,10 +48,8 @@ local function append_lines(buf, lines, error_highlight)
     -- Highlight newly added lines if requested
     if error_highlight then
         for i = 0, #lines - 1 do
-            vim.api.nvim_buf_set_extmark(buf, _error_hl_ns, count + i, 0, {
-                hl_group = "ErrorMsg",
-                hl_eol = true,
-            })
+            local row = count + i
+            _highlight_line(row)
         end
     end
 end
@@ -53,7 +57,7 @@ end
 ---@param name string
 function OutputPage:init(name)
     Page.init(self, "output", name)
-    self:follow_last_line()    
+    self:follow_last_line()
 end
 
 ---@param lines string[]
@@ -80,7 +84,7 @@ function OutputPage:add_lines(lines, error_highlight)
     if on_last_line and vim.api.nvim_win_get_buf(cur_win) == buf then
         local last_line = vim.api.nvim_buf_line_count(buf)
         vim.api.nvim_win_set_cursor(cur_win, { last_line, 0 })
-    end    
+    end
 end
 
 return OutputPage

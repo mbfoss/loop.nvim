@@ -20,26 +20,25 @@ local _loop_win_height_ratio
 ---@field label string
 ---@field pages loop.pages.Page[]
 ---@field active_page_idx number|nil
+---@field list_prefix string|nil
 
 
 local _tabs = {
     ---@type loop.TabInfo
     events = { label = "Messages", pages = { EventsPage:new("Messages") }, active_page_idx = 1 },
     ---@type loop.TabInfo
-    tasks = { label = "Task", pages = {} },
+    tasks = { label = "Task", pages = {}, list_prefix = "[Task]"},
     ---@type loop.TabInfo
     breakpoints = { label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
-    debug_output = { label = "Debug Output", pages = {} },
+    debug = { label = "Debug", pages = {} , list_prefix = "[Debug]"},
     ---@type loop.TabInfo
-    debug_term = { label = "Debug Term", pages = {} },
 }
 local _tabs_arr = {
     _tabs.events,
     _tabs.tasks,
     _tabs.breakpoints,
-    _tabs.debug_output,
-    _tabs.debug_term,
+    _tabs.debug,
 }
 ---@type number
 local _active_tab_idx = 1
@@ -97,8 +96,11 @@ end
 ---@type fun(action: "next"|"prev")
 local _cycle_pages
 
----@param req_tab loop.TabInfo
+---@param req_tab loop.TabInfo|nil
 local function _setup_active_tab(req_tab)
+    if not req_tab then
+        req_tab = _tabs_arr[_active_tab_idx]
+    end
     if #req_tab.pages == 0 then
         req_tab = _tabs.events
     end
@@ -134,7 +136,6 @@ local function _setup_active_tab(req_tab)
             if req_tab == tab then
                 _active_tab_idx = arr_idx
                 active = true
-                _active_tab = tab
                 local buf = tab.pages[page_idx]:get_or_create_buf()
                 vim.api.nvim_win_set_buf(win, buf)
             end
@@ -272,7 +273,7 @@ end
 ---@param tab loop.TabInfo | nil
 local function create_window(tab)
     if _loop_win ~= -1 then
-        _setup_active_tab(tab or _active_tab)
+        _setup_active_tab(tab)
         return
     end
 
@@ -284,7 +285,7 @@ local function create_window(tab)
     _on_win_new_or_close()
     vim.api.nvim_set_current_win(prev_win)
 
-    _setup_active_tab(tab or _active_tab)
+    _setup_active_tab(tab)
 
     vim.api.nvim_create_autocmd("WinResized", {
         --pattern = tostring(_loop_win), -- Only trigger for window ID 1001
@@ -383,8 +384,7 @@ end
 
 function M.delete_task_buffers()
     _delete_tab_pages(_tabs.tasks)
-    _delete_tab_pages(_tabs.debug_output)
-    _delete_tab_pages(_tabs.debug_term)
+    _delete_tab_pages(_tabs.debug)
 end
 
 ---@param name string -- task name
@@ -416,7 +416,7 @@ function _add_debug_output(context, sess_id, sess_name, category, output)
     if not page then
         page = OutputPage:new(sess_name)
         context.output_pages[sess_id] = page
-        _add_tab_page(_tabs.debug_output, page)
+        _add_tab_page(_tabs.debug, page)
     end
     page:add_lines({ output }, category == "stderr")
 end
@@ -450,7 +450,7 @@ function _add_debug_term(name, args, on_success, on_failure)
     local pid = proc:get_pid()
     local page = Page:new("term", name)
     page:assign_buf(bufnr)
-    _add_tab_page(_tabs.debug_term, page)
+    _add_tab_page(_tabs.debug, page)
     on_success(pid)
 end
 
@@ -493,6 +493,7 @@ function _track_debug_job(job, page, context)
             _process_debug_session_event(page, context, args.id, args.name, args.event, args.event_args)
         end
     end
+    page:add_lines({"Debug task started"}, true)
     job:track(tracker)
 end
 

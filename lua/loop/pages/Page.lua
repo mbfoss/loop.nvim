@@ -54,7 +54,7 @@ function Page:assign_buf(bufnr)
         assert(self._buf == -1)
     end
     self._buf = bufnr
-    self:_setup_buf()
+    self:_setup_buf(false)
 end
 
 ---@return number -- buffer number
@@ -74,45 +74,50 @@ function Page:get_or_create_buf()
     end
 
     self._buf = vim.api.nvim_create_buf(false, true)
-
-    vim.bo[self._buf].modifiable = false
-
-    self:_setup_buf()
+    self:_setup_buf(true)
     return self._buf, true
 end
 
-function Page:_setup_buf()
+---@param own_buf boolean
+function Page:_setup_buf(own_buf)
     assert(self._buf > 0)
+    local buf = self._buf
 
-    vim.api.nvim_buf_set_var(self._buf, buffer_flag_key, 1)
+    vim.api.nvim_buf_set_var(buf, buffer_flag_key, 1)
 
-    local bufname = "loop://" .. tostring(self._buf) .. '/' .. self._type
+    local bufname = "loop://" .. tostring(buf) .. '/' .. self._type
     if self._name and #self._name > 0 then
         bufname = bufname .. '/' .. self._name
     end
     --vim.notify(bufname)
-    vim.api.nvim_buf_set_name(self._buf, bufname)
+    vim.api.nvim_buf_set_name(buf, bufname)
 
-    if vim.bo[self._buf].buftype == "" then
-        vim.bo[self._buf].buftype = "nofile"
+    do
+        local b = vim.bo[buf]
+        if own_buf then        
+            b.buftype = "nofile"
+            b.modifiable = false
+        end
+        b.bufhidden = "hide"
+        b.swapfile = false
+        b.undolevels = -1 -- buffer can't become "modified"
+        b.buflisted = false -- hide from :ls
+        b.filetype = "loop-" .. self._type
     end
-    vim.bo[self._buf].bufhidden = "hide"
-    vim.bo[self._buf].swapfile = false
-    vim.bo[self._buf].filetype = "loop-" .. self._type
 
     vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
-        buffer = self._buf,
+        buffer = buf,
         once = true,
         callback = function(ev)
-            assert(ev.buf == self._buf)
-            self._buf = -1
+            assert(ev.buf == buf)
+            buf = -1
         end,
     })
 
     vim.api.nvim_create_autocmd("BufEnter", {
-        buffer = self._buf,
+        buffer = buf,
         callback = function(ev)
-            assert(ev.buf == self._buf)
+            assert(ev.buf == buf)
             self:_on_buf_enter()
         end
     })
@@ -140,7 +145,7 @@ end
 ---@param item loop.pages.page.KeyMapItem
 function Page:_apply_keymap(key, item)
     if self._buf ~= -1 then
-        local modes = { "n", "t" }
+        local modes = { "n" }
         for _, mode in ipairs(modes) do
             --local ok, err =
             pcall(vim.api.nvim_buf_del_keymap, self._buf, mode, key)
@@ -149,7 +154,7 @@ function Page:_apply_keymap(key, item)
         --vim.notify(vim.inspect { 'setting keymap', self._type, modes, key, self._buf})
         vim.keymap.set(modes, key, function()
             item.callback()
-        end, { buffer = self._buf , desc = item.desc})
+        end, { buffer = self._buf, desc = item.desc })
     end
 end
 
