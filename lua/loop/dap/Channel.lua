@@ -5,6 +5,7 @@ local Process = require("loop.dap.Process")
 local class = require('loop.tools.class')
 
 ---@class loop.dap.Channel
+---@field new fun(self: loop.dap.Channel, name:string, opts:table): loop.dap.Channel
 local Channel = class()
 
 ---@diagnostic disable-next-line: undefined-field
@@ -58,7 +59,8 @@ function Channel:_create_process(name, opts)
             if not is_stderr then
                 self:_on_data(buffer, data)
             else
-                self.log:error("DAP stderr output: " .. data)
+                --TODO: avoid using notify here
+                vim.notify("DAP stderr output: " .. data)
             end
         end,
         on_exit = function(code, signal)
