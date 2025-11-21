@@ -17,10 +17,11 @@ local class = require('loop.tools.class')
 ---@class loop.dap.BaseSession
 ---@field log any
 ---@field request_seq integer
----@field callbacks table<integer, fun(response: DAP.Response)>
+---@field callbacks table<integer, fun(response: loop.dap.proto.Response)>
 ---@field event_handlers table<string, loop.dap.EventHandler>
 ---@field reverse_request_handlers table<string, loop.dap.ReverseRequestHandler>
 ---@field channel loop.dap.Channel
+---@field new fun(self:loop.dap.BaseSession, name:string, opts:loop.dap.BaseSession.Opts) : loop.dap.BaseSession
 local BaseSession = class()
 
 ---@param name string
@@ -69,23 +70,23 @@ function BaseSession:set_reverse_request_handler(command, handler)
 end
 
 -- Private: handle parsed DAP messages
----@param msg DAP.ProtocolMessage
+---@param msg loop.dap.proto.ProtocolMessage
 function BaseSession:_on_message(msg)
     if msg.type == "event" then
-        ---@cast msg DAP.Event
+        ---@cast msg loop.dap.proto.Event
         self:_handle_event(msg)
     elseif msg.type == "response" then
-        ---@cast msg DAP.Response
+        ---@cast msg loop.dap.proto.Response
         self:_handle_resp(msg)
     elseif msg.type == "request" then
-        ---@cast msg DAP.Request
+        ---@cast msg loop.dap.proto.Request
         self:_handle_rev_req(msg)
     else
         self.log:warn("Unknown DAP message type:" .. msg.type)
     end
 end
 
----@param msg DAP.Event
+---@param msg loop.dap.proto.Event
 function BaseSession:_handle_event(msg)
     local handler = self.event_handlers[msg.event]
     if not handler then
@@ -101,7 +102,7 @@ function BaseSession:_handle_event(msg)
     end
 end
 
----@param msg DAP.Response
+---@param msg loop.dap.proto.Response
 function BaseSession:_handle_resp(msg)
     local cb = self.callbacks[msg.request_seq]
     if not cb then
@@ -118,7 +119,7 @@ function BaseSession:_handle_resp(msg)
     end
 end
 
----@param msg DAP.Request
+---@param msg loop.dap.proto.Request
 function BaseSession:_handle_rev_req(msg)
     local resp_sent = false
     local on_success = function(resp_body)
@@ -149,7 +150,7 @@ end
 
 ---@param command string
 ---@param arguments table|nil
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:_request(command, arguments, callback)
     self.request_seq = self.request_seq + 1
     if callback then
@@ -190,8 +191,8 @@ function BaseSession:kill()
     self.channel:kill()
 end
 
----@param args DAP.InitializeRequestArguments
----@param callback fun(response: DAP.Response)|nil
+---@param args loop.dap.proto.InitializeRequestArguments
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_initialize(args, callback)
     local default_args = {
         adapterID = "adapter",
@@ -204,197 +205,197 @@ function BaseSession:request_initialize(args, callback)
 end
 
 ---@param args table|nil
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_launch(args, callback)
     self:_request("launch", args, callback)
 end
 
 ---@param args table|nil
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_attach(args, callback)
     self:_request("attach", args, callback)
 end
 
 ---@param args table|nil
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_disconnect(args, callback)
     self:_request("disconnect", args or { restart = false }, callback)
 end
 
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_configurationDone(callback)
     self:_request("configurationDone", nil, callback)
 end
 
----@param args DAP.SetBreakpointsArguments
----@param callback fun(response: DAP.Response)|nil
+---@param args loop.dap.proto.SetBreakpointsArguments
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_setBreakpoints(args, callback)
     self:_request("setBreakpoints", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_setFunctionBreakpoints(args, callback)
     self:_request("setFunctionBreakpoints", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_setExceptionBreakpoints(args, callback)
     self:_request("setExceptionBreakpoints", args, callback)
 end
 
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_threads(callback)
     self:_request("threads", nil, callback)
 end
 
----@param args DAP.StackTraceArguments
----@param callback fun(response: DAP.Response)|nil
+---@param args loop.dap.proto.StackTraceArguments
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_stackTrace(args, callback)
     self:_request("stackTrace", args, callback)
 end
 
----@param args DAP.ScopesArguments
----@param callback fun(response: DAP.Response)|nil
+---@param args loop.dap.proto.ScopesArguments
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_scopes(args, callback)
     self:_request("scopes", args, callback)
 end
 
----@param args DAP.VariablesArguments
----@param callback fun(response: DAP.Response)|nil
+---@param args loop.dap.proto.VariablesArguments
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_variables(args, callback)
     self:_request("variables", args, callback)
 end
 
----@param args DAP.ContinueArguments
----@param callback fun(response: DAP.Response)|nil
+---@param args loop.dap.proto.ContinueArguments
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_continue(args, callback)
     self:_request("continue", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_pause(args, callback)
     self:_request("pause", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_next(args, callback)
     self:_request("next", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_stepIn(args, callback)
     self:_request("stepIn", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_stepOut(args, callback)
     self:_request("stepOut", args, callback)
 end
 
----@param args DAP.EvaluateArguments
----@param callback fun(response: DAP.Response)|nil
+---@param args loop.dap.proto.EvaluateArguments
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_evaluate(args, callback)
     self:_request("evaluate", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_source(args, callback)
     self:_request("source", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_setVariable(args, callback)
     self:_request("setVariable", args, callback)
 end
 
 ---@param args table|nil
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_restart(args, callback)
     self:_request("restart", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_restartFrame(args, callback)
     self:_request("restartFrame", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_request_goto(args, callback)
     self:_request("goto", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_stepBack(args, callback)
     self:_request("stepBack", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_reverseContinue(args, callback)
     self:_request("reverseContinue", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_setExpression(args, callback)
     self:_request("setExpression", args, callback)
 end
 
 ---@param args table|nil
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_loadedSources(args, callback)
     self:_request("loadedSources", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_breakpointLocations(args, callback)
     self:_request("breakpointLocations", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_exceptionInfo(args, callback)
     self:_request("exceptionInfo", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_dataBreakpointInfo(args, callback)
     self:_request("dataBreakpointInfo", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_setDataBreakpoints(args, callback)
     self:_request("setDataBreakpoints", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_readMemory(args, callback)
     self:_request("readMemory", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_writeMemory(args, callback)
     self:_request("writeMemory", args, callback)
 end
 
 ---@param args table
----@param callback fun(response: DAP.Response)|nil
+---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_disassemble(args, callback)
     self:_request("disassemble", args, callback)
 end
