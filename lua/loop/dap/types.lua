@@ -4,7 +4,6 @@
 --====================================================================--
 -- Core DAP Protocol Types (strictly valid EmmyLua)
 --====================================================================--
-
 ---@class loop.dap.proto.ProtocolMessage
 ---@field seq integer
 ---@field type "request" | "response" | "event"
@@ -25,9 +24,8 @@
 ---@field body table|nil
 
 --====================================================================--
--- Common Types (all named classes — no inline tables)
+-- Common Types
 --====================================================================--
-
 ---@class loop.dap.proto.Source
 ---@field name string|nil
 ---@field path string|nil
@@ -84,9 +82,8 @@
 ---@field memoryReference string|nil
 
 --====================================================================--
--- Specific Request/Response Bodies (each as a separate class)
+-- Specific Request/Response Bodies
 --====================================================================--
-
 ---@class loop.dap.proto.InitializeRequestArguments
 ---@field clientID string|nil
 ---@field clientName string|nil
@@ -172,9 +169,72 @@
 ---@field memoryReference string|nil
 
 --====================================================================--
+-- Additional Request Argument Types (all official DAP spec)
+--====================================================================--
+---@class loop.dap.proto.SetFunctionBreakpointsArguments
+---@field breakpoints table[]
+
+---@class loop.dap.proto.SetExceptionBreakpointsArguments
+---@field filters string[]
+---@field filterOptions table[]|nil
+---@field exceptionOptions table[]|nil
+
+---@class loop.dap.proto.PauseArguments
+---@field threadId integer
+
+---@class loop.dap.proto.NextArguments
+---@field threadId integer
+---@field granularity "statement"|"line"|"instruction"|nil
+
+---@class loop.dap.proto.StepInArguments
+---@field threadId integer
+---@field targetId integer|nil
+---@field granularity "statement"|"line"|"instruction"|nil
+
+---@class loop.dap.proto.StepOutArguments
+---@field threadId integer
+
+---@class loop.dap.proto.StepBackArguments
+---@field threadId integer
+---@field granularity "statement"|"line"|"instruction"|nil
+
+---@class loop.dap.proto.ReverseContinueArguments
+---@field threadId integer
+
+---@class loop.dap.proto.GotoArguments
+---@field threadId integer
+---@field targetId integer
+
+---@class loop.dap.proto.RestartFrameArguments
+---@field frameId integer
+
+---@class loop.dap.proto.SetExpressionArguments
+---@field expression string
+---@field frameId integer|nil
+---@field value string
+
+---@class loop.dap.proto.SetVariableArguments
+---@field variablesReference integer
+---@field name string
+---@field value string
+
+---@class loop.dap.proto.SourceArguments
+---@field source loop.dap.proto.Source
+---@field sourceReference integer
+
+---@class loop.dap.proto.ExceptionInfoArguments
+---@field threadId integer
+
+---@class loop.dap.proto.BreakpointLocationsArguments
+---@field source loop.dap.proto.Source
+---@field line integer|nil
+---@field column integer|nil
+---@field endLine integer|nil
+---@field endColumn integer|nil
+
+--====================================================================--
 -- Events
 --====================================================================--
-
 ---@class loop.dap.proto.StoppedEvent
 ---@field reason "step"|"breakpoint"|"exception"|"pause"|"entry"|"goto"
 ---@field threadId integer|nil
