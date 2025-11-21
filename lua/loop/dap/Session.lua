@@ -66,11 +66,18 @@ function Session:start(args)
     self.log = require('loop.tools.Logger').create_logger("dap.session[" .. name .. ']')
 
     self._name = name
+    self._dap_name = dap.name
     self._target = target
     self._capabilities = {}
     self._process_ended = false
     self._tracker = args.tracker
     self._on_exit = args.exit_handler
+
+    local stderr_handler = function (text)
+        ---@type loop.dap.session.notify.LogData
+        local data = { level = "error", lines = { "dap process error", text} }
+        self:_notify_tracker("log", data)
+    end
 
     local exit_handler = function(code, signal)
         vim.schedule(function()
@@ -100,6 +107,7 @@ function Session:start(args)
         dap_args = dap_args, -- dap args
         dap_env = dap.env,
         dap_cwd = dap.cwd,
+        on_stderr = stderr_handler,
         on_exit = exit_handler,
     })
 
@@ -114,6 +122,7 @@ function Session:start(args)
 
     self._base_session:set_reverse_request_handler("runInTerminal",
         function(req_args, on_success, on_failure)
+            assert(req_args)
             self:_on_runInTerminal_request(req_args, on_success, on_failure)
         end
     )
@@ -167,19 +176,19 @@ function Session:state()
 end
 
 function Session:debug_continue()
-    self._base_session:request_continue({}, self:_simple_qery_resp_handler())
+    self._base_session:request_continue({threadId = 0}, self:_simple_qery_resp_handler())
 end
 
 function Session:debug_stepIn()
-    self._base_session:request_stepIn({}, self:_simple_qery_resp_handler())
+    self._base_session:request_stepIn({threadId = 0}, self:_simple_qery_resp_handler())
 end
 
 function Session:debug_stepOut()
-    self._base_session:request_stepOut({}, self:_simple_qery_resp_handler())
+    self._base_session:request_stepOut({threadId = 0}, self:_simple_qery_resp_handler())
 end
 
 function Session:debug_stepBack()
-    self._base_session:request_stepBack({}, self:_simple_qery_resp_handler())
+    self._base_session:request_stepBack({threadId = 0}, self:_simple_qery_resp_handler())
 end
 
 ---@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
@@ -218,7 +227,13 @@ function Session:_on_stopped_event(msg_body)
 end
 
 function Session:_on_initializing_state()
-    self._base_session:request_initialize({}, function(response)
+    local req_args = {
+        adapterID = self._dap_name or "unknown",
+        linesStartAt1 = true,
+        columnsStartAt1 = true,
+        pathFormat = "path",
+    }
+    self._base_session:request_initialize(req_args, function(response)
         if response.success and response.body then
             self._capabilities = response.body
         end
@@ -289,6 +304,10 @@ function Session:_on_launching_state()
 
     self.log:info('launching: ' .. vim.inspect(target))
     self._base_session:request_launch({
+            adapterID = self._dap_name,
+            columnsStartAt1 = true,
+            linesStartAt1 = true,
+            pathFormat = "path",
             program = target_program,
             args = targe_args,
             cwd = target.cwd,

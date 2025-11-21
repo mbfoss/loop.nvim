@@ -31,6 +31,9 @@ end
 
 function Channel:init(name, opts)
     self.on_message = opts.on_message -- function(msg: table) called for non-response messages
+    self.on_stderr = opts.on_stderr
+    assert(type(self.on_message) == "function")
+    assert(type(self.on_stderr) == "function")
     self.process = self:_create_process(name, opts)
     return self
 end
@@ -58,9 +61,8 @@ function Channel:_create_process(name, opts)
             assert_main_thread()
             if not is_stderr then
                 self:_on_data(buffer, data)
-            else
-                --TODO: avoid using notify here
-                vim.notify("DAP stderr output: " .. data)
+            elseif self.on_stderr then
+                self.on_stderr(tostring(data))
             end
         end,
         on_exit = function(code, signal)

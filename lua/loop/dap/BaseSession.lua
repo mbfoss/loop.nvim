@@ -12,9 +12,11 @@ local class = require('loop.tools.class')
 ---@field dap_args string[]|nil
 ---@field dap_env table<string,string>|nil
 ---@field dap_cwd string
+---@field on_stderr fun(text:string)
 ---@field on_exit fun(code: number, signal: number)
 
 ---@class loop.dap.BaseSession
+---@field new fun(self:loop.dap.BaseSession, name:string, opts:loop.dap.BaseSession.Opts) : loop.dap.BaseSession
 ---@field log any
 ---@field request_seq integer
 ---@field callbacks table<integer, fun(response: loop.dap.proto.Response)>
@@ -26,6 +28,8 @@ local BaseSession = class()
 ---@param name string
 ---@param opts loop.dap.BaseSession.Opts
 function BaseSession:init(name, opts)
+    assert(type(opts.on_stderr) == "function")
+    assert(type(opts.on_exit) == "function")
     self.log = require('loop.tools.Logger').create_logger("dap.basicsession[" .. name .. ']')
     self.request_seq = 0
     self.callbacks = {}
@@ -37,6 +41,7 @@ function BaseSession:init(name, opts)
         dap_env = opts.dap_env,
         dap_cwd = opts.dap_cwd,
         on_message = function(msg) self:_on_message(msg) end,
+        on_stderr = function(text) opts.on_stderr(text) end,
         on_exit = opts.on_exit,
     }
     self.channel = Channel:new(name, channel_opts)
@@ -182,13 +187,6 @@ end
 ---@param args loop.dap.proto.InitializeRequestArguments
 ---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_initialize(args, callback)
-    local defaults = {
-        adapterID = "undefined",
-        linesStartAt1 = true,
-        columnsStartAt1 = true,
-        pathFormat = "path",
-    }
-    args = vim.tbl_deep_extend("force", defaults, args or {})
     self:_request("initialize", args, callback)
 end
 
