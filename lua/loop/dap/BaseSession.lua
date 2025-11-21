@@ -215,11 +215,6 @@ function BaseSession:request_disconnect(args, callback)
     self:_request("disconnect", args or { restart = false }, callback)
 end
 
-function BaseSession:request_terminate(callback)
-    self.base_session:terminate()
-    if callback then callback() end
-end
-
 function BaseSession:request_configurationDone(callback)
     self:_request("configurationDone", nil, callback)
 end

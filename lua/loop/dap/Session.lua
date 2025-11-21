@@ -7,6 +7,10 @@ local FSM = require("loop.tools.FSM")
 local fsmdata = require('loop.dap.fsmdata')
 local strtools = require('loop.tools.strtools')
 
+---@class loop.dap.session.notify.LogData
+---@field level nil|"log"|"error"
+---@field lines string[]
+
 ---@class loop.dap.session.Args.DAP
 ---@field name string
 ---@field cmd string|string[]
@@ -83,7 +87,7 @@ function Session:start(args)
         return false, "Missing DAP process command"
     end
 
-    local dap_cmd  = vim.fn.exepath(cmd_and_args[1])
+    local dap_cmd = vim.fn.exepath(cmd_and_args[1])
     if dap_cmd == "" then
         return false, "Debugger command is not executable: " .. tostring(cmd_and_args[1])
     end
@@ -145,6 +149,17 @@ function Session:_notify_about_state()
     self:_notify_tracker("state", data)
 end
 
+---@return fun(response:any)
+function Session:_simple_qery_resp_handler()
+    return function(response)
+        if not response.success then
+            ---@type loop.dap.session.notify.LogData
+            local data = { level = "error", lines = { "'" .. response.command .. "' error", response.message } }
+            self:_notify_tracker("log", data)
+        end
+    end
+end
+
 ---@return string
 function Session:state()
     local state = self._process_ended and "ended" or self._fsm:curr_state()
@@ -152,15 +167,25 @@ function Session:state()
 end
 
 function Session:debug_continue()
-    self._base_session:request_continue({}, function (response)
-        
-    end)
+    self._base_session:request_continue({}, self:_simple_qery_resp_handler())
+end
+
+function Session:debug_stepIn()
+    self._base_session:request_stepIn({}, self:_simple_qery_resp_handler())
+end
+
+function Session:debug_stepOut()
+    self._base_session:request_stepOut({}, self:_simple_qery_resp_handler())
+end
+
+function Session:debug_stepBack()
+    self._base_session:request_stepBack({}, self:_simple_qery_resp_handler())
 end
 
 ---@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
 function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
     ---@class loop.dap.session.notify.RunInTerminalReq
-    local data =  {
+    local data = {
         args = req_args,
         on_success = function(pid) on_success({ processId = pid }) end,
         on_failure = on_failure
@@ -170,7 +195,7 @@ end
 
 function Session:_on_output_event(msg_body)
     ---@class loop.dap.session.notify.OutputData
-    local data =  { category = msg_body.category, output = msg_body.output }
+    local data = { category = msg_body.category, output = msg_body.output }
     self:_notify_tracker("output", data)
 end
 
@@ -185,8 +210,8 @@ function Session:_on_stopped_event(msg_body)
             local data = response.body
             self:_notify_tracker("threads", data)
         else
-            ---@class loop.dap.session.notify.LogData
-            local data = {level = "error", lines={"Failed to query threads", response.message}}
+            ---@type loop.dap.session.notify.LogData
+            local data = { level = "error", lines = { "Failed to query threads", response.message } }
             self:_notify_tracker("log", data)
         end
     end)
