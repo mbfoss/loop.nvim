@@ -433,7 +433,7 @@ end
 ---@param context table
 ---@param sess_id number
 ---@param sess_name string
----@param threads table<number,table>
+---@param threads loop.dap.proto.Thread[]
 function _show_debug_threads(context, sess_id, sess_name, threads)
     assert(setup_done)
     context.threads_pages = context.threads_pages or {}
@@ -448,7 +448,7 @@ function _show_debug_threads(context, sess_id, sess_name, threads)
     end
     ---@type loop.pages.ItemListPage.Item[]
     items = {}
-    vim.notify(vim.inspect(threads))
+    --vim.notify(vim.inspect(threads))
     for _, thread in ipairs(threads) do
         ---@type loop.pages.ItemListPage.Item
         local item = {
@@ -461,7 +461,7 @@ function _show_debug_threads(context, sess_id, sess_name, threads)
 end
 
 ---@param name string
----@param args table
+---@param args loop.dap.proto.RunInTerminalRequestArguments
 ---@param on_success fun(pid:number)
 ---@param on_failure fun(reason:string)
 function _add_debug_term(name, args, on_success, on_failure)
@@ -509,7 +509,7 @@ function _process_debug_session_event(page, context, sess_id, sess_name, event, 
         local state = data
         page:add_lines({ "Session " .. sess_id .. " state: " .. state.state })
     elseif event == "output" then
-        ---@type loop.dap.session.notify.OutputData
+        ---@type loop.dap.proto.OutputEvent
         local output = data
         if output.category == "stdout" or output.category == "stderr" then
             _add_debug_output(context, sess_id, sess_name, output.category, output.output)
@@ -523,7 +523,9 @@ function _process_debug_session_event(page, context, sess_id, sess_name, event, 
         local request = data
         _add_debug_term(sess_name, request.args, request.on_success, request.on_failure)
     elseif event == "threads" then
-        _show_debug_threads(context, sess_id, sess_name, data.threads or {})
+        ---@type loop.dap.proto.ThreadsResponse
+        local msg = data
+        _show_debug_threads(context, sess_id, sess_name, msg.threads or {})
     else
         error("unhandled dap session event: " .. event)
     end

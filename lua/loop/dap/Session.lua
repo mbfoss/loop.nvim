@@ -195,6 +195,7 @@ end
 function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
     ---@class loop.dap.session.notify.RunInTerminalReq
     local data = {
+        ---@type loop.dap.proto.RunInTerminalRequestArguments
         args = req_args,
         on_success = function(pid) on_success({ processId = pid }) end,
         on_failure = on_failure
@@ -202,10 +203,9 @@ function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
     self:_notify_tracker("runInTerminal_request", data)
 end
 
-function Session:_on_output_event(msg_body)
-    ---@class loop.dap.session.notify.OutputData
-    local data = { category = msg_body.category, output = msg_body.output }
-    self:_notify_tracker("output", data)
+---@param event loop.dap.proto.OutputEvent 
+function Session:_on_output_event(event)
+    self:_notify_tracker("output", event)
 end
 
 function Session:_on_initialized_event(msg_body)
