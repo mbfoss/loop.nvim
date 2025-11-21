@@ -8,7 +8,7 @@ local class = require('loop.tools.class')
 ---@class loop.dap.BaseSession.Opts
 ---@field dap_cmd string
 ---@field dap_args string[]|nil
----@field dap_env string[]|nil
+---@field dap_env table<string,string>|nil
 ---@field dap_cwd string
 ---@field on_exit fun(code:number, signal:number)
 

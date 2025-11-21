@@ -3,6 +3,8 @@ local strtools = require("loop.tools.strtools")
 local Process = require("loop.dap.Process")
 
 local class = require('loop.tools.class')
+
+---@class loop.dap.Channel
 local Channel = class()
 
 ---@diagnostic disable-next-line: undefined-field
