@@ -12,6 +12,7 @@ local _ns_id = vim.api.nvim_create_namespace('LoopPluginPage')
 ---@class loop.pages.ItemListPage : loop.pages.Page
 ---@field new fun(self: loop.pages.ItemListPage, name:string, keymaps:loop.pages.page.KeyMaps): loop.pages.Page
 ---@field _items loop.pages.ItemListPage.Item[]
+---@field _index table<number,number>
 local ItemListPage = class(Page)
 
 ---@param name string
@@ -19,70 +20,69 @@ local ItemListPage = class(Page)
 function ItemListPage:init(name, keymaps)
     Page.init(self, "task", name, keymaps)
     self._items = {}
+    self._index = {}
 end
 
 ---@param items loop.pages.ItemListPage.Item[]
 function ItemListPage:set_items(items)
     self._items = items
+    self._index = {}
+    for i, item in ipairs(items) do
+        self._index[item.id] = i
+    end
     self:_refresh_buffer(self:get_buf())
 end
 
 ---@param item loop.pages.ItemListPage.Item
 function ItemListPage:add_item(item)
     table.insert(self._items, item)
+    self._index[item.id] = #self._items
 
     local buf = self:get_buf()
-    if buf == -1 then
-        return
-    end
+    if buf == -1 then return end
 
-    local pos = #self._items
-    -- If buffer is empty and first line is "", replace instead of append
-    if pos == 1 then
-        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { item.text })
-        self:_highlight(1, 1)
-    else
-        vim.api.nvim_buf_set_lines(buf, pos, pos, false, { item.text })
-        self:_highlight(pos, pos)
+    vim.api.nvim_buf_set_lines(buf, #self._items - 1, #self._items - 1, false, { item.text })
+    self:_highlight(#self._items, #self._items)
+end
+
+---@param id number
+---@return any
+function ItemListPage:get_item_data(id)
+    local idx = self._index[id]
+    local item = idx and self._items[idx]
+    if item then
+        return item.data
     end
+    return nil
+end
+
+---@return number
+function ItemListPage:get_cur_item()
+
 end
 
 ---@param id number
 function ItemListPage:remove_item(id)
+    local idx = self._index[id]
+    if not idx then return end
+
     local buf = self:get_buf()
-    if buf == -1 then
-        -- still update items table even if buffer isn't visible
-        for idx, item in ipairs(self._items) do
-            if item.id == id then
-                table.remove(self._items, idx)
-                return
-            end
-        end
-        return
+
+    -- Remove from table
+    table.remove(self._items, idx)
+    self._index[id] = nil
+
+    -- Update indices of items after removed item
+    for i = idx, #self._items do
+        self._index[self._items[i].id] = i
     end
 
-    for idx, item in ipairs(self._items) do
-        if item.id == id then
-            table.remove(self._items, idx)
-            -- delete just the line (0-indexed)
-            vim.api.nvim_buf_set_lines(buf, idx - 1, idx, false, {})
-            -- clear all highlights below idx; easiest single-call:
-            vim.api.nvim_buf_clear_namespace(buf, _ns_id, idx - 1, -1)
-            -- re-highlight from current idx to end
-            self:_highlight(idx, #self._items)
-            return
-        end
-    end
-end
+    if buf == -1 then return end
 
----@return loop.pages.ItemListPage.Item
-function ItemListPage:get_item(id)
-    for idx, item in ipairs(self._items) do
-        if item.id == id then
-            return item
-        end
-    end
-    return nil
+    -- Delete buffer line and re-highlight remaining lines
+    vim.api.nvim_buf_set_lines(buf, idx - 1, idx, false, {})
+    vim.api.nvim_buf_clear_namespace(buf, _ns_id, idx - 1, -1)
+    self:_highlight(idx, #self._items)
 end
 
 function ItemListPage:get_or_create_buf()
@@ -120,7 +120,7 @@ function ItemListPage:_highlight(from, to)
         return
     end
     -- set extmarks
-    for idx in from, to do
+    for idx = from, to do
         local item = self._items[idx]
         local endcol = math.min(2, #item.text)
         vim.api.nvim_buf_set_extmark(self._buf, _ns_id, idx - 1, 0, {
