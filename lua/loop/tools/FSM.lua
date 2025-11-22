@@ -1,7 +1,7 @@
 local class = require('loop.tools.class')
 
 ---@class loop.tools.FSMState
----@field state_handler fun()               # Called when state becomes active.
+---@field state_handler fun(trigger:string, trigger_data:any)               # Called when state becomes active.
 ---@field triggers table<string,string>         # Valid triggers for this state.
 
 ---@class loop.tools.FSMData
@@ -45,16 +45,17 @@ function FSM:start()
     assert(self.started == false, "FSM already started")
 
     self.started = true
-    self:_call_state_handler()
+    self:_call_state_handler("", nil)
 end
 
 --- Trigger a transition asynchronously via vim.schedule().
 -- This avoids recursive trigger issues inside state handlers.
 ---@param trigger string
-function FSM:trigger(trigger)
+---@param data any
+function FSM:trigger(trigger, data)
     assert(self.valid_triggers[trigger] == true, "Invalid trigger: " .. tostring(trigger))
     vim.schedule(function()
-        self:_trigger(trigger)
+        self:_trigger(trigger, data)
     end)
 end
 
@@ -66,7 +67,8 @@ end
 --- Internal trigger handler (synchronous).
 -- Looks up the next state and performs the transition.
 ---@param trigger string
-function FSM:_trigger(trigger)
+---@param trigger_data any
+function FSM:_trigger(trigger, trigger_data)
     if not self.current then
         self.log:warn("FSM has no current state")
         return
@@ -80,7 +82,10 @@ function FSM:_trigger(trigger)
 
     local next_state = state_data.triggers and state_data.triggers[trigger]
     if next_state then
-        self:_change_state(next_state, "trigger: " .. trigger)
+        self.log:info("State change '" ..
+            tostring(self.current) .. "' -> '" .. tostring(next_state) ..
+            "' (trigger: " .. tostring(trigger) .. ")")
+        self:_change_state(next_state, trigger, trigger_data)
     else
         self.log:warn("Trigger '" .. trigger .. "' not valid from state '" .. self.current .. "'")
     end
@@ -88,21 +93,17 @@ end
 
 --- Internal function: change the current state and call the new state's handler.
 ---@param next_state string
----@param reason string
-function FSM:_change_state(next_state, reason)
+---@param trigger string
+---@param trigger_data any
+function FSM:_change_state(next_state, trigger, trigger_data)
     assert(next_state ~= nil, "next_state cannot be nil")
-
-    self.log:info("State change '" ..
-        tostring(self.current) .. "' -> '" .. tostring(next_state) ..
-        "' (" .. reason .. ")")
-
     self.current = next_state
-    self:_call_state_handler()
+    self:_call_state_handler(trigger, trigger_data)
 end
 
---- Internal: call the state handler for the current state.
--- Uses xpcall to log errors with traceback.
-function FSM:_call_state_handler()
+---@param trigger string
+---@param trigger_data any
+function FSM:_call_state_handler(trigger, trigger_data)
     local state = self.current
     local state_data = self.states[state]
     assert(state_data ~= nil, "Missing state data for '" .. tostring(state) .. "'")
@@ -119,7 +120,7 @@ function FSM:_call_state_handler()
             debug.traceback("Error: " .. tostring(err) .. "\n", 2))
     end
 
-    local ok = xpcall(handler, cb_error)
+    local ok = xpcall(function() handler(trigger, trigger_data) end, cb_error)
     if not ok then
         self.log:error({ "Error in state handler for ", state })
     end

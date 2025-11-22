@@ -34,6 +34,8 @@ local _tabs = {
     debug = { label = "Debug", pages = {}, list_prefix = "Debug - " },
     ---@type loop.TabInfo
     threads = { label = "Threads", pages = {}, list_prefix = "Threads - " },
+    ---@type loop.TabInfo
+    stacktrace = { label = "Stack", pages = {}, list_prefix = "Stack - " },
 }
 local _tabs_arr = {
     _tabs.events,
@@ -41,6 +43,7 @@ local _tabs_arr = {
     _tabs.tasks,
     _tabs.debug,
     _tabs.threads,
+    _tabs.stacktrace,
 }
 ---@type number
 local _active_tab_idx = 1
@@ -145,13 +148,14 @@ local function _setup_active_tab(req_tab)
                 tabidx = tabidx + 1
                 if tabidx ~= 1 then table.insert(winbar_parts, '|') end
                 if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-                local labelparts = {' '}
+                local labelparts = { ' ' }
                 table.insert(labelparts, tab.label)
                 if #tab.pages > 1 then
                     if not active then
-                        vim.list_extend(labelparts, {' (', tostring(#tab.pages), ')'})
+                        vim.list_extend(labelparts, { ' (', tostring(#tab.pages), ')' })
                     else
-                        vim.list_extend(labelparts, {' (', tostring(tab.active_page_idx), '/', tostring(#tab.pages), ')'})
+                        vim.list_extend(labelparts,
+                            { ' (', tostring(tab.active_page_idx), '/', tostring(#tab.pages), ')' })
                     end
                 end
                 table.insert(labelparts, ' ')
@@ -433,8 +437,8 @@ end
 ---@param context table
 ---@param sess_id number
 ---@param sess_name string
----@param threads loop.dap.proto.Thread[]
-function _show_debug_threads(context, sess_id, sess_name, threads)
+---@param msg loop.dap.proto.ThreadsResponse
+function _show_debug_threads(context, sess_id, sess_name, msg)
     assert(setup_done)
     context.threads_pages = context.threads_pages or {}
 
@@ -448,13 +452,45 @@ function _show_debug_threads(context, sess_id, sess_name, threads)
     end
     ---@type loop.pages.ItemListPage.Item[]
     items = {}
-    --vim.notify(vim.inspect(threads))
-    for _, thread in ipairs(threads) do
+    for _, thread in ipairs(msg.threads) do
         ---@type loop.pages.ItemListPage.Item
         local item = {
             id = thread.id,
             text = tostring(thread.id) .. ': ' .. tostring(thread.name)
         }
+        table.insert(items, item)
+    end
+    page:set_items(items)
+end
+
+--@param context table
+---@param sess_id number
+---@param sess_name string
+---@param msg loop.dap.proto.StackTraceResponse
+function _show_debug_stacktrace(context, sess_id, sess_name, msg)
+    assert(setup_done)
+    context.stacktrace_pages = context.stacktrace_pages or {}
+
+    ---@type loop.pages.ItemListPage|nil
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    local page = context.stacktrace_pages[sess_id] or nil
+    if not page then
+        page = ItemListPage:new(sess_name)
+        context.stacktrace_pages[sess_id] = page
+        _add_tab_page(_tabs.stacktrace, page)
+    end
+    ---@type loop.pages.ItemListPage.Item[]
+    items = {{id = 0, text = string.format("Session %d (%s)", sess_id, sess_name)}}
+    for idx, frame in ipairs(msg.stackFrames) do
+        local text 
+        if frame.source then
+            text = string.format("%d: %s - %s:%d:%d",
+                frame.id, frame.name, frame.source.name, frame.line, frame.column)   
+        else
+            text = string.format("%d: %s", frame.id, frame.name)               
+        end
+        ---@type loop.pages.ItemListPage.Item
+        local item = {id = idx, text = text }
         table.insert(items, item)
     end
     page:set_items(items)
@@ -498,12 +534,11 @@ end
 ---@param sess_id number
 ---@param sess_name string
 ---@param event loop.session.TrackerEvent
----@param args any
 function _process_debug_session_event(page, context, sess_id, sess_name, event, data)
     if event == "log" then
         ---@type loop.dap.session.notify.LogData
         local log = data
-        page:add_lines(vim.list_extend({ "Session " .. sess_id .. " " }, log.lines), log.level)
+        page:add_lines(vim.list_extend({ "Session " .. sess_id .. " " .. log.level }, log.lines))
     elseif event == "state" then
         ---@type loop.dap.session.notify.StateData
         local state = data
@@ -525,7 +560,11 @@ function _process_debug_session_event(page, context, sess_id, sess_name, event, 
     elseif event == "threads" then
         ---@type loop.dap.proto.ThreadsResponse
         local msg = data
-        _show_debug_threads(context, sess_id, sess_name, msg.threads or {})
+        _show_debug_threads(context, sess_id, sess_name, msg or {})
+    elseif event == "stacktrace" then
+        ---@type loop.dap.proto.StackTraceResponse
+        local msg = data
+        _show_debug_stacktrace(context, sess_id, sess_name, msg or {})
     else
         error("unhandled dap session event: " .. event)
     end
@@ -547,7 +586,7 @@ function _track_debug_job(job, page, context)
             _process_debug_session_event(page, context, args.id, args.name, args.event, args.event_data)
         end
     end
-    page:add_lines({ "Debug task started" }, "warn")
+    page:add_lines({ "Debug task started" })
     job:track(tracker)
 end
 

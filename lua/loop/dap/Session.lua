@@ -25,7 +25,13 @@ local strtools = require('loop.tools.strtools')
 ---@field run_in_terminal boolean
 ---@field stop_on_entry boolean
 
----@alias loop.session.TrackerEvent "log"|"state"|"output"|"runInTerminal_request"|"threads"
+---@alias loop.session.TrackerEvent 
+---|"log"
+---|"state"
+---|"output"
+---|"runInTerminal_request"
+---|"threads"
+---|"stacktrace"
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.Args
@@ -203,27 +209,17 @@ function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
     self:_notify_tracker("runInTerminal_request", data)
 end
 
----@param event loop.dap.proto.OutputEvent 
+---@param event loop.dap.proto.OutputEvent|nil
 function Session:_on_output_event(event)
     self:_notify_tracker("output", event)
 end
 
-function Session:_on_initialized_event(msg_body)
+function Session:_on_initialized_event(event)
 end
 
-function Session:_on_stopped_event(msg_body)
-    self._fsm:trigger("stopped")
-    self._base_session:request_threads(function(response)
-        if response.success then
-            ---@type table<number,table>
-            local data = response.body
-            self:_notify_tracker("threads", data)
-        else
-            ---@type loop.dap.session.notify.LogData
-            local data = { level = "error", lines = { "Failed to query threads", response.message } }
-            self:_notify_tracker("log", data)
-        end
-    end)
+---@param event loop.dap.proto.StoppedEvent|nil
+function Session:_on_stopped_event(event)
+    self._fsm:trigger("dap_stopped", event)
 end
 
 function Session:_on_initializing_state()
@@ -329,8 +325,39 @@ function Session:_on_disconnecting_state()
     self:_notify_about_state()
 end
 
-function Session:_on_stopped_state()
+---@param trigger string
+---@param trigger_data any
+function Session:_on_stopped_state(trigger, trigger_data)
     self:_notify_about_state()
+    if trigger == "dap_stopped" then
+        ---@type loop.dap.proto.StoppedEvent   
+        local stopped_event = trigger_data     
+        self._base_session:request_threads(function(response)
+            if not response.success then
+                ---@type loop.dap.session.notify.LogData
+                local logdata = { level = "error", lines = { "Failed to query threads", response.message } }
+                self:_notify_tracker("log", logdata)
+                return
+            end
+            ---@type loop.dap.proto.ThreadsResponse
+            local data = response.body
+            self:_notify_tracker("threads", data)
+        end)
+        self._base_session:request_stackTrace({
+             threadId = stopped_event.threadId,  
+             levels = 100, --TODO: make configurable
+        },function(response)
+            if not response.success then
+                ---@type loop.dap.session.notify.LogData
+                local logdata = { level = "error", lines = { "Failed to query stack trace", response.message } }
+                self:_notify_tracker("log", logdata)
+                return
+            end
+            ---@type loop.dap.proto.StackTraceResponse
+            local data = response.body
+            self:_notify_tracker("stacktrace", data)
+        end)        
+    end
 end
 
 return Session

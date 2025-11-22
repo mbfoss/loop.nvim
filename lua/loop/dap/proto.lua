@@ -154,8 +154,12 @@
 ---@field filterId string
 ---@field condition string|nil
 
+---@class loop.dap.proto.ExceptionPath
+---@field name string
+---@field condition string|nil
+
 ---@class loop.dap.proto.ExceptionOptions
----@field path { name:string, condition:string|nil }[]|nil
+---@field path loop.dap.proto.ExceptionPath[]?
 ---@field breakMode "never"|"always"|"unhandled"|"userUnhandled"
 
 ---@class loop.dap.proto.Message
@@ -461,8 +465,12 @@
 ---@field source loop.dap.proto.Source
 ---@field sourceReference integer
 
+---@class loop.dap.proto.LoadedSourcesItem
+---@field moduleId integer|string|nil
+---@field includeDecompiledSources boolean
+
 ---@class loop.dap.proto.LoadedSourcesArguments
----@field includeDecompiledSources { moduleId:integer|string|nil, includeDecompiledSources:boolean }[]|nil
+---@field includeDecompiledSources loop.dap.proto.LoadedSourcesItem[]?
 
 ---@class loop.dap.proto.ExceptionInfoArguments
 ---@field threadId integer
@@ -565,8 +573,14 @@
 ---@class loop.dap.proto.CompletionsResponse
 ---@field targets loop.dap.proto.CompletionItem[]
 
+---@class loop.dap.proto.BreakpointLocation
+---@field line integer
+---@field column integer?
+---@field endLine integer?
+---@field endColumn integer?
+
 ---@class loop.dap.proto.BreakpointLocationsResponse
----@field breakpoints { line:integer, column:integer|nil, endLine:integer|nil, endColumn:integer|nil }[]
+---@field breakpoints loop.dap.proto.BreakpointLocation[]
 
 ---@class loop.dap.proto.ExceptionInfoResponse
 ---@field exceptionId string
