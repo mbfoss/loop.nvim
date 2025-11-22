@@ -396,6 +396,7 @@ end
 function M.delete_task_buffers()
     _delete_tab_pages(_tabs.tasks)
     _delete_tab_pages(_tabs.debug)
+    _delete_tab_pages(_tabs.stacktrace)
 end
 
 ---@param name string -- task name

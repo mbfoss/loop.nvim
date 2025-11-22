@@ -1,10 +1,10 @@
 local Job      = require('loop.job.Job')
 local class    = require('loop.tools.class')
-local uitools  = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
 local Session  = require('loop.dap.Session')
 local TermProc = require('loop.tools.TermProc')
 local window   = require('loop.window')
+local selector = require("loop.selector")
 
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
@@ -135,11 +135,11 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
         local output = event_data
         if output.category == "stdout" or output.category == "stderr" then
             self:add_debug_output(sess_id, session:name(), output.category, output.output)
-        end
-        if output.category == "console" then
-            self._task_page:add_lines({ "Session " .. sess_id .. ": " .. output.output })
+        elseif output.category == "console" then
+            self._task_page:add_lines({ "Session " .. tostring(sess_id) .. ": " .. tostring(output.output) })
         else
-            self._task_page:add_lines({ "Session " .. sess_id .. ": (" .. output.category ") " .. output.output })
+            self._task_page:add_lines({ "Session " ..
+            tostring(sess_id) .. ": (" .. tostring(output.category) .. ") " .. tostring(output.output) })
         end
         return
     end
@@ -205,20 +205,13 @@ function DebugJob:add_debug_term(name, args, on_success, on_failure)
     on_success(pid)
 end
 
----@param sess_id number
+---@param page loop.pages.ItemListPage
 ---@param session loop.dap.Session
----@param stopped_event loop.dap.proto.StoppedEvent
-function DebugJob:_on_session_stop_event(sess_id, session, stopped_event)
-    ---@type loop.pages.ItemListPage|nil
-    ---@diagnostic disable-next-line: assign-type-mismatch
-    local page = self._stacktrace_pages[sess_id]
-    if not page then
-        page = window.add_stacktrace_page(session:name())
-        self._stacktrace_pages[sess_id] = page
-    end
+---@param thread_id number
+function DebugJob:load_stack_trace(page, session, thread_id)
     page:set_items({ { id = 0, text = "Loading stack trace..." } })
     session:request_stackTrace({
-            threadId = stopped_event.threadId,
+            threadId = thread_id,
             levels = 100, --TODO: make configurable
         },
         function(response)
@@ -231,7 +224,11 @@ function DebugJob:_on_session_stop_event(sess_id, session, stopped_event)
             end
             local data = response.body
             ---@cast data loop.dap.proto.StackTraceResponse
-            local items = { { id = 0, text = string.format("Session %d (%s)", sess_id, session:name()) } }
+            local items = { {
+                id = 0,
+                text = string.format("Thread %s (gT to select a different thread)",
+                    tostring(thread_id))
+            } }
             for idx, frame in ipairs(data.stackFrames) do
                 local text
                 if frame.source then
@@ -246,6 +243,58 @@ function DebugJob:_on_session_stop_event(sess_id, session, stopped_event)
             end
             page:set_items(items)
         end)
+end
+
+---@param page loop.pages.ItemListPage
+---@param session loop.dap.Session
+function DebugJob:select_n_load_stacktrace(page, session)
+    session:request_threads(function(response)
+        if not response.success then
+            self._task_page:add_lines({ "Thread list query failed", response.message }, "error")
+            return
+        end
+        local data = response.body
+        ---@cast data loop.dap.proto.ThreadsResponse
+        local choices = {}
+        for _, thread in pairs(data.threads) do
+            ---@type loop.SelectorItem
+            local item = {
+                label = tostring(thread.id) .. ' - ' .. thread.name,
+                data = thread.id,
+            }
+            table.insert(choices, item)
+        end
+        selector.select("Select thread", choices, nil, function(thread_id)
+            if thread_id and type(thread_id) == "number" then
+                self:load_stack_trace(page, session, thread_id)
+            end
+        end)
+    end)
+end
+
+---@param sess_id number
+---@param session loop.dap.Session
+---@param stopped_event loop.dap.proto.StoppedEvent
+function DebugJob:_on_session_stop_event(sess_id, session, stopped_event)
+    ---@type loop.pages.ItemListPage|nil
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    local page = self._stacktrace_pages[sess_id]
+    if not page then
+        page = window.add_stacktrace_page(session:name())
+        self._stacktrace_pages[sess_id] = page
+        page:add_keymap("gT", { --TODO: make configurable
+            callback = function()
+                self:select_n_load_stacktrace(page, session)
+            end,
+            desc = "Select thread"
+        })
+    end
+    local thread_id = stopped_event.threadId
+    if not thread_id then
+        self:select_n_load_stacktrace(page, session)
+        return
+    end
+    self:load_stack_trace(page, session, thread_id)
 end
 
 return DebugJob

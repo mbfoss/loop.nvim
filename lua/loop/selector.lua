@@ -1,13 +1,8 @@
--- File: lua/selector_menu.lua
--- A unified selector menu that uses Telescope if available, otherwise falls back to a simple native picker.
--- Items must have: { label = string, data = table }
--- Callback now receives the selected item (or nil) instead of index.
-
 ---@class loop.SelectorItem
 ---@field label string The display label in the picker
----@field data table The table to show in preview via vim.inspect()
+---@field data any The data associated with the item
 
----@alias loop.SelectorCallback fun(data:table|nil): nil
+---@alias loop.SelectorCallback fun(data:any): nil
 
 local M = {}
 
@@ -65,8 +60,8 @@ end
 --- Use Telescope to show the selector
 ---@param prompt string The prompt title
 ---@param items loop.SelectorItem[] List of items
----@param formatter (fun(data:table):string)|nil Convert the data into text for display in the preview
----@param callback fun(data:table|nil) Called with selected item or nil
+---@param formatter (fun(data:any):string)|nil Convert the data into text for display in the preview
+---@param callback fun(data:any|nil) Called with selected item or nil
 local function telescope_select(prompt, items, formatter, callback)
     -- Ensure Telescope is loaded
     if not (pickers and finders and previewers and conf and actions and action_state) then
@@ -144,7 +139,7 @@ end
 -- Use Snacks.nvim picker as fallback
 ---@param prompt string
 ---@param items loop.SelectorItem[]
----@param formatter (fun(data:table):string)|nil Convert the data into text for display in the preview
+---@param formatter (fun(data:any):string)|nil Convert the data into text for display in the preview
 ---@param callback loop.SelectorCallback
 local function snacks_select(prompt, items, formatter, callback)
     local snacks = require("snacks")
@@ -192,7 +187,7 @@ end
 --- Uses Telescope if available; otherwise falls back to a simple native picker.
 ---@param prompt string The prompt/title to display
 ---@param items loop.SelectorItem[] List of items with label and data table
----@param formatter (fun(data:table):string)|nil Convert the data into text for display in the preview
+---@param formatter (fun(data:any):string)|nil Convert the data into text for display in the preview
 ---@param callback loop.SelectorCallback Called with selected item or nil if cancelled
 function M.select(prompt, items, formatter, callback)
     -- Input validation
@@ -208,8 +203,8 @@ function M.select(prompt, items, formatter, callback)
     end
     -- Validate item structure
     for i, item in ipairs(items) do
-        if type(item) ~= "table" or type(item.label) ~= "string" or type(item.data) ~= "table" then
-            error(string.format("selector_menu.select: item %d must have .label (string) and .data (table)", i))
+        if type(item) ~= "table" or type(item.label) ~= "string" or type(item.data) == "nil" then
+            error(string.format("selector_menu.select: item %d must have .label (string) and .data (non-nil)", i))
         end
     end
     if load_telescope() then

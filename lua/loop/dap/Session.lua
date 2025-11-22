@@ -341,4 +341,9 @@ function Session:request_stackTrace(args, callback)
     self._base_session:request_stackTrace(args, callback)
 end
 
+---@param callback fun(response: loop.dap.proto.Response)|nil
+function Session:request_threads(callback)
+    self._base_session:request_threads(callback)
+end
+
 return Session
