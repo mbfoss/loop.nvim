@@ -199,7 +199,7 @@ _cycle_pages = function(action)
     _setup_active_tab_idx(tabidx, pageidx)
 end
 
-_ui_select_page = function ()
+_ui_select_page = function()
     local choices = {}
     for tabidx, tab in ipairs(_tabs_arr) do
         for pageidx, page in ipairs(tab.pages) do
@@ -222,7 +222,7 @@ end
 
 ---@return table<string,loop.pages.page.KeyMap>
 local function get_page_keymap()
-        --- set keymaps
+    --- set keymaps
     ---@type table<string,loop.pages.page.KeyMap>
     local keymaps = {
         ["<c-p>"] = {
@@ -355,10 +355,8 @@ function M.update_breakpoints(breakpoints, proj_dir)
         _add_tab_page(_tabs.breakpoints, page)
     end
     assert(getmetatable(page) == BreakpointsPage)
-    if page then
-        page:setlist(breakpoints, proj_dir)
-        _setup_active_tab(_tabs.breakpoints)
-    end
+    page:set_breakpoints(breakpoints)
+    _setup_active_tab(_tabs.breakpoints)
 end
 
 function M.show_window()

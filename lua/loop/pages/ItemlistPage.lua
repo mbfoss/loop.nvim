@@ -18,7 +18,7 @@ local ItemListPage = class(Page)
 ---@param name string
 ---@param keymaps loop.pages.page.KeyMaps
 function ItemListPage:init(name, keymaps)
-    Page.init(self, "task", name, keymaps)
+    Page.init(self, "list", name, keymaps)
     self._items = {}
     self._index = {}
 end
@@ -45,6 +45,24 @@ function ItemListPage:add_item(item)
     self:_highlight(#self._items, #self._items)
 end
 
+---@return number|nil  -- item id under cursor, or nil if buffer not active or no item
+function ItemListPage:get_cur_item()
+    local current_buf = vim.api.nvim_get_current_buf()
+    local page_buf = self:get_buf()
+
+    -- If this page's buffer is not the current buffer, return nil
+    if current_buf ~= page_buf or page_buf == -1 then
+        return nil
+    end
+
+    -- Get cursor position in the current window (which shows our buffer)
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    local row = cursor[1] -- 1-based line number
+
+    local item = self._items[row]
+    return item and item.id or nil
+end
+
 ---@param id number
 ---@return any
 function ItemListPage:get_item_data(id)
@@ -56,9 +74,10 @@ function ItemListPage:get_item_data(id)
     return nil
 end
 
----@return number
-function ItemListPage:get_cur_item()
-
+---@return any
+function ItemListPage:get_cur_item_data()
+    local id = self:get_cur_item()
+    return id and self:get_item_data(id) or nil
 end
 
 ---@param id number
