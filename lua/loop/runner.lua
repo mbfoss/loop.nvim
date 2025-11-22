@@ -4,7 +4,7 @@ require('loop.task.taskdef')
 local qfparsers = require("loop.task.qfparsers")
 local vartools = require('loop.tools.vars')
 local strtools = require('loop.tools.strtools')
-local TermProc = require('loop.job.TermProc')
+local TermJob = require('loop.job.TermJob')
 local DebugJob = require('loop.job.DebugJob')
 local LuaFunc = require('loop.job.LuaFunc')
 local window = require('loop.window')
@@ -187,7 +187,7 @@ local function _start_one_task(task, task_exit_handler)
         end
         return job, nil
     elseif tasktype == "tool" or tasktype == "app" then
-        ---@type loop.TermProc.StartArgs
+        ---@type loop.tools.TermProc.StartArgs
         local args = {
             name = task.name,
             command = task.command,
@@ -196,12 +196,11 @@ local function _start_one_task(task, task_exit_handler)
             output_handler = output_handler,
             on_exit_handler = exit_handler,
         }
-        local job = TermProc:new()
-        local bufnr, err = job:start(args)
-        if bufnr <= 0 then
+        local job = TermJob:new()
+        local ok, err = job:start(args)
+        if not ok then
             return nil, err
         end
-        window.add_term_task(task.name, bufnr)
         return job, nil
     elseif tasktype == "debug" then
         ---@type loop.dap.session.Args.DAP|nil,string|nil
@@ -231,7 +230,6 @@ local function _start_one_task(task, task_exit_handler)
         if not ok then
             return nil, err
         end
-        window.add_debug_task(task.name, job)
         return job, nil
     end
 

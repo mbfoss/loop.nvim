@@ -25,13 +25,12 @@ local strtools = require('loop.tools.strtools')
 ---@field run_in_terminal boolean
 ---@field stop_on_entry boolean
 
----@alias loop.session.TrackerEvent 
+---@alias loop.session.TrackerEvent
 ---|"log"
 ---|"state"
 ---|"output"
 ---|"runInTerminal_request"
----|"threads"
----|"stacktrace"
+---|"stopped"
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.Args
@@ -79,9 +78,9 @@ function Session:start(args)
     self._tracker = args.tracker
     self._on_exit = args.exit_handler
 
-    local stderr_handler = function (text)
+    local stderr_handler = function(text)
         ---@type loop.dap.session.notify.LogData
-        local data = { level = "error", lines = { "dap process error", text} }
+        local data = { level = "error", lines = { "dap process error", text } }
         self:_notify_tracker("log", data)
     end
 
@@ -182,19 +181,19 @@ function Session:state()
 end
 
 function Session:debug_continue()
-    self._base_session:request_continue({threadId = 0}, self:_simple_qery_resp_handler())
+    self._base_session:request_continue({ threadId = 0 }, self:_simple_qery_resp_handler())
 end
 
 function Session:debug_stepIn()
-    self._base_session:request_stepIn({threadId = 0}, self:_simple_qery_resp_handler())
+    self._base_session:request_stepIn({ threadId = 0 }, self:_simple_qery_resp_handler())
 end
 
 function Session:debug_stepOut()
-    self._base_session:request_stepOut({threadId = 0}, self:_simple_qery_resp_handler())
+    self._base_session:request_stepOut({ threadId = 0 }, self:_simple_qery_resp_handler())
 end
 
 function Session:debug_stepBack()
-    self._base_session:request_stepBack({threadId = 0}, self:_simple_qery_resp_handler())
+    self._base_session:request_stepBack({ threadId = 0 }, self:_simple_qery_resp_handler())
 end
 
 ---@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
@@ -330,34 +329,16 @@ end
 function Session:_on_stopped_state(trigger, trigger_data)
     self:_notify_about_state()
     if trigger == "dap_stopped" then
-        ---@type loop.dap.proto.StoppedEvent   
-        local stopped_event = trigger_data     
-        self._base_session:request_threads(function(response)
-            if not response.success then
-                ---@type loop.dap.session.notify.LogData
-                local logdata = { level = "error", lines = { "Failed to query threads", response.message } }
-                self:_notify_tracker("log", logdata)
-                return
-            end
-            ---@type loop.dap.proto.ThreadsResponse
-            local data = response.body
-            self:_notify_tracker("threads", data)
-        end)
-        self._base_session:request_stackTrace({
-             threadId = stopped_event.threadId,  
-             levels = 100, --TODO: make configurable
-        },function(response)
-            if not response.success then
-                ---@type loop.dap.session.notify.LogData
-                local logdata = { level = "error", lines = { "Failed to query stack trace", response.message } }
-                self:_notify_tracker("log", logdata)
-                return
-            end
-            ---@type loop.dap.proto.StackTraceResponse
-            local data = response.body
-            self:_notify_tracker("stacktrace", data)
-        end)        
+        ---@type loop.dap.proto.StoppedEvent
+        local stopped_event = trigger_data
+        self:_notify_tracker("stopped", stopped_event)
     end
+end
+
+---@param args loop.dap.proto.StackTraceArguments
+---@param callback fun(response: loop.dap.proto.Response)|nil
+function Session:request_stackTrace(args, callback)
+    self._base_session:request_stackTrace(args, callback)
 end
 
 return Session

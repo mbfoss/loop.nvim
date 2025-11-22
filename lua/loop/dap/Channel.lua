@@ -9,11 +9,6 @@ local class = require('loop.tools.class')
 local Channel = class()
 
 ---@diagnostic disable-next-line: undefined-field
-local main_thread_id = vim.loop.thread_self()  -- capture at startup
-local function assert_main_thread()
----@diagnostic disable-next-line: undefined-field
-  assert(vim.loop.thread_self() == main_thread_id, "Not in main thread!")
-end
 
 local msg_log_enabled = (vim.env.NVIM_LOOP_PLUGIN_ENBALE_DAP_LOGS == "1")
 local msg_log_file = nil
@@ -58,7 +53,6 @@ function Channel:_create_process(name, opts)
         env = opts.dap_env,
         cwd = opts.dap_cwd,
         on_output = function(data, is_stderr)
-            assert_main_thread()
             if not is_stderr then
                 self:_on_data(buffer, data)
             elseif self.on_stderr then
@@ -66,7 +60,6 @@ function Channel:_create_process(name, opts)
             end
         end,
         on_exit = function(code, signal)
-            assert_main_thread()
             if opts.on_exit then
                 opts.on_exit(code, signal)
             end

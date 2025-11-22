@@ -1,19 +1,10 @@
-local Job      = require('loop.job.Job')
-local class    = require('loop.tools.class')
-local uitools  = require('loop.tools.uitools')
-local strtools = require('loop.tools.strtools')
+local class          = require('loop.tools.class')
+local uitools        = require('loop.tools.uitools')
+local strtools       = require('loop.tools.strtools')
 
-
----@class loop.job.TermProc : loop.job.Job
----@field new fun(self: loop.job.TermProc) : loop.job.TermProc
-local TermProc = class(Job)
-
----@diagnostic disable-next-line: undefined-field
-local main_thread_id = vim.loop.thread_self() -- capture at startup
-local function assert_main_thread()
-    ---@diagnostic disable-next-line: undefined-field
-    assert(vim.loop.thread_self() == main_thread_id, "Not in main thread!")
-end
+---@class loop.tools.TermProc
+---@field new fun(self: loop.tools.TermProc) : loop.tools.TermProc
+local TermProc = class()
 
 ---Initializes the TermProc instance.
 function TermProc:init()
@@ -36,7 +27,7 @@ function TermProc:get_pid()
     return vim.fn.jobpid(self.job_id)
 end
 
----@class loop.TermProc.StartArgs
+---@class loop.tools.TermProc.StartArgs
 ---@field name string
 ---@field command string|string[]
 ---@field command_env table<string,string>|nil
@@ -45,12 +36,12 @@ end
 ---@field on_exit_handler fun(code : number)
 
 ---Starts a new terminal job.
----@param args loop.TermProc.StartArgs
----@return number buffer number or -1
+---@param args loop.tools.TermProc.StartArgs
+---@return number bunfr
 ---@return string|nil error msg or nil
 function TermProc:start(args)
     if self.job_id ~= -1 then
-        return -1, "A job is already running"
+        return -1, "already started"
     end
 
     assert(args.on_exit_handler)
@@ -77,7 +68,7 @@ function TermProc:start(args)
     local cmd_and_args = strtools.cmd_to_string_array(args.command)
 
     if #cmd_and_args == 0 then
-        return -1, "task command is missing"
+        return -1, "command is missing"
     end
 
     if vim.fn.executable(cmd_and_args[1]) == 0 then
@@ -158,19 +149,16 @@ function TermProc:_start_term_job(bufnr, cmd_and_args, command_env, command_cwd,
         cwd = command_cwd,
         env = command_env,
         on_stdout = function(_, data, _)
-            assert_main_thread()
             if output_handler then
                 output_handler("stdout", data)
             end
         end,
         on_stderr = function(_, data, _)
-            assert_main_thread()
             if output_handler then
                 output_handler("stderr", data)
             end
         end,
         on_exit = function(_, code, _)
-            assert_main_thread()
             self.job_id = -1
             on_exit(code)
         end,

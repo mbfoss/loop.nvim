@@ -94,10 +94,14 @@ function BaseSession:_handle_event(msg)
         self.log:warn("Unhandled DAP event: " .. msg.event)
         return
     end
-    local ok = pcall(handler, msg.body)
-    if not ok then
-        self.log:error("Error in event handler for " .. msg.event)
-    end
+    --- schedule to avoid processing in the fast event context
+    vim.schedule(function() 
+        local cb_error = function(err)
+            self.log:error("Error in event handler for " .. msg.event ..
+                debug.traceback("Error: " .. tostring(err) .. "\n", 2))
+        end
+        xpcall(function() handler(msg.body) end, cb_error)
+    end)
 end
 
 ---@param msg loop.dap.proto.Response
@@ -108,10 +112,14 @@ function BaseSession:_handle_resp(msg)
         return
     end
     self.callbacks[msg.request_seq] = nil
-    local ok = pcall(cb, msg)
-    if not ok then
-        self.log:error("Error in response handler for " .. msg.command)
-    end
+    --- schedule to avoid processing in the fast event context
+    vim.schedule(function() 
+        local error_cb = function(err)
+            self.log:error("Error in response handler for " .. tostring(msg.command) ..
+                debug.traceback("Error: " .. tostring(err) .. "\n", 2))
+        end    
+        xpcall(function() cb(msg) end, error_cb)
+    end)
 end
 
 ---@param msg loop.dap.proto.Request
@@ -135,11 +143,17 @@ function BaseSession:_handle_rev_req(msg)
         send_failure("No handler registered for reverse request: " .. msg.command)
         return
     end
-
-    local ok = pcall(handler, msg.arguments or {}, send_success, send_failure)
-    if not ok then
-        send_failure("Exception in reverse request handler")
-    end
+    --- schedule to avoid processing in the fast event context
+    vim.schedule(function() 
+        local error_cb = function(err)
+            self.log:error("Error in reverse request handler for " .. tostring(msg.command) ..
+                debug.traceback("Error: " .. tostring(err) .. "\n", 2))
+        end
+        local ok = xpcall(function() handler(msg.arguments or {}, send_success, send_failure) end, error_cb)
+        if not ok then
+            send_failure("Error in reverse request handler")
+        end
+    end)
 end
 
 ---@param command string
@@ -213,11 +227,13 @@ function BaseSession:request_setBreakpoints(args, callback) self:_request("setBr
 
 ---@param args loop.dap.proto.SetFunctionBreakpointsArguments
 ---@param callback fun(response: loop.dap.proto.Response)|nil
-function BaseSession:request_setFunctionBreakpoints(args, callback) self:_request("setFunctionBreakpoints", args, callback) end
+function BaseSession:request_setFunctionBreakpoints(args, callback) self:_request("setFunctionBreakpoints", args,
+        callback) end
 
 ---@param args loop.dap.proto.SetExceptionBreakpointsArguments
 ---@param callback fun(response: loop.dap.proto.Response)|nil
-function BaseSession:request_setExceptionBreakpoints(args, callback) self:_request("setExceptionBreakpoints", args, callback) end
+function BaseSession:request_setExceptionBreakpoints(args, callback) self:_request("setExceptionBreakpoints", args,
+        callback) end
 
 ---@param callback fun(response: loop.dap.proto.Response)|nil
 function BaseSession:request_threads(callback) self:_request("threads", nil, callback) end

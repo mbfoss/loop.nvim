@@ -5,7 +5,6 @@ local ItemListPage = require('loop.pages.ItemListPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
-local TermProc = require('loop.job.TermProc')
 local selector = require("loop.selector")
 
 ---@type boolean
@@ -400,206 +399,59 @@ end
 
 ---@param name string -- task name
 ---@param bufnr number
-function M.add_term_task(name, bufnr)
+function M.add_term_task_page(name, bufnr)
     assert(setup_done)
     assert(type(name) == "string")
     assert(vim.api.nvim_buf_is_valid(bufnr))
 
-    local page = Page:new("task", name)
+    local page = Page:new("term", name)
     page:assign_buf(bufnr)
 
     _add_tab_page(_tabs.tasks, page)
 end
 
----@param context table
----@param sess_id number
----@param sess_name string
----@param category string
----@param output string
-function _add_debug_output(context, sess_id, sess_name, category, output)
-    assert(setup_done)
-
-    context.output_pages = context.output_pages or {}
-
-    ---@type loop.pages.OutputPage|nil
-    ---@diagnostic disable-next-line: assign-type-mismatch
-    local page = context.output_pages[sess_id] or nil
-    if not page then
-        page = OutputPage:new(sess_name)
-        context.output_pages[sess_id] = page
-        _add_tab_page(_tabs.debug, page)
-    end
-
-    local level = category == "stderr" and "error" or nil
-    page:add_lines({ output }, level)
-end
-
----@param context table
----@param sess_id number
----@param sess_name string
----@param msg loop.dap.proto.ThreadsResponse
-function _show_debug_threads(context, sess_id, sess_name, msg)
-    assert(setup_done)
-    context.threads_pages = context.threads_pages or {}
-
-    ---@type loop.pages.ItemListPage|nil
-    ---@diagnostic disable-next-line: assign-type-mismatch
-    local page = context.threads_pages[sess_id] or nil
-    if not page then
-        page = ItemListPage:new(sess_name)
-        context.threads_pages[sess_id] = page
-        _add_tab_page(_tabs.threads, page)
-    end
-    ---@type loop.pages.ItemListPage.Item[]
-    items = {}
-    for _, thread in ipairs(msg.threads) do
-        ---@type loop.pages.ItemListPage.Item
-        local item = {
-            id = thread.id,
-            text = tostring(thread.id) .. ': ' .. tostring(thread.name)
-        }
-        table.insert(items, item)
-    end
-    page:set_items(items)
-end
-
---@param context table
----@param sess_id number
----@param sess_name string
----@param msg loop.dap.proto.StackTraceResponse
-function _show_debug_stacktrace(context, sess_id, sess_name, msg)
-    assert(setup_done)
-    context.stacktrace_pages = context.stacktrace_pages or {}
-
-    ---@type loop.pages.ItemListPage|nil
-    ---@diagnostic disable-next-line: assign-type-mismatch
-    local page = context.stacktrace_pages[sess_id] or nil
-    if not page then
-        page = ItemListPage:new(sess_name)
-        context.stacktrace_pages[sess_id] = page
-        _add_tab_page(_tabs.stacktrace, page)
-    end
-    ---@type loop.pages.ItemListPage.Item[]
-    items = {{id = 0, text = string.format("Session %d (%s)", sess_id, sess_name)}}
-    for idx, frame in ipairs(msg.stackFrames) do
-        local text 
-        if frame.source then
-            text = string.format("%d: %s - %s:%d:%d",
-                frame.id, frame.name, frame.source.name, frame.line, frame.column)   
-        else
-            text = string.format("%d: %s", frame.id, frame.name)               
-        end
-        ---@type loop.pages.ItemListPage.Item
-        local item = {id = idx, text = text }
-        table.insert(items, item)
-    end
-    page:set_items(items)
-end
-
----@param name string
----@param args loop.dap.proto.RunInTerminalRequestArguments
----@param on_success fun(pid:number)
----@param on_failure fun(reason:string)
-function _add_debug_term(name, args, on_success, on_failure)
-    --vim.notify(vim.inspect{name, args, on_success, on_failure})
-
-    assert(setup_done)
-    assert(type(name) == "string")
-    assert(type(args) == "table")
-    assert(type(on_success) == "function")
-    assert(type(on_failure) == "function")
-
-    local proc = TermProc:new()
-    local bufnr, proc_err = proc:start({
-        name = name,
-        command = args.args,
-        env = args.env,
-        cwd = args.cwd,
-        on_exit_handler = function(code)
-        end
-    })
-    if bufnr <= 0 then
-        on_failure(proc_err or "target startup error")
-        return
-    end
-    local pid = proc:get_pid()
-    local page = Page:new("term", name)
-    page:assign_buf(bufnr)
-    _add_tab_page(_tabs.debug, page)
-    on_success(pid)
-end
-
----@param page loop.pages.OutputPage
----@param context table
----@param sess_id number
----@param sess_name string
----@param event loop.session.TrackerEvent
-function _process_debug_session_event(page, context, sess_id, sess_name, event, data)
-    if event == "log" then
-        ---@type loop.dap.session.notify.LogData
-        local log = data
-        page:add_lines(vim.list_extend({ "Session " .. sess_id .. " " .. log.level }, log.lines))
-    elseif event == "state" then
-        ---@type loop.dap.session.notify.StateData
-        local state = data
-        page:add_lines({ "Session " .. sess_id .. " state: " .. state.state })
-    elseif event == "output" then
-        ---@type loop.dap.proto.OutputEvent
-        local output = data
-        if output.category == "stdout" or output.category == "stderr" then
-            _add_debug_output(context, sess_id, sess_name, output.category, output.output)
-        elseif output.category == "console" then
-            page:add_lines({ "Session " .. sess_id .. ": " .. output.output })
-        else
-            page:add_lines({ "Session " .. sess_id .. ": (" .. output.category ") " .. output.output })
-        end
-    elseif event == "runInTerminal_request" then
-        ---@type loop.dap.session.notify.RunInTerminalReq
-        local request = data
-        _add_debug_term(sess_name, request.args, request.on_success, request.on_failure)
-    elseif event == "threads" then
-        ---@type loop.dap.proto.ThreadsResponse
-        local msg = data
-        _show_debug_threads(context, sess_id, sess_name, msg or {})
-    elseif event == "stacktrace" then
-        ---@type loop.dap.proto.StackTraceResponse
-        local msg = data
-        _show_debug_stacktrace(context, sess_id, sess_name, msg or {})
-    else
-        error("unhandled dap session event: " .. event)
-    end
-end
-
----@param job loop.job.DebugJob
----@param page loop.pages.OutputPage
----@param context table
-function _track_debug_job(job, page, context)
-    ---@type loop.job.DebugJob.Tracker
-    local tracker = function(event, args)
-        --vim.notify("debug job event: " .. event .. ', args: ' .. vim.inspect(args))
-        if event == "session_add" then
-            page:add_lines({ "New session created: " .. tostring(args.id) .. ' - ' .. tostring(args.name) })
-            page:add_lines({ "Session " .. tostring(args.id) .. " state: " .. args.state })
-        elseif event == "session_del" then
-            page:add_lines({ "Session removed: " .. tostring(args.id) .. ' - ' .. tostring(args.name) })
-        elseif event == "session_event" then
-            _process_debug_session_event(page, context, args.id, args.name, args.event, args.event_data)
-        end
-    end
-    page:add_lines({ "Debug task started" })
-    job:track(tracker)
-end
-
 ---@param name string -- task name
----@param debugjob loop.job.DebugJob
-function M.add_debug_task(name, debugjob)
+---@return loop.pages.OutputPage
+function M.add_debug_task_page(name)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
     local page = OutputPage:new(name)
     _add_tab_page(_tabs.tasks, page)
-    -- track job events
-    _track_debug_job(debugjob, page, {})
+    return page
+end
+
+---@param name string -- task name
+---@param bufnr number
+function M.add_debug_term_page(name, bufnr)
+    assert(setup_done)
+    assert(type(name) == "string")
+    -- create page
+    local page = Page:new("term", name)
+    page:assign_buf(bufnr)
+    _add_tab_page(_tabs.debug, page)
+end
+
+---@param name string -- task name
+---@return loop.pages.OutputPage
+function M.add_debug_output_page(name)
+    assert(setup_done)
+    assert(type(name) == "string")
+    -- create page
+    local page = OutputPage:new(name)
+    _add_tab_page(_tabs.debug, page)
+    return page
+end
+
+---@param name string -- task name
+---@return loop.pages.ItemListPage
+function M.add_stacktrace_page(name)
+    assert(setup_done)
+    assert(type(name) == "string")
+    -- create page
+    local page = ItemListPage:new(name)
+    _add_tab_page(_tabs.stacktrace, page)
+    return page
 end
 
 ---@param config_dir string
