@@ -7,6 +7,12 @@ local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local selector = require("loop.selector")
 
+---@class loop.TabInfo
+---@field label string
+---@field pages loop.pages.Page[]
+---@field active_page_idx number|nil
+---@field list_prefix string|nil
+
 ---@type boolean
 local setup_done = false
 
@@ -14,17 +20,14 @@ local setup_done = false
 local _loop_win = -1
 ---@type number
 local _loop_win_height_ratio
-
----@class loop.TabInfo
----@field label string
----@field pages loop.pages.Page[]
----@field active_page_idx number|nil
----@field list_prefix string|nil
-
+---@type fun(action: "next"|"prev")
+local _cycle_pages
+---@type fun()
+local _ui_select_page
 
 local _tabs = {
     ---@type loop.TabInfo
-    events = { label = "Messages", pages = { OutputPage:new("Messages") }, active_page_idx = 1 },
+    events = { label = "Messages", pages = {}, active_page_idx = 1 },
     ---@type loop.TabInfo
     breakpoints = { label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
@@ -97,9 +100,6 @@ local function _on_win_new_or_close()
     end
 end
 
----@type fun(action: "next"|"prev")
-local _cycle_pages
-
 ---@param req_tab loop.TabInfo|nil
 local function _setup_active_tab(req_tab)
     if not req_tab then
@@ -111,24 +111,6 @@ local function _setup_active_tab(req_tab)
 
     local page_idx = req_tab.active_page_idx or 1
     assert(page_idx > 0 and page_idx <= #req_tab.pages)
-
-    --- set keymaps
-    ---@type table<string,loop.pages.page.KeyMapItem>
-    local keymaps = {
-        ["<c-p>"] = {
-            callback = function() _cycle_pages("prev") end,
-            desc = "Move to previous page",
-        },
-        ["<c-n>"] = {
-            callback = function() _cycle_pages("next") end,
-            desc = "Move to previous page",
-        },
-        ["<c-l>"] = {
-            callback = _ui_select_page,
-            desc = "Select page",
-        },
-    }
-    req_tab.pages[page_idx]:set_keymaps(keymaps)
 
     -- update window if visible
     if _loop_win ~= -1 then
@@ -217,7 +199,7 @@ _cycle_pages = function(action)
     _setup_active_tab_idx(tabidx, pageidx)
 end
 
-local function _ui_select_page()
+_ui_select_page = function ()
     local choices = {}
     for tabidx, tab in ipairs(_tabs_arr) do
         for pageidx, page in ipairs(tab.pages) do
@@ -236,6 +218,27 @@ local function _ui_select_page()
             _setup_active_tab_idx(data.tabidx, data.pageix)
         end
     end)
+end
+
+---@return table<string,loop.pages.page.KeyMap>
+local function get_page_keymap()
+        --- set keymaps
+    ---@type table<string,loop.pages.page.KeyMap>
+    local keymaps = {
+        ["<c-p>"] = {
+            callback = function() _cycle_pages("prev") end,
+            desc = "Move to previous page",
+        },
+        ["<c-n>"] = {
+            callback = function() _cycle_pages("next") end,
+            desc = "Move to previous page",
+        },
+        ["<c-l>"] = {
+            callback = _ui_select_page,
+            desc = "Select page",
+        },
+    }
+    return keymaps
 end
 
 ---@param tab loop.TabInfo
@@ -348,7 +351,7 @@ function M.update_breakpoints(breakpoints, proj_dir)
     ---@diagnostic disable-next-line: assign-type-mismatch
     local page = _tabs.breakpoints.pages[1]
     if not page then
-        page = BreakpointsPage:new()
+        page = BreakpointsPage:new(get_page_keymap())
         _add_tab_page(_tabs.breakpoints, page)
     end
     assert(getmetatable(page) == BreakpointsPage)
@@ -404,7 +407,7 @@ function M.add_term_task_page(name, bufnr)
     assert(type(name) == "string")
     assert(vim.api.nvim_buf_is_valid(bufnr))
 
-    local page = Page:new("term", name)
+    local page = Page:new("term", name, get_page_keymap())
     page:assign_buf(bufnr)
 
     _add_tab_page(_tabs.tasks, page)
@@ -416,7 +419,7 @@ function M.add_debug_task_page(name)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = OutputPage:new(name)
+    local page = OutputPage:new(name, get_page_keymap())
     _add_tab_page(_tabs.tasks, page)
     return page
 end
@@ -427,7 +430,7 @@ function M.add_debug_term_page(name, bufnr)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = Page:new("term", name)
+    local page = Page:new("term", name, get_page_keymap())
     page:assign_buf(bufnr)
     _add_tab_page(_tabs.debug, page)
 end
@@ -438,7 +441,7 @@ function M.add_debug_output_page(name)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = OutputPage:new(name)
+    local page = OutputPage:new(name, get_page_keymap())
     _add_tab_page(_tabs.debug, page)
     return page
 end
@@ -449,7 +452,7 @@ function M.add_stacktrace_page(name)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = ItemListPage:new(name)
+    local page = ItemListPage:new(name, get_page_keymap())
     _add_tab_page(_tabs.stacktrace, page)
     return page
 end
@@ -475,6 +478,8 @@ function M.setup(_)
     end
     -- setup only once
     setup_done = true
+
+    table.insert(_tabs.events.pages, OutputPage:new("Messages", get_page_keymap()))
 
     do
         vim.api.nvim_set_hl(0, "LoopPluginInactiveTab", { link = "WinBar" })

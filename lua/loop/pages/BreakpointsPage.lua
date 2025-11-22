@@ -4,7 +4,7 @@ local uitools = require('loop.tools.uitools')
 
 
 ---@class loop.pages.BreakpointsPage : loop.pages.Page
----@field new fun(self: loop.pages.BreakpointsPage): loop.pages.BreakpointsPage
+---@field new fun(self: loop.pages.BreakpointsPage, keymaps:loop.pages.page.KeyMaps): loop.pages.BreakpointsPage
 local BreakpointsPage = class(Page)
 
 -- Static namespace for extmarks
@@ -60,8 +60,9 @@ local function format_entry(entry, project_dir)
 	return table.concat(parts, "")
 end
 
-function BreakpointsPage:init()
-	Page.init(self, "breakpoints", "Breakpoints")
+---@param keymaps loop.pages.page.KeyMaps
+function BreakpointsPage:init(keymaps)
+	Page.init(self, "breakpoints", "Breakpoints", keymaps)
 	self._items = {}
 end
 
@@ -73,7 +74,7 @@ function BreakpointsPage:get_or_create_buf()
 
 	self:_refresh_buffer(buf)
 
-	-- Set up <Enter> keymap only once when buffer is created
+	-- Set up <Enter> keymaps only once when buffer is created
 	vim.api.nvim_buf_set_keymap(buf, 'n', '<CR>', '', {
 		callback = function()
 			local entry = self:get_selected()

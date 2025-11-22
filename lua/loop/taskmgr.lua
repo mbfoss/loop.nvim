@@ -94,11 +94,7 @@ end
 ---@param task_name string|nil
 function M.run_task(proj_dir, config_dir, mode, task_name)
     if mode == "repeat" then
-        local chain, _ = taskstore.load_last_chain(config_dir)
-        if chain then
-            runner.start_task_chain(chain)
-            return
-        end
+        task_name = taskstore.load_last_task_name(config_dir)
     end
 
     local tasks, task_errors = taskstore.load_tasks(config_dir)
@@ -121,7 +117,7 @@ function M.run_task(proj_dir, config_dir, mode, task_name)
             window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
             return
         end
-        runner.start_task_with_deps(tasks, task)
+        runner.start_task_chain(chain)
         return
     end
 
@@ -141,7 +137,7 @@ function M.run_task(proj_dir, config_dir, mode, task_name)
             window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
             return
         end
-        taskstore.save_last_chain(chain, config_dir)
+        taskstore.save_last_task_name(task.name, config_dir)
         runner.start_task_chain(chain)
     end)
 end

@@ -1,7 +1,9 @@
 local class = require('loop.tools.class')
 
+---@alias loop.pages.page.KeyMaps table<string,loop.pages.page.KeyMap>
+
 ---@class loop.pages.Page
----@field new fun(self: loop.pages.Page, type : string, name:string): loop.pages.Page
+---@field new fun(self: loop.pages.Page, type : string, name:string, keymaps:loop.pages.page.KeyMaps): loop.pages.Page
 local Page = class()
 
 local buffer_flag_key = "loopplugin_page_efc0bed4-145b"
@@ -13,9 +15,11 @@ end
 
 ---@param type string
 ---@param name string
-function Page:init(type, name)
+---@param keymaps table<string,loop.pages.page.KeyMap>
+function Page:init(type, name, keymaps)
     self._type = type
     self._name = name
+    self._keymaps = keymaps
     self._buf = -1
 end
 
@@ -123,38 +127,28 @@ function Page:_setup_buf(own_buf)
     })
 end
 
----@class loop.pages.page.KeyMapItem
+---@class loop.pages.page.KeyMap
 ---@field callback fun()
 ---@field desc string
 
----@param keymaps table<string,loop.pages.page.KeyMapItem>
-function Page:set_keymaps(keymaps)
-    self.keymaps = keymaps
-    self:_apply_keymaps()
-end
-
 function Page:_apply_keymaps()
-    if self.keymaps then
-        for key, item in pairs(self.keymaps) do
+    if self._keymaps then
+        for key, item in pairs(self._keymaps) do
             self:_apply_keymap(key, item)
         end
     end
 end
 
 ---@param key string
----@param item loop.pages.page.KeyMapItem
+---@param item loop.pages.page.KeyMap
 function Page:_apply_keymap(key, item)
     if self._buf ~= -1 then
         local modes = { "n" }
-        for _, mode in ipairs(modes) do
-            --local ok, err =
-            pcall(vim.api.nvim_buf_del_keymap, self._buf, mode, key)
-            --vim.notify(vim.inspect { 'remove keymap ', ok, err })
-        end
-        --vim.notify(vim.inspect { 'setting keymap', self._type, modes, key, self._buf})
-        vim.keymap.set(modes, key, function()
-            item.callback()
-        end, { buffer = self._buf, desc = item.desc })
+        --local ok = 
+        pcall(function() vim.keymap.del(modes, key, {buffer = self._buf}) end)
+        vim.keymap.set(modes, key, function() item.callback() end, { buffer = self._buf, desc = item.desc })
+        --vim.notify("keymap removed " .. tostring(ok))
+        
     end
 end
 

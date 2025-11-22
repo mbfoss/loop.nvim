@@ -7,13 +7,14 @@ local uitools = require('loop.tools.uitools')
 ---@field text string
 
 ---@class loop.pages.ItemListPage : loop.pages.Page
----@field new fun(self: loop.pages.ItemListPage, name:string): loop.pages.Page
+---@field new fun(self: loop.pages.ItemListPage, name:string, keymaps:loop.pages.page.KeyMaps): loop.pages.Page
 ---@field _items loop.pages.ItemListPage.Item[]
 local ItemListPage = class(Page)
 
 ---@param name string
-function ItemListPage:init(name)
-    Page.init(self, "task", name)
+---@param keymaps loop.pages.page.KeyMaps
+function ItemListPage:init(name, keymaps)
+    Page.init(self, "task", name, keymaps)
     self._items = {}
 end
 

@@ -139,22 +139,23 @@ function M.load_tasks(config_dir)
 	return tasks, nil
 end
 
----@param tasks loop.Task[]
+---@param name string
 ---@param config_dir string
-function M.save_last_chain(tasks, config_dir)
+function M.save_last_task_name(name, config_dir)
 	local filepath = vim.fs.joinpath(config_dir, "last.json")
-	jsontools.save_to_file(filepath, tasks)
+    local data = { task = name }
+	jsontools.save_to_file(filepath, data)
 end
 
 ---@param config_dir string
----@return loop.Task[]|nil, string|nil
-function M.load_last_chain(config_dir)
+---@return string|nil
+function M.load_last_task_name(config_dir)
 	local filepath = vim.fs.joinpath(config_dir, "last.json")
-	local ok, data_or_err = jsontools.load_from_file(filepath)
+	local ok, payload = jsontools.load_from_file(filepath)
 	if not ok then
-		return nil, data_or_err
+		return nil
 	end
-	return data_or_err
+	return payload and payload.task or nil
 end
 
 ---@param ext_name string
