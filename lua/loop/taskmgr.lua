@@ -19,7 +19,7 @@ end
 ---@param config_dir string
 ---@param templates loop.Task[]
 ---@param prompt string
-function _add_task(config_dir, templates, prompt)
+local function _add_task(config_dir, templates, prompt)
     local choices = {}
     for _, template in pairs(templates) do
         ---@type loop.SelectorItem

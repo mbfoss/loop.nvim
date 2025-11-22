@@ -231,7 +231,7 @@ function DebugJob:_on_session_stop_event(sess_id, session, stopped_event)
             end
             local data = response.body
             ---@cast data loop.dap.proto.StackTraceResponse
-            items = { { id = 0, text = string.format("Session %d (%s)", sess_id, session:name()) } }
+            local items = { { id = 0, text = string.format("Session %d (%s)", sess_id, session:name()) } }
             for idx, frame in ipairs(data.stackFrames) do
                 local text
                 if frame.source then

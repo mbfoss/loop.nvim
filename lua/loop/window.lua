@@ -217,7 +217,7 @@ _cycle_pages = function(action)
     _setup_active_tab_idx(tabidx, pageidx)
 end
 
-function _ui_select_page()
+local function _ui_select_page()
     local choices = {}
     for tabidx, tab in ipairs(_tabs_arr) do
         for pageidx, page in ipairs(tab.pages) do
@@ -239,7 +239,7 @@ function _ui_select_page()
 end
 
 ---@param tab loop.TabInfo
-function _delete_tab_pages(tab)
+local function _delete_tab_pages(tab)
     assert(tab ~= _tabs.events)
     _setup_active_tab(_tabs.events)
     for _, page in ipairs(tab) do
@@ -251,7 +251,7 @@ end
 
 ---@param tab loop.TabInfo
 ---@param page loop.pages.Page
-function _add_tab_page(tab, page)
+local function _add_tab_page(tab, page)
     table.insert(tab.pages, page)
     tab.active_page_idx = #tab.pages
     _setup_active_tab(tab)

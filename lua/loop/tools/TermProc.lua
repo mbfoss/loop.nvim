@@ -99,6 +99,8 @@ function TermProc:start(args)
         end
     )
 
+    vim.api.nvim_win_set_cursor(temp_win, {vim.api.nvim_buf_line_count(bufnr), 0})
+
     vim.api.nvim_set_current_win(previous_win)
     vim.api.nvim_win_close(temp_win, true)
 
