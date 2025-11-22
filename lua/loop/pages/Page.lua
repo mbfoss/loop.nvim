@@ -2,6 +2,10 @@ local class = require('loop.tools.class')
 
 ---@alias loop.pages.page.KeyMaps table<string,loop.pages.page.KeyMap>
 
+---@class loop.pages.page.KeyMap
+---@field callback fun()
+---@field desc string
+
 ---@class loop.pages.Page
 ---@field new fun(self: loop.pages.Page, type : string, name:string, keymaps:loop.pages.page.KeyMaps): loop.pages.Page
 local Page = class()
@@ -98,13 +102,13 @@ function Page:_setup_buf(own_buf)
 
     do
         local b = vim.bo[buf]
-        if own_buf then        
+        if own_buf then
             b.buftype = "nofile"
             b.modifiable = false
         end
         b.bufhidden = "hide"
         b.swapfile = false
-        b.undolevels = -1 -- buffer can't become "modified"
+        b.undolevels = -1   -- buffer can't become "modified"
         b.buflisted = false -- hide from :ls
         b.filetype = "loop-" .. self._type
     end
@@ -127,9 +131,12 @@ function Page:_setup_buf(own_buf)
     })
 end
 
----@class loop.pages.page.KeyMap
----@field callback fun()
----@field desc string
+---@param key string
+---@param keymap loop.pages.page.KeyMap
+function Page:add_keymap(key, keymap)
+    self._keymaps[key] = keymap
+    self:_apply_keymap(key, keymap)
+end
 
 function Page:_apply_keymaps()
     if self._keymaps then
@@ -144,11 +151,10 @@ end
 function Page:_apply_keymap(key, item)
     if self._buf ~= -1 then
         local modes = { "n" }
-        --local ok = 
-        pcall(function() vim.keymap.del(modes, key, {buffer = self._buf}) end)
+        --local ok =
+        pcall(function() vim.keymap.del(modes, key, { buffer = self._buf }) end)
         vim.keymap.set(modes, key, function() item.callback() end, { buffer = self._buf, desc = item.desc })
         --vim.notify("keymap removed " .. tostring(ok))
-        
     end
 end
 

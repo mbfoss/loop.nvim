@@ -47,6 +47,21 @@ function ItemListPage:get_or_create_buf()
     if not created then
         return buf, false
     end
+
+    self:add_keymap('<CR>', {
+        callback = function ()
+            vim.notify("Item selected")
+        end,
+        desc = "Select item",
+    })
+
+    self:add_keymap('<2-LeftMouse>', {
+        callback = function ()
+            vim.notify("Item double click")
+        end,
+        desc = "Select item",
+    })
+
     self:_refresh_buffer(buf)
     return buf, true
 end
