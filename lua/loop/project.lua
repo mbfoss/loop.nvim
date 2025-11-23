@@ -264,12 +264,12 @@ end
 ---@return string[]
 function M.debug_subcommands(args)
     if #args == 0 then
-        return { "start", "continue", "restart", "stop", "attach" }
+        return { "continue", "step_in", "step_out", "step_over" }
     end
     return {}
 end
 
----@param command string|nil
+---@param command loop.job.DebugJob.Command|nil
 function M.debug_command(command)
     taskmgr.debug_task_command(command)
 end

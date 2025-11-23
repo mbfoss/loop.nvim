@@ -354,7 +354,7 @@ function M.start_task_chain(tasks, on_complete)
     _start_task_chain(chain, on_complete)
 end
 
----@param command string|nil
+---@param command loop.job.DebugJob.Command|nil
 function M.debug_task_command(command)
     if not _current_task_chain or not _current_task_chain.active_job or getmetatable(_current_task_chain.active_job) ~= DebugJob then
         window.add_events({"Debug command not usable, no debut task is currently running"})
@@ -363,11 +363,7 @@ function M.debug_task_command(command)
      ---@type loop.job.DebugJob 
 ---@diagnostic disable-next-line: assign-type-mismatch
     local job = _current_task_chain.active_job
-    if command == 'continue' then
-        job:debug_continue()
-    else
-        window.add_events({'loop.nvim: Invalid debug command: ' .. tostring(command)}, "error")
-    end
+    job:debug_command(command)
 end
 
 return M

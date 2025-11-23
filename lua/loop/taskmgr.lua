@@ -177,7 +177,7 @@ function M.run_extension_task(config_dir, ext_name)
     end)
 end
 
----@param command string|nil
+---@param command loop.job.DebugJob.Command|nil
 function M.debug_task_command(command)
     runner.debug_task_command(command)
 end

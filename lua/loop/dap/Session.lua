@@ -51,12 +51,12 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field _tracker loop.session.Tracker
 ---@field _breakpoints table<string,loop.dap.proto.SourceBreakpoint[]>
 ---@field _stopped_threads loop.dap.proto.Thread[]|nil
+---@field _stopped_thread_id number|nil
 local Session = class()
 
 function Session:init()
     self._started = false
     self._breakpoints = {}
-    self._stopped_threads = {}
 end
 
 ---@param args loop.dap.session.Args
@@ -196,15 +196,16 @@ function Session:debug_continue()
             if resp.allThreadsContinued == false then
                 self:_notify_about_log("error", { "unsupported single thread continue" })
             end
-            if #self._stopped_threads > 0 then
-                self._stopped_threads = {}
+            self._stopped_thread_id = nil
+            if self._stopped_threads then
+                self._stopped_threads = nil
                 self:_notify_tracker("threads_continued")
             end
         end)
 end
 
 function Session:debug_stepIn()
-    self._base_session:request_stepIn({ threadId = 0, singleThread = false }, function(err)
+    self._base_session:request_stepIn({ threadId = self._stopped_thread_id, singleThread = false }, function(err)
         if err then
             self:_notify_about_log("error", { "stepIn error", tostring(err) })
         end
@@ -212,20 +213,19 @@ function Session:debug_stepIn()
 end
 
 function Session:debug_stepOut()
-    self._base_session:request_stepOut({ threadId = 0, singleThread = false }, function(err)
+    self._base_session:request_stepOut({ threadId = self._stopped_thread_id, singleThread = false }, function(err)
         if err then
             self:_notify_about_log("error", { "stepOut error", tostring(err) })
         end
     end)
 end
 
-function Session:debug_stepBack()
-    self._base_session:request_stepBack({ threadId = 0, singleThread = false },
-        function(err)
-            if err then
-                self:_notify_about_log("error", { "stepBack error", tostring(err) })
-            end
-        end)
+function Session:debug_stopOver()
+    self._base_session:request_next({ threadId = self._stopped_thread_id, granularity = "line" }, function(err)
+        if err then
+            self:_notify_about_log("error", { "stepOver error", tostring(err) })
+        end
+    end)
 end
 
 ---@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
@@ -255,6 +255,7 @@ function Session:_on_stopped_event(event)
         return
     end
     assert(event)
+    self._stopped_thread_id = event.threadId
     if event.allThreadsStopped == false then
         self._stopped_threads = { { id = event.threadId, name = "current" } }
         self:_notify_tracker("threads_paused", { thread_id = event.threadId })
@@ -280,8 +281,9 @@ function Session:_on_continued_event(event)
     if event.allThreadsContinued == false then
         self:_notify_about_log("error", { "unsupported single thread continue" })
     end
-    if #self._stopped_threads > 0 then
-        self._stopped_threads = {}
+    self._stopped_thread_id = nil
+    if self._stopped_threads then
+        self._stopped_threads = nil
         self:_notify_tracker("threads_continued")
     end
 end
@@ -415,7 +417,7 @@ end
 ---@return boolean
 function Session:thread_is_stopped(thread_id)
     if not self._stopped_threads then return false end
-    for _,t in ipairs(self._stopped_threads) do
+    for _, t in ipairs(self._stopped_threads) do
         if thread_id == t.id then
             return true
         end

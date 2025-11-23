@@ -9,6 +9,8 @@ local selector = require("loop.selector")
 local uitools  = require('loop.tools.uitools')
 local signs    = require('loop.signs')
 
+---@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"
+
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
 ---@field _sessions table<number,loop.dap.Session>
@@ -17,6 +19,7 @@ local signs    = require('loop.signs')
 ---@field _task_page loop.pages.OutputPage
 ---@field _output_pages table<number,loop.pages.OutputPage>
 ---@field _stacktrace_pages table<number,loop.pages.ItemListPage>
+---@field _current_session loop.dap.Session|nil
 local DebugJob = class(Job)
 
 ---Initializes the DebugJob instance.
@@ -76,7 +79,8 @@ function DebugJob:start(args)
                 args.on_exit_handler(code)
             end
             if self._task_page then
-                self._task_page:add_lines({ "Session " .. tostring(session_id).. " debugger exited (code " .. tostring(code) .. ")"})
+                self._task_page:add_lines({ "Session " ..
+                tostring(session_id) .. " debugger exited (code " .. tostring(code) .. ")" })
             end
         end)
     end
@@ -109,7 +113,8 @@ function DebugJob:start(args)
 
     self._task_page = window.add_debug_task_page(args.name)
 
-    self._task_page:add_lines({ "New debug session started: " .. tostring(session_id) .. ' (' .. tostring(args.name) .. ')' })
+    self._task_page:add_lines({ "New debug session started: " ..
+    tostring(session_id) .. ' (' .. tostring(args.name) .. ')' })
 
     return true
 end
@@ -119,12 +124,26 @@ function DebugJob:set_breakpoints(breakpoints)
     self._breakpoints = breakpoints
     for _, s in pairs(self._sessions) do
         s:set_breakpoints(breakpoints)
-    end    
+    end
 end
 
-function DebugJob:debug_continue()
-    for _, s in pairs(self._sessions) do
-        s:debug_continue()
+---@param command loop.job.DebugJob.Command|nil
+function DebugJob:debug_command(command)
+    if not self._current_session then
+        return
+    end
+    if command == 'continue' then
+        for _, s in pairs(self._sessions) do
+            s:debug_continue()
+        end
+    elseif command == "step_in" then
+        self._current_session:debug_stepIn()
+    elseif command == "step_out" then
+        self._current_session:debug_stepOut()
+    elseif command == "step_over" then
+        self._current_session:debug_stopOver()
+    else
+        self._task_page:add_lines({ 'loop.nvim: Invalid debug command: ' .. tostring(command) }, "error")
     end
 end
 
@@ -171,7 +190,7 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
     if event == "threads_continued" then
         self:_on_session_threads_event(sess_id, session, "continue")
         return
-    end    
+    end
     error("unhandled dap session event: " .. event)
 end
 
@@ -235,6 +254,7 @@ function DebugJob:load_stack_trace(page, session, thread_id)
         },
         function(err, resp)
             if not session:thread_is_stopped(thread_id) then
+                --probaby continued while we were laoding the stack trace
                 return
             end
             if err or not resp then
@@ -245,10 +265,10 @@ function DebugJob:load_stack_trace(page, session, thread_id)
                 return
             end
             local text = "Thread " .. tostring(thread_id)
-            if threads and #threads > 1 then 
+            if threads and #threads > 1 then
                 text = text .. string.format(" (%s paused threads)", #threads)
             end
-            local items = {{id = 0, text = text}}
+            local items = { { id = 0, text = text } }
             for idx, frame in ipairs(resp.stackFrames) do
                 if frame.source then
                     text = string.format("%d: %s - %s:%d:%d",
@@ -320,13 +340,20 @@ function DebugJob:_on_session_threads_event(sess_id, session, event, thread_id)
         end)
     end
     if event == "pause" then
+        self._current_session = session
         if thread_id then
             self:load_stack_trace(page, session, thread_id)
         else
             self:select_n_load_stacktrace(page, session)
         end
+    elseif event == "continue" then
+        if self._current_session == session then
+            self._current_session = nil
+        end
+        signs.remove_signs("currentframe")
+        page:set_items({ { id = 0, text = "No paused threads" } })
     else
-        page:set_items({{id = 0, text = "No paused threads"}})
+        self._task_page:add_lines({ "Unhandled event " .. event }, "error")
     end
 end
 
