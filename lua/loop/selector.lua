@@ -14,9 +14,9 @@ local actions = nil
 local action_state = nil
 
 --- Fallback native selector using vim.ui.select (Neovim 0.6+)
---- @param prompt string
---- @param items loop.SelectorItem[]
---- @param callback fun(item: loop.SelectorItem|nil)
+---@param prompt string
+---@param items loop.SelectorItem[]
+---@param callback fun(item: loop.SelectorItem|nil)
 local function default_select(prompt, items, callback)
     local labels = {}
     for _, item in ipairs(items) do
@@ -71,9 +71,9 @@ local function telescope_select(prompt, items, formatter, callback)
     if formatter then
         previewer = previewers.new_buffer_previewer({
             title = "Details",
-            --- @param self table
-            --- @param entry table
-            --- @param status table
+            ---@param self table
+            ---@param entry table
+            ---@param status table
             define_preview = function(self, entry, status)
                 -- Format and split data into lines
                 local formatted = formatter(entry.value.data)
@@ -96,7 +96,7 @@ local function telescope_select(prompt, items, formatter, callback)
         prompt_title = prompt,
         finder = finders.new_table({
             results = items,
-            --- @param entry loop.SelectorItem
+            ---@param entry loop.SelectorItem
             entry_maker = function(entry)
                 return {
                     value = entry,

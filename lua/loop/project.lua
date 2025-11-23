@@ -299,6 +299,7 @@ function M.setup(config)
     assert(not _setup_done, "Setup alreay done")
     _setup_done = true
 
+    require('loop.signs').setup()
     breakpoints.setup()
 
     window.setup({})

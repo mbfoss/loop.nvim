@@ -227,6 +227,7 @@ end
 function DebugJob:load_stack_trace(page, session, thread_id)
     local threads = session:stopped_threads()
     page:set_items({ { id = 0, text = "Loading stack trace..." } })
+    window.show_stacktrace()
     session:request_stackTrace({
             threadId = thread_id,
             levels = config.current.debug.stack_levels_limit or 100,
@@ -259,6 +260,7 @@ function DebugJob:load_stack_trace(page, session, thread_id)
                 table.insert(items, item)
             end
             page:set_items(items)
+            window.show_stacktrace()
         end)
 end
 

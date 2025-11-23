@@ -14,7 +14,8 @@ local M = {}
 ---@type loop.Config
 M.defaut_config = {
     debug = {
-        stack_levels_limit = 100
+        stack_levels_limit = 100,
+        auto_switch_page = true,
     },
     debuggers = {
         lldb = {

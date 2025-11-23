@@ -8,6 +8,7 @@ local jsontools = require('loop.tools.json')
 local selector = require("loop.selector")
 
 ---@class loop.TabInfo
+---@field index number
 ---@field label string
 ---@field pages loop.pages.Page[]
 ---@field active_page_idx number|nil
@@ -27,26 +28,27 @@ local _ui_select_page
 
 local _tabs = {
     ---@type loop.TabInfo
-    events = { label = "Messages", pages = {}, active_page_idx = 1 },
+    events = { index = 1, label = "Messages", pages = {}, active_page_idx = 1 },
     ---@type loop.TabInfo
-    breakpoints = { label = "Breakpoints", pages = {} },
+    breakpoints = { index = 2, label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
-    tasks = { label = "Task", pages = {}, list_prefix = "Task - " },
+    tasks = { index = 3, label = "Task", pages = {}, list_prefix = "Task - " },
     ---@type loop.TabInfo
-    debug = { label = "Debug", pages = {}, list_prefix = "Debug - " },
+    debug = { index = 4, label = "Debug", pages = {}, list_prefix = "Debug - " },
     ---@type loop.TabInfo
-    threads = { label = "Threads", pages = {}, list_prefix = "Threads - " },
+    threads = { index = 5, label = "Threads", pages = {}, list_prefix = "Threads - " },
     ---@type loop.TabInfo
-    stacktrace = { label = "Stack", pages = {}, list_prefix = "Stack - " },
+    stacktrace = { index = 6, label = "Stack", pages = {}, list_prefix = "Stack - " },
 }
-local _tabs_arr = {
-    _tabs.events,
-    _tabs.breakpoints,
-    _tabs.tasks,
-    _tabs.debug,
-    _tabs.threads,
-    _tabs.stacktrace,
-}
+
+local _tabs_arr = (function ()
+    local arr = {}
+    for _,t in pairs(_tabs) do
+        arr[t.index] = t
+    end
+    return arr
+end)()
+
 ---@type number
 local _active_tab_idx = 1
 
@@ -100,76 +102,76 @@ local function _on_win_new_or_close()
     end
 end
 
----@param req_tab loop.TabInfo|nil
-local function _setup_active_tab(req_tab)
-    if not req_tab then
-        req_tab = _tabs_arr[_active_tab_idx]
-    end
-    if #req_tab.pages == 0 then
-        req_tab = _tabs.events
+local function _setup_tabs()
+    if _loop_win == -1 then
+        return
     end
 
-    local page_idx = req_tab.active_page_idx or 1
-    assert(page_idx > 0 and page_idx <= #req_tab.pages)
+    local active_tab = _tabs_arr[_active_tab_idx]
+    if #active_tab.pages == 0 then
+        active_tab = _tabs.events
+    end
+
+    local page_idx = active_tab.active_page_idx or 1
+    assert(page_idx > 0 and page_idx <= #active_tab.pages)
 
     -- update window if visible
-    if _loop_win ~= -1 then
-        local win = _loop_win
-        local winbar_parts = { "%#LoopPluginInactiveTab#" }
-        local tabidx = 0
-        for arr_idx, tab in ipairs(_tabs_arr) do
-            local active = false
-            if req_tab == tab then
-                _active_tab_idx = arr_idx
-                active = true
-                local buf = tab.pages[page_idx]:get_or_create_buf()
-                vim.api.nvim_win_set_buf(win, buf)
+    local win = _loop_win
+    local winbar_parts = { "%#LoopPluginInactiveTab#" }
+    local tabidx = 0
+    for arr_idx, tab in ipairs(_tabs_arr) do
+        local active = false
+        if active_tab == tab then
+            _active_tab_idx = arr_idx
+            active = true
+            local buf = tab.pages[page_idx]:get_or_create_buf()
+            vim.api.nvim_win_set_buf(win, buf)
+        end
+        if #tab.pages > 0 then
+            tabidx = tabidx + 1
+            if tabidx ~= 1 then table.insert(winbar_parts, '|') end
+            if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
+            local labelparts = { ' ' }
+            table.insert(labelparts, tab.label)
+            if #tab.pages > 1 then
+                if not active then
+                    vim.list_extend(labelparts, { ' (', tostring(#tab.pages), ')' })
+                else
+                    vim.list_extend(labelparts,
+                        { ' (', tostring(tab.active_page_idx), '/', tostring(#tab.pages), ')' })
+                end
             end
-            if #tab.pages > 0 then
-                tabidx = tabidx + 1
-                if tabidx ~= 1 then table.insert(winbar_parts, '|') end
-                if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-                local labelparts = { ' ' }
-                table.insert(labelparts, tab.label)
-                if #tab.pages > 1 then
-                    if not active then
-                        vim.list_extend(labelparts, { ' (', tostring(#tab.pages), ')' })
-                    else
-                        vim.list_extend(labelparts,
-                            { ' (', tostring(tab.active_page_idx), '/', tostring(#tab.pages), ')' })
-                    end
-                end
-                table.insert(labelparts, ' ')
-                local label = table.concat(labelparts, '')
-                table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
-                if active then
-                    table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
-                end
+            table.insert(labelparts, ' ')
+            local label = table.concat(labelparts, '')
+            table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
+            if active then
+                table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
             end
         end
-        -- add right aligned current page/buffer info
-        --if #_active_tab.pages > 0 then
-        --    local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name() or _active_tab.label
-        --    table.insert(winbar_parts, "%=" .. name)
-        --end
-        -- set the winbar
-        vim.wo[win].winbar = table.concat(winbar_parts, '')
     end
+    -- add right aligned current page/buffer info
+    --if #_active_tab.pages > 0 then
+    --    local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name() or _active_tab.label
+    --    table.insert(winbar_parts, "%=" .. name)
+    --end
+    -- set the winbar
+    vim.wo[win].winbar = table.concat(winbar_parts, '')
 end
 
 
 ---@param req_tabidx number
 ---@param req_pageidx number|nil
-local function _setup_active_tab_idx(req_tabidx, req_pageidx)
+local function _set_active_tab(req_tabidx, req_pageidx)
     local req_tab = _tabs_arr[req_tabidx]
     assert(req_tab)
     if not req_tab or #req_tab.pages == 0 then
         return
     end
+    _active_tab_idx = req_tabidx
     if req_pageidx and req_pageidx > 0 and req_pageidx <= #req_tab.pages then
         req_tab.active_page_idx = req_pageidx
     end
-    _setup_active_tab(req_tab)
+    _setup_tabs()
 end
 
 ---@param action "next"|"prev"
@@ -196,7 +198,7 @@ _cycle_pages = function(action)
         pageidx = dir == 1 and 1 or #tab.pages
     end
 
-    _setup_active_tab_idx(tabidx, pageidx)
+    _set_active_tab(tabidx, pageidx)
 end
 
 _ui_select_page = function()
@@ -215,7 +217,7 @@ _ui_select_page = function()
     end
     selector.select("Select page", choices, nil, function(data)
         if data and data.tabidx then
-            _setup_active_tab_idx(data.tabidx, data.pageix)
+            _set_active_tab(data.tabidx, data.pageix)
         end
     end)
 end
@@ -244,7 +246,7 @@ end
 ---@param tab loop.TabInfo
 local function _delete_tab_pages(tab)
     assert(tab ~= _tabs.events)
-    _setup_active_tab(_tabs.events)
+    _setup_tabs()
     for _, page in ipairs(tab) do
         page:destroy()
     end
@@ -257,13 +259,13 @@ end
 local function _add_tab_page(tab, page)
     table.insert(tab.pages, page)
     tab.active_page_idx = #tab.pages
-    _setup_active_tab(tab)
+    _setup_tabs()
 end
 
 local function protect_split_window_buffer(buf)
     if not Page.is_page(buf) then
         vim.schedule(function()
-            _setup_active_tab_idx(_active_tab_idx, nil)
+            _setup_tabs()
             if vim.api.nvim_buf_is_valid(buf) then
                 uitools.smart_open_buffer(buf)
             end
@@ -273,24 +275,19 @@ end
 
 function M.winbar_click(id, clicks, button, mods)
     if _active_tab_idx ~= id then
-        local tab = _tabs_arr[id]
-        if tab then
-            _setup_active_tab(tab)
-        end
+        _set_active_tab(id, nil)
     else
         local tab = _tabs_arr[id]
-        if tab then            
+        if tab then
             local pageidx = tab.active_page_idx + 1
             if pageidx > #tab.pages then pageidx = 1 end
-            _setup_active_tab_idx(id, pageidx)
+            _set_active_tab(id, pageidx)
         end
     end
 end
 
----@param tab loop.TabInfo | nil
-local function create_window(tab)
+local function create_window()
     if _loop_win ~= -1 then
-        _setup_active_tab(tab)
         return
     end
 
@@ -302,7 +299,7 @@ local function create_window(tab)
     _on_win_new_or_close()
     vim.api.nvim_set_current_win(prev_win)
 
-    _setup_active_tab(tab)
+    _setup_tabs()
 
     vim.api.nvim_create_autocmd("WinResized", {
         --pattern = tostring(_loop_win), -- Only trigger for window ID 1001
@@ -364,13 +361,12 @@ function M.update_breakpoints(breakpoints, proj_dir)
         _add_tab_page(_tabs.breakpoints, page)
     end
     assert(getmetatable(page) == BreakpointsPage)
-    page:set_breakpoints(breakpoints)
-    _setup_active_tab(_tabs.breakpoints)
+    page:set_breakpoints(breakpoints, proj_dir)
 end
 
 function M.show_window()
     assert(setup_done)
-    create_window(nil)
+    create_window()
 end
 
 function M.hide_window()
@@ -395,11 +391,18 @@ end
 
 function M.show_events()
     assert(setup_done)
-    create_window(_tabs.events)
+    _set_active_tab(_tabs.events.index, nil)
+    create_window()
 end
 
 function M.show_task_output()
-    create_window(_tabs.tasks)
+    _set_active_tab(_tabs.tasks.index, nil)
+    create_window()
+end
+
+function M.show_stacktrace()
+    _set_active_tab(_tabs.stacktrace.index, nil)
+    create_window()
 end
 
 function M.delete_task_buffers()
@@ -419,6 +422,7 @@ function M.add_term_task_page(name, bufnr)
     page:assign_buf(bufnr)
 
     _add_tab_page(_tabs.tasks, page)
+    _set_active_tab(_tabs.tasks.index, nil)
 end
 
 ---@param name string -- task name

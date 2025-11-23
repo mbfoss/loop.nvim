@@ -50,7 +50,9 @@ function BreakpointsPage:init(keymaps)
     end)
 end
 
-function BreakpointsPage:set_breakpoints(breakpoints)
+---@param breakpoints loop.dap.proto.SourceBreakpoint[]
+---@param proj_dir string
+function BreakpointsPage:set_breakpoints(breakpoints, proj_dir)
     ---@type loop.pages.ItemListPage.highlight[]
     local highlights = { {
         group = "ErrorMsg",

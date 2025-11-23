@@ -1,10 +1,10 @@
 local M = {}
 
 --- Pretty JSON encoder using only real Neovim built-ins
---- @param obj any
---- @param order_handler (fun(path: string, attrs: string[]) : string[])| nil
---- @param indent string|nil
---- @return string
+---@param obj any
+---@param order_handler (fun(path: string, attrs: string[]) : string[])| nil
+---@param indent string|nil
+---@return string
 local function json_encode_pretty(obj, order_handler, indent)
     indent = indent or "  "
 
