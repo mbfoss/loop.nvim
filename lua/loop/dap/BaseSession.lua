@@ -220,7 +220,7 @@ end
 -- PUBLIC REQUEST API ------------------------------------------------
 ---------------------------------------------------------------------
 
--- Initialization / Launch / Attach ---------------------------------
+-- Initialization / Launch / Attach / terminate ---------------------------------
 
 ---@param args loop.dap.proto.InitializeRequestArguments
 ---@param callback fun(err: string|nil, body: loop.dap.proto.InitializeResponse|nil)|nil
@@ -252,6 +252,13 @@ end
 function BaseSession:request_configurationDone(callback)
     self:_request("configurationDone", nil, self:_wrap(callback))
 end
+
+---@param args loop.dap.proto.TerminateArguments|nil
+---@param callback fun(err: string|nil, body: nil)|nil
+function BaseSession:request_terminate(args, callback)
+    self:_request("terminate", args, self:_wrap(callback))
+end
+
 
 -- Breakpoints --------------------------------------------------------
 
@@ -413,5 +420,6 @@ end
 function BaseSession:request_disassemble(args, callback)
     self:_request("disassemble", args, self:_wrap(callback))
 end
+
 
 return BaseSession

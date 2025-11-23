@@ -6,15 +6,8 @@ local json = require('loop.tools.json')
 local M = {}
 
 --- Internal table mapping file paths to their list of breakpoints.
---- @type table<string, loop.breakpoints.Breakpoint[]>
+--- @type table<string, loop.dap.proto.SourceBreakpoint[]>
 local _breakpoints = {}
-
---- Represents a single breakpoint.
----@class loop.breakpoints.Breakpoint
----@field line integer                     Line number of the breakpoint
----@field condition string|nil            Optional condition expression
----@field hitCondition string|nil         Optional hit condition
----@field logMessage string|nil           Optional log message
 
 --- Whether setup() has been called.
 ---@type boolean
@@ -322,7 +315,7 @@ function M.have_breakpoints()
     return next(_breakpoints) ~= nil
 end
 
----@return table<string, integer[]>
+---@return table<string,loop.dap.proto.SourceBreakpoint[]>
 function M.get_breakpoints()
     return vim.deepcopy(_breakpoints)
 end

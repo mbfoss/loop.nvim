@@ -1,4 +1,6 @@
 local M = {}
+---@class loop.Config.Debug
+---@field stack_levels_limit number
 
 ---@class loop.Config.Debugger
 ---@field command string|string[]
@@ -6,10 +8,14 @@ local M = {}
 ---@field env table<string,string>|nil
 
 ---@class loop.Config
+---@field debug loop.Config.Debug
 ---@field debuggers loop.Config.Debugger[]
 
 ---@type loop.Config
 M.defaut_config = {
+    debug = {
+        stack_levels_limit = 100
+    },
     debuggers = {
         lldb = {
             command = "lldb-dap",

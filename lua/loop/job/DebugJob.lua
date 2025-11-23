@@ -1,5 +1,6 @@
-local Job      = require('loop.job.Job')
 local class    = require('loop.tools.class')
+local config   = require('loop.config')
+local Job      = require('loop.job.Job')
 local strtools = require('loop.tools.strtools')
 local Session  = require('loop.dap.Session')
 local TermProc = require('loop.tools.TermProc')
@@ -11,6 +12,7 @@ local uitools  = require('loop.tools.uitools')
 ---@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
 ---@field _sessions table<number,loop.dap.Session>
 ---@field _last_session_id number
+---@field _breakpoints table<string,loop.dap.proto.SourceBreakpoint[]>
 ---@field _task_page loop.pages.OutputPage
 ---@field _output_pages table<number,loop.pages.OutputPage>
 ---@field _stacktrace_pages table<number,loop.pages.ItemListPage>
@@ -21,6 +23,7 @@ function DebugJob:init()
     ---@type table<number,loop.dap.Session>
     self._sessions = {}
     self._last_session_id = 0
+    self._breakpoints = {}
     self._output_pages = {}
     self._stacktrace_pages = {}
 end
@@ -72,7 +75,7 @@ function DebugJob:start(args)
                 args.on_exit_handler(code)
             end
             if self._task_page then
-                self._task_page:add_lines({ "Session ended: " .. tostring(session_id) .. ' - ' .. tostring(args.name) })
+                self._task_page:add_lines({ "Session " .. tostring(session_id).. " debugger exited (code " .. tostring(code) .. ")"})
             end
         end)
     end
@@ -101,11 +104,21 @@ function DebugJob:start(args)
 
     self._sessions[session_id] = session
 
+    session:set_breakpoints(self._breakpoints)
+
     self._task_page = window.add_debug_task_page(args.name)
 
-    self._task_page:add_lines({ "New debug session started: " .. tostring(session_id) .. ' - ' .. tostring(args.name) })
+    self._task_page:add_lines({ "New debug session started: " .. tostring(session_id) .. ' (' .. tostring(args.name) .. ')' })
 
     return true
+end
+
+---@param breakpoints table<string,loop.dap.proto.SourceBreakpoint[]>
+function DebugJob:set_breakpoints(breakpoints)
+    self._breakpoints = breakpoints
+    for _, s in pairs(self._sessions) do
+        s:set_breakpoints(breakpoints)
+    end    
 end
 
 function DebugJob:debug_continue()
@@ -128,7 +141,7 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
     if event == "state" then
         ---@type loop.dap.session.notify.StateData
         local state = event_data
-        self._task_page:add_lines({ "Session " .. sess_id .. " state: " .. state.state })
+        self._task_page:add_lines({ "Session " .. sess_id .. " " .. state.state })
         return
     end
     if event == "output" then
@@ -212,7 +225,7 @@ function DebugJob:load_stack_trace(page, session, thread_id)
     page:set_items({ { id = 0, text = "Loading stack trace..." } })
     session:request_stackTrace({
             threadId = thread_id,
-            levels = 100, --TODO: make configurable
+            levels = config.current.debug.stack_levels_limit or 100,
         },
         function(err, resp)
             if err or not resp then
@@ -224,7 +237,7 @@ function DebugJob:load_stack_trace(page, session, thread_id)
             end
             local text = "Thread " .. tostring(thread_id)
             if threads and #threads > 1 then 
-                text = text .. string.format("(%s total threads)", #threads)
+                text = text .. string.format(" (%s threads total)", #threads)
             end
             local items = {{id = 0, text = text}}
             for idx, frame in ipairs(resp.stackFrames) do

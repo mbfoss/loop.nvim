@@ -53,7 +53,7 @@ end
 ---@param trigger string
 ---@param data any
 function FSM:trigger(trigger, data)
-    assert(self.valid_triggers[trigger] == true, "Invalid trigger: " .. tostring(trigger))
+    assert(trigger and self.valid_triggers[trigger] == true, "Invalid trigger: " .. tostring(trigger))
     vim.schedule(function()
         self:_trigger(trigger, data)
     end)

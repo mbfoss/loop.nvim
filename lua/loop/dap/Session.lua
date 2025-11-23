@@ -24,6 +24,7 @@ local strtools = require('loop.tools.strtools')
 ---@field cwd string
 ---@field run_in_terminal boolean
 ---@field stop_on_entry boolean
+---@field terminate_on_disconnect boolean|nil
 
 ---@alias loop.session.TrackerEvent
 ---|"log"
@@ -48,11 +49,14 @@ local strtools = require('loop.tools.strtools')
 ---@field _output_handler fun(msg_body:table)
 ---@field _on_exit fun(code:number)
 ---@field _tracker loop.session.Tracker
+---@field _breakpoints table<string,loop.dap.proto.SourceBreakpoint[]>
 ---@field _stopped_threads loop.dap.proto.Thread[]|nil
 local Session = class()
 
 function Session:init()
     self._started = false
+    self._breakpoints = {}
+    self._stopped_threads = {}
 end
 
 ---@param args loop.dap.session.Args
@@ -151,6 +155,11 @@ function Session:name()
     return self._name or "(Unnamed session)"
 end
 
+---@param breakpoints table<string,loop.dap.proto.SourceBreakpoint[]>
+function Session:set_breakpoints(breakpoints)
+    self._breakpoints = breakpoints
+end
+
 ---@param event loop.session.TrackerEvent
 ---@param data any
 function Session:_notify_tracker(event, data)
@@ -219,7 +228,7 @@ end
 
 ---@param event loop.dap.proto.StoppedEvent|nil
 function Session:_on_stopped_event(event)
-    self._fsm:trigger("dap_stopped", event)
+    self._fsm:trigger(fsmdata.trigger.dap_stopped, event)
 end
 
 function Session:_on_initializing_state()
@@ -239,21 +248,21 @@ function Session:_on_initializing_state()
                 self._is_macos_lldb = true
             end
         end
-        local success_trigger = self._is_macos_lldb and "initialize_resp_ok_macos_lldb" or "initialize_resp_ok"
-        self._fsm:trigger(err == nil and success_trigger or "initialize_resp_err")
+        local success_trigger = self._is_macos_lldb and fsmdata.trigger.initialize_resp_ok_macos_lldb or fsmdata.trigger.initialize_resp_ok
+        self._fsm:trigger(err == nil and success_trigger or fsmdata.trigger.initialize_resp_err)
     end)
 end
 
 function Session:_on_configuring_state()
-    local breakpoints = {} --TODO
+    local breakpoints = self._breakpoints
     local nb_breakpoints = vim.tbl_count(breakpoints)
     local nb_success = 0
     local nb_failures = 0
-    local success_trigger = self._is_macos_lldb and "configure_success_macos_lldb" or "configure_success"
+    local success_trigger = self._is_macos_lldb and fsmdata.trigger.configure_success_macos_lldb or fsmdata.trigger.configure_success
 
     if nb_breakpoints == 0 then
         self._base_session:request_configurationDone(function(err, resp)
-            self._fsm:trigger(err == nil and success_trigger or "configure_error")
+            self._fsm:trigger(err == nil and success_trigger or fsmdata.trigger.configure_error)
         end)
         return
     end
@@ -268,17 +277,17 @@ function Session:_on_configuring_state()
                 breakpoints = bps
             },
             function(err, resp)
-                if err ~= nil then
+                if err == nil then
                     nb_success = nb_success + 1
                 else
                     nb_failures = nb_failures + 1
                 end
                 if nb_success == nb_breakpoints then
                     self._base_session:request_configurationDone(function(config_err)
-                        self._fsm:trigger(config_err == nil and success_trigger or "configure_error")
+                        self._fsm:trigger(config_err == nil and success_trigger or fsmdata.trigger.configure_error)
                     end)
                 elseif nb_failures > 0. and nb_success + nb_failures == nb_breakpoints then
-                    self._fsm:trigger("configure_error")
+                    self._fsm:trigger(fsmdata.trigger.configure_error)
                 end
             end)
     end
@@ -294,7 +303,7 @@ function Session:_on_launching_state()
 
     if run_in_terminal and not self._capabilities["supportsRunInTerminalRequest"] then
         self.log:error('run_in_terminal not supported by this adapter')
-        self._fsm:trigger("launch_resp_error")
+        self._fsm:trigger(fsmdata.trigger.launch_resp_error)
         return
     end
 
@@ -312,8 +321,8 @@ function Session:_on_launching_state()
             stopOnEntry = stop_on_entry,
         },
         function(err)
-            local success_trigger = self._is_macos_lldb and "launch_resp_ok_macos_lldb" or "launch_resp_ok"
-            self._fsm:trigger(err == nil and success_trigger or "launch_resp_error")
+            local success_trigger = self._is_macos_lldb and fsmdata.trigger.launch_resp_ok_macos_lldb or fsmdata.trigger.launch_resp_ok
+            self._fsm:trigger(err == nil and success_trigger or fsmdata.trigger.launch_resp_error)
         end)
 end
 
@@ -323,7 +332,22 @@ end
 
 function Session:_on_disconnecting_state()
     self:_notify_about_state()
+    self._base_session:request_disconnect({
+        terminateDebuggee = self._target.terminate_on_disconnect
+    }, function (err, body)
+        self._fsm:trigger(err == nil and fsmdata.trigger.disconnect_resp_ok or fsmdata.trigger.disconnect_resp_err)
+    end)    
 end
+
+function Session:_on_kill_state()
+    self:_notify_about_state()    
+    self._base_session:kill()
+end
+
+function Session:_on_ended_state()
+    self._fsm:trigger(fsmdata.trigger.killed)
+end
+
 
 ---@param trigger string
 ---@param trigger_data any
@@ -336,7 +360,7 @@ function Session:_on_stopped_state(trigger, trigger_data)
     local stopped_event = trigger_data
     if stopped_event.allThreadsStopped == false then
         self._stopped_threads = { { id = stopped_event.threadId, name = "current" } }
-        self:_notify_tracker("threads_stopped", {thread_id = stopped_event.threadId})
+        self:_notify_tracker("threads_stopped", { thread_id = stopped_event.threadId })
     else
         self._base_session:request_threads(function(err, resp)
             if err or not resp then
@@ -344,7 +368,7 @@ function Session:_on_stopped_state(trigger, trigger_data)
                 self:_notify_tracker("log", data)
             else
                 self._stopped_threads = resp.threads
-                self:_notify_tracker("threads_stopped", {thread_id = stopped_event.threadId})
+                self:_notify_tracker("threads_stopped", { thread_id = stopped_event.threadId })
             end
         end)
     end
