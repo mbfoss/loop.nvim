@@ -7,6 +7,7 @@ local TermProc = require('loop.tools.TermProc')
 local window   = require('loop.window')
 local selector = require("loop.selector")
 local uitools  = require('loop.tools.uitools')
+local signs    = require('loop.signs')
 
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
@@ -258,6 +259,13 @@ function DebugJob:load_stack_trace(page, session, thread_id)
                 ---@type loop.pages.ItemListPage.Item
                 local item = { id = idx, text = text, data = frame }
                 table.insert(items, item)
+            end
+            if resp.stackFrames and #resp.stackFrames > 0 then
+                local frame = resp.stackFrames[1]
+                if frame.source and frame.source.path and frame.line then
+                    signs.remove_signs("currentframe")
+                    signs.add_file_sign(frame.source.path, frame.line, "currentframe", "currentframe")
+                end
             end
             page:set_items(items)
             window.show_stacktrace()

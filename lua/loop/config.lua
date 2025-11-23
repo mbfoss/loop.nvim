@@ -1,6 +1,7 @@
 local M = {}
 ---@class loop.Config.Debug
 ---@field stack_levels_limit number
+---@field sign_priority number
 
 ---@class loop.Config.Debugger
 ---@field command string|string[]
@@ -14,6 +15,7 @@ local M = {}
 ---@type loop.Config
 M.defaut_config = {
     debug = {
+        sign_priority = 12,
         stack_levels_limit = 100,
         auto_switch_page = true,
     },

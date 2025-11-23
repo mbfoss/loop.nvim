@@ -1,11 +1,13 @@
 local M = {}
 
----@alias loop.sign.SignGroup "breakpoints"|"currentframe"
----@alias loop.sign.SignName  "active_breakpoint"|"inactive_breakpoint"|"currentframe"
+local config = require("loop.config")
 
----@alias loop.signs.LineSigns table<loop.sign.SignName, boolean>
+---@alias loop.signs.SignGroup "breakpoints"|"currentframe"
+---@alias loop.signs.SignName  "active_breakpoint"|"inactive_breakpoint"|"currentframe"
+
+---@alias loop.signs.LineSigns table<loop.signs.SignName, boolean>
 ---@alias loop.signs.GroupSigns table<number, loop.signs.LineSigns>   -- line → signs
----@alias loop.signs.FileSigns  table<loop.sign.SignGroup, loop.signs.GroupSigns>
+---@alias loop.signs.FileSigns  table<loop.signs.SignGroup, loop.signs.GroupSigns>
 
 ---@type table<string, loop.signs.FileSigns>  -- absolute path → signs
 local _signs = {}
@@ -33,7 +35,7 @@ local function _place_sign(bufnr, line, group, name)
         _signs_id_prefix .. group,
         _signs_id_prefix .. name,
         bufnr,
-        { lnum = line, priority = 10 }
+        { lnum = line, priority = config.current.debug.sign_priority  or 12 }
     )
 end
 
@@ -60,6 +62,10 @@ end
 -- Public API
 -- ------------------------------------------------------------------
 
+---@param file string
+---@param line number
+---@param group loop.signs.SignGroup
+---@param name loop.signs.SignName
 function M.add_file_sign(file, line, group, name)
     assert(_setup_done, "loop.signs.setup() not called")
     file = vim.fn.fnamemodify(file, ":p")
@@ -77,6 +83,9 @@ function M.add_file_sign(file, line, group, name)
     end
 end
 
+---@param file string
+---@param line number
+---@param group loop.signs.SignGroup
 function M.remove_file_sign(file, line, group)
     assert(_setup_done)
     file = vim.fn.fnamemodify(file, ":p")
@@ -101,6 +110,8 @@ function M.remove_file_sign(file, line, group)
     end
 end
 
+---@param file string
+---@param group loop.signs.SignGroup
 function M.remove_file_signs(file, group)
     assert(_setup_done)
     file = vim.fn.fnamemodify(file, ":p")
@@ -126,6 +137,7 @@ function M.clear_all()
     _signs = {}
 end
 
+---@param group loop.signs.SignGroup
 function M.refresh_all_signs(group)
     assert(_setup_done)
     for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
