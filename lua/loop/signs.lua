@@ -1,141 +1,112 @@
 local M = {}
 
 ---@alias loop.sign.SignGroup "breakpoints"|"currentframe"
----@alias loop.sign.SignName "active_breakpoint"|"currentframe"
+---@alias loop.sign.SignName  "active_breakpoint"|"inactive_breakpoint"|"currentframe"
 
----@alias loop.signs.LineSigns table<loop.sign.SignName,boolean>
+---@alias loop.signs.LineSigns table<loop.sign.SignName, boolean>
+---@alias loop.signs.GroupSigns table<number, loop.signs.LineSigns>   -- line → signs
+---@alias loop.signs.FileSigns  table<loop.sign.SignGroup, loop.signs.GroupSigns>
 
----@alias loop.signs.GroupSigns table<number,loop.signs.LineSigns>
-
----@alias loop.signs.FileSigns table<loop.sign.SignGroup, loop.signs.GroupSigns>
-
----@type table<string, loop.signs.FileSigns> -- by file
+---@type table<string, loop.signs.FileSigns>  -- absolute path → signs
 local _signs = {}
 
---- Whether setup() has been called.
----@type boolean
 local _setup_done = false
-
----@type string
 local _signs_id_prefix = "loopplugin_signs_"
 
--- ----------------------------------------------------------------------
--- Internal utility functions
--- ----------------------------------------------------------------------
-
+-- Use global unique IDs instead of bufnr*1M+line
 local function _sign_id(bufnr, line)
     return bufnr * 1000000 + line -- 1M per buffer
 end
 
---- Get the loaded buffer number for a given file, or -1 if not loaded.
----@param file string File path
----@return integer bufnr Buffer number or -1 if not loaded
 local function _get_loaded_bufnr(file)
     local bufnr = vim.fn.bufnr(file, false)
-    if bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr) then
-        return bufnr
-    end
-    return -1
+    return (bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr)) and bufnr or -1
 end
 
---- Remove all signs from a given buffer.
----@param bufnr integer Buffer number
----@param group loop.sign.SignGroup
 local function _remove_buf_signs(bufnr, group)
     vim.fn.sign_unplace(_signs_id_prefix .. group, { buffer = bufnr })
 end
 
---- Add a single sign for a given line in a buffer.
----@param bufnr integer Buffer number
----@param line integer Line number
----@param group loop.sign.SignGroup
----@param name loop.sign.SignName
-local function _add_buf_sign(bufnr, line, group, name)
+local function _place_sign(bufnr, line, group, name)
     vim.fn.sign_place(
-        _sign_id(bufnr, line),     -- sign ID
-        _signs_id_prefix .. group, -- sign group name
-        _signs_id_prefix .. name,  -- sign type name
-        bufnr,                     -- buffer handle
+        _sign_id(bufnr, line),
+        _signs_id_prefix .. group,
+        _signs_id_prefix .. name,
+        bufnr,
         { lnum = line, priority = 10 }
     )
 end
 
----@param bufnr integer Buffer number
----@param group loop.sign.SignGroup
-local function _add_buf_signs(bufnr, group)
+local function _apply_buffer_signs(bufnr, group)
     local file = vim.api.nvim_buf_get_name(bufnr)
     file = vim.fn.fnamemodify(file, ":p")
     local filesigns = _signs[file]
-    for line, linesigns in pairs(filesigns[group] or {}) do
-        for sign, _ in pairs(linesigns or {}) do
-            _add_buf_sign(bufnr, line, group, sign)
+    if not filesigns then return end
+
+    local groupsigns = filesigns[group]
+    if not groupsigns then return end
+
+    for line, linesigns in pairs(groupsigns) do
+        for name, _ in pairs(linesigns) do
+            -- We don't store the numeric ID, so we can't reuse it.
+            -- Just place a new one (Neovim will replace any existing in same group/name).
+            -- This is simpler and safe.
+            _place_sign(bufnr, line, group, name)
         end
     end
 end
 
---- Add a sign to a file (if the buffer is loaded).
----@param file string File path
----@param line integer Line number
----@param group loop.sign.SignGroup
----@param name loop.sign.SignName
+-- ------------------------------------------------------------------
+-- Public API
+-- ------------------------------------------------------------------
+
 function M.add_file_sign(file, line, group, name)
-    assert(_setup_done)
+    assert(_setup_done, "loop.signs.setup() not called")
     file = vim.fn.fnamemodify(file, ":p")
 
     _signs[file] = _signs[file] or {}
     local filesigns = _signs[file]
-
     filesigns[group] = filesigns[group] or {}
     local groupsigns = filesigns[group]
-
     groupsigns[line] = groupsigns[line] or {}
-    local linesigns = groupsigns[line]
-
-    linesigns[name] = true
+    groupsigns[line][name] = true
 
     local bufnr = _get_loaded_bufnr(file)
     if bufnr >= 0 then
-        _add_buf_sign(bufnr, line, group, name)
+        _place_sign(bufnr, line, group, name) -- 0 lets Neovim pick ID
     end
 end
 
---- Remove a sign from a file (if the buffer is loaded).
----@param file string File path
----@param line integer Line number
----@param group loop.sign.SignGroup
 function M.remove_file_sign(file, line, group)
     assert(_setup_done)
     file = vim.fn.fnamemodify(file, ":p")
     local filesigns = _signs[file]
-    local removed = false
-    if filesigns then
-        local groupsigns = filesigns[group]
-        if groupsigns and groupsigns[line] then
-            groupsigns[line] = nil
-            removed = true
-        end
+    if not filesigns then return end
+
+    local groupsigns = filesigns[group]
+    if not groupsigns then return end
+
+    groupsigns[line] = nil
+    if not next(groupsigns) then
+        filesigns[group] = nil
     end
-    if removed then
-        local bufnr = _get_loaded_bufnr(file)
-        if bufnr >= 0 then
-            vim.fn.sign_unplace(_signs_id_prefix .. group, { buffer = bufnr, id = _sign_id(bufnr, line) })
-        end
+
+    local bufnr = _get_loaded_bufnr(file)
+    if bufnr >= 0 then
+        -- Remove only this specific sign type in this group
+        vim.fn.sign_unplace(_signs_id_prefix .. group, {
+            buffer = bufnr,
+            id = _sign_id(bufnr, line),
+        })
     end
 end
 
---- Remove a sign from a file (if the buffer is loaded).
----@param file string File path
----@param group loop.sign.SignGroup
 function M.remove_file_signs(file, group)
     assert(_setup_done)
     file = vim.fn.fnamemodify(file, ":p")
     local filesigns = _signs[file]
-    local removed = false
     if filesigns and filesigns[group] then
         filesigns[group] = nil
-        removed = true
-    end
-    if removed then
         local bufnr = _get_loaded_bufnr(file)
         if bufnr >= 0 then
             _remove_buf_signs(bufnr, group)
@@ -143,46 +114,60 @@ function M.remove_file_signs(file, group)
     end
 end
 
----@param group loop.sign.SignGroup
+function M.clear_all()
+    for file, filesigns in pairs(_signs) do
+        for group, _ in pairs(filesigns) do
+            local bufnr = _get_loaded_bufnr(file)
+            if bufnr >= 0 then
+                _remove_buf_signs(bufnr, group)
+            end
+        end
+    end
+    _signs = {}
+end
+
 function M.refresh_all_signs(group)
     assert(_setup_done)
     for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
         if vim.api.nvim_buf_is_loaded(bufnr) then
             _remove_buf_signs(bufnr, group)
-            _add_buf_signs(bufnr, group)
+            _apply_buffer_signs(bufnr, group)
         end
     end
 end
 
----@param name loop.sign.SignName
----@param text string
----@param hightlight string
-local function _define_sign(name, text, hightlight)
-    vim.fn.sign_define(_signs_id_prefix .. name, { text = text, texthl = hightlight })
+-- ------------------------------------------------------------------
+-- Setup
+-- ------------------------------------------------------------------
+
+local function _define_sign(name, text, hl)
+    vim.fn.sign_define(_signs_id_prefix .. name, {
+        text = text,
+        texthl = hl,
+    })
 end
 
---- Setup the breakpoint sign system and autocommands.
----@param _? table Optional setup options (currently unused)
-function M.setup(_)
-    assert(not _setup_done, "setup already done")
+function M.setup()
+    if _setup_done then return end
     _setup_done = true
 
-    _define_sign("active_breakpoint", '●', 'Debug')
-    _define_sign("currentframe", '>', 'Todo')
+    _define_sign("active_breakpoint", "●", "Debug")
+    _define_sign("currentframe", "▶", "Todo")
 
-    -- Remove signs when buffers are deleted or unloaded
+    -- Clean up when buffer is deleted/unloaded
     vim.api.nvim_create_autocmd({ "BufDelete", "BufUnload" }, {
-        callback = function(args)
-            _remove_buf_signs(args.buf, "breakpoints")
-            _remove_buf_signs(args.buf, "currentframe")
+        callback = function(ev)
+            local bufnr = ev.buf
+            _remove_buf_signs(bufnr, "breakpoints")
+            _remove_buf_signs(bufnr, "currentframe")
         end,
     })
 
-    -- Reapply signs after reading a buffer
+    -- Re-apply signs when a buffer becomes visible/loaded
     vim.api.nvim_create_autocmd("BufReadPost", {
-        callback = function(args)
-            _add_buf_signs(args.buf, "breakpoints")
-            _add_buf_signs(args.buf, "currentframe")
+        callback = function(ev)
+            _apply_buffer_signs(ev.buf, "breakpoints")
+            _apply_buffer_signs(ev.buf, "currentframe")
         end,
     })
 end

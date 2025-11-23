@@ -26,7 +26,7 @@ local function _loop_complete(func_names, arg_lead, cmd_line)
 			return filter(project.task_subcommands(rest))
 		elseif cmd == "ext" then
 			return filter(project.extension_subcommands(rest))
-		elseif cmd == "breakpoints" then
+		elseif cmd == "breakpoint" then
 			return filter(project.breakpoints_subcommands(rest))
 		elseif cmd == "debug" then
 			return filter(project.debug_subcommands(rest))
@@ -103,7 +103,7 @@ M.setup = function(args)
 		task = project.task_command,
 		ext = project.extension_command,
 		debug = project.debug_command,
-		breakpoints = project.breakpoints_command,
+		breakpoint = project.breakpoints_command,
 	}
 
 	_setup_user_command(_G.LoopProject)
