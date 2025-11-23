@@ -30,7 +30,7 @@ local strtools = require('loop.tools.strtools')
 ---|"state"
 ---|"output"
 ---|"runInTerminal_request"
----|"stopped"
+---|"threads_stopped"
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.Args
@@ -48,6 +48,7 @@ local strtools = require('loop.tools.strtools')
 ---@field _output_handler fun(msg_body:table)
 ---@field _on_exit fun(code:number)
 ---@field _tracker loop.session.Tracker
+---@field _stopped_threads loop.dap.proto.Thread[]|nil
 local Session = class()
 
 function Session:init()
@@ -228,18 +229,18 @@ function Session:_on_initializing_state()
         columnsStartAt1 = true,
         pathFormat = "path",
     }
-    self._base_session:request_initialize(req_args, function(response)
-        if response.success and response.body then
-            self._capabilities = response.body
-        end
-        if response and response.body and response.body.__lldb ~= nil then
-            if vim.fn.has("mac") == 1 then
+    self._base_session:request_initialize(req_args, function(err, resp)
+        if resp then
+            self._capabilities = resp.capabilities
+            ---@diagnostic disable-next-line: undefined-field
+            local is_lldb = resp.__lldb ~= nil
+            if is_lldb and vim.fn.has("mac") == 1 then
                 self.log:info("macos lldb")
                 self._is_macos_lldb = true
             end
         end
         local success_trigger = self._is_macos_lldb and "initialize_resp_ok_macos_lldb" or "initialize_resp_ok"
-        self._fsm:trigger(response.success and success_trigger or "initialize_resp_err")
+        self._fsm:trigger(err == nil and success_trigger or "initialize_resp_err")
     end)
 end
 
@@ -251,8 +252,8 @@ function Session:_on_configuring_state()
     local success_trigger = self._is_macos_lldb and "configure_success_macos_lldb" or "configure_success"
 
     if nb_breakpoints == 0 then
-        self._base_session:request_configurationDone(function(configdone_resp)
-            self._fsm:trigger(configdone_resp.success and success_trigger or "configure_error")
+        self._base_session:request_configurationDone(function(err, resp)
+            self._fsm:trigger(err == nil and success_trigger or "configure_error")
         end)
         return
     end
@@ -266,15 +267,15 @@ function Session:_on_configuring_state()
                 },
                 breakpoints = bps
             },
-            function(set_bp_resp)
-                if set_bp_resp.success == true then
+            function(err, resp)
+                if err ~= nil then
                     nb_success = nb_success + 1
                 else
                     nb_failures = nb_failures + 1
                 end
                 if nb_success == nb_breakpoints then
-                    self._base_session:request_configurationDone(function(configdone_resp)
-                        self._fsm:trigger(configdone_resp.success and success_trigger or "configure_error")
+                    self._base_session:request_configurationDone(function(config_err)
+                        self._fsm:trigger(config_err == nil and success_trigger or "configure_error")
                     end)
                 elseif nb_failures > 0. and nb_success + nb_failures == nb_breakpoints then
                     self._fsm:trigger("configure_error")
@@ -310,9 +311,9 @@ function Session:_on_launching_state()
             runInTerminal = run_in_terminal,
             stopOnEntry = stop_on_entry,
         },
-        function(response)
+        function(err)
             local success_trigger = self._is_macos_lldb and "launch_resp_ok_macos_lldb" or "launch_resp_ok"
-            self._fsm:trigger(response.success and success_trigger or "launch_resp_error")
+            self._fsm:trigger(err == nil and success_trigger or "launch_resp_error")
         end)
 end
 
@@ -328,22 +329,37 @@ end
 ---@param trigger_data any
 function Session:_on_stopped_state(trigger, trigger_data)
     self:_notify_about_state()
-    if trigger == "dap_stopped" then
-        ---@type loop.dap.proto.StoppedEvent
-        local stopped_event = trigger_data
-        self:_notify_tracker("stopped", stopped_event)
+    if trigger ~= "dap_stopped" then
+        return
+    end
+    ---@type loop.dap.proto.StoppedEvent
+    local stopped_event = trigger_data
+    if stopped_event.allThreadsStopped == false then
+        self._stopped_threads = { { id = stopped_event.threadId, name = "current" } }
+        self:_notify_tracker("threads_stopped", {thread_id = stopped_event.threadId})
+    else
+        self._base_session:request_threads(function(err, resp)
+            if err or not resp then
+                local data = { level = "error", lines = { "Threads query error: " .. tostring(err) } }
+                self:_notify_tracker("log", data)
+            else
+                self._stopped_threads = resp.threads
+                self:_notify_tracker("threads_stopped", {thread_id = stopped_event.threadId})
+            end
+        end)
     end
 end
 
----@param args loop.dap.proto.StackTraceArguments
----@param callback fun(response: loop.dap.proto.Response)|nil
-function Session:request_stackTrace(args, callback)
-    self._base_session:request_stackTrace(args, callback)
+---@return loop.dap.proto.Thread[]|nil
+function Session:stopped_threads()
+    return self._stopped_threads
 end
 
----@param callback fun(response: loop.dap.proto.Response)|nil
-function Session:request_threads(callback)
-    self._base_session:request_threads(callback)
+---@param args loop.dap.proto.StackTraceArguments
+---@param callback fun(err: string|nil, body: loop.dap.proto.StackTraceResponse|nil)|nil
+function Session:request_stackTrace(args, callback)
+    self._base_session:request_stackTrace(args, callback)
+    self._base_session:request_stackTrace(args, callback)
 end
 
 return Session

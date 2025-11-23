@@ -4,7 +4,7 @@ local uitools = require('loop.tools.uitools')
 
 local function _breakpoint_sign(entry)
     if entry.enabled == false then
-        return " "     -- disabled → no sign
+        return " " -- disabled → no sign
     end
     if entry.logMessage and entry.logMessage ~= "" then
         return "▶" -- logpoint
@@ -41,8 +41,8 @@ local BreakpointsPage = class(ItemListPage)
 ---@param keymaps loop.pages.page.KeyMaps
 function BreakpointsPage:init(keymaps)
     ItemListPage.init(self, "Breakpoints", keymaps)
-    
-    self:set_select_handler(function (item)
+
+    self:set_select_handler(function(item)
         ---@type loop.pages.ItemListPage.Item
         if item then
             uitools.smart_open_file(item.data.file, item.data.entry.line)
@@ -51,6 +51,13 @@ function BreakpointsPage:init(keymaps)
 end
 
 function BreakpointsPage:set_breakpoints(breakpoints)
+    ---@type loop.pages.ItemListPage.highlight[]
+    local highlights = { {
+        group = "ErrorMsg",
+        start_col = 0,
+        end_col = 5
+    } }
+
     ---@type loop.pages.ItemListPage.Item[]
     local items = {}
     for file, lines in pairs(breakpoints or {}) do
@@ -58,7 +65,8 @@ function BreakpointsPage:set_breakpoints(breakpoints)
             table.insert(items, {
                 id = #items,
                 text = _breakpoint_sign(entry) .. ' ' .. file .. _format_entry(entry),
-                data = {file = file, entry = entry}
+                data = { file = file, entry = entry },
+                highlights = highlights,
             })
         end
     end

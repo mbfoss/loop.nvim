@@ -2,10 +2,16 @@ local class = require('loop.tools.class')
 local Page = require('loop.pages.Page')
 local uitools = require('loop.tools.uitools')
 
+---@class loop.pages.ItemListPage.highlight
+---@field group string
+---@field start_col number 0-based
+---@field end_col number 0-based
+
 ---@class loop.pages.ItemListPage.Item
 ---@field id any
 ---@field text string
 ---@field data any
+---@field highlights loop.pages.ItemListPage.highlight[]|nil
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginPage')
 
@@ -23,9 +29,8 @@ function ItemListPage:init(name, keymaps)
     self._items = {}
     self._index = {}
 
-    self:add_keymap('<CR>', { callback = function() self:_on_item_selected() end, desc = "Select item"})
-    self:add_keymap('<2-LeftMouse>', { callback = function() self:_on_item_selected() end, desc = "Select item"})
-
+    self:add_keymap('<CR>', { callback = function() self:_on_item_selected() end, desc = "Select item" })
+    self:add_keymap('<2-LeftMouse>', { callback = function() self:_on_item_selected() end, desc = "Select item" })
 end
 
 ---@param handler fun(item:loop.pages.ItemListPage.Item)
@@ -133,13 +138,17 @@ function ItemListPage:_highlight(from, to)
     -- set extmarks
     for idx = from, to do
         local item = self._items[idx]
-        local endcol = math.min(2, #item.text)
-        vim.api.nvim_buf_set_extmark(self._buf, _ns_id, idx - 1, 0, {
-            end_col = endcol,
-            hl_group = 'ErrorMsg',
-            --hl_eol = true,
-            priority = 200,
-        })
+        if item.highlights then
+            for _, hl in ipairs(item.highlights) do
+                local endcol = math.min(hl.end_col, #item.text)
+                vim.api.nvim_buf_set_extmark(self._buf, _ns_id, idx - 1, hl.start_col, {
+                    end_col = endcol,
+                    hl_group = hl.group,
+                    --hl_eol = true,
+                    priority = 200,
+                })
+            end
+        end
     end
 end
 
@@ -167,8 +176,8 @@ function ItemListPage:_refresh_buffer(buf)
 end
 
 function ItemListPage:_on_item_selected()
-    if  self._item_selection_handler then
-         self._item_selection_handler(self:get_cur_item())
+    if self._item_selection_handler then
+        self._item_selection_handler(self:get_cur_item())
     end
 end
 

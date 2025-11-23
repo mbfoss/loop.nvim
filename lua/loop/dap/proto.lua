@@ -519,7 +519,7 @@
 --====================================================================--
 
 ---@class loop.dap.proto.InitializeResponse
----@field body loop.dap.proto.Capabilities
+---@field capabilities loop.dap.proto.Capabilities
 
 ---@class loop.dap.proto.SetBreakpointsResponse
 ---@field breakpoints loop.dap.proto.Breakpoint[]

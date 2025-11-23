@@ -14,7 +14,6 @@ local uitools  = require('loop.tools.uitools')
 ---@field _task_page loop.pages.OutputPage
 ---@field _output_pages table<number,loop.pages.OutputPage>
 ---@field _stacktrace_pages table<number,loop.pages.ItemListPage>
----@field _cur_thread_list loop.dap.proto.Thread[]|nil
 local DebugJob = class(Job)
 
 ---Initializes the DebugJob instance.
@@ -24,7 +23,6 @@ function DebugJob:init()
     self._last_session_id = 0
     self._output_pages = {}
     self._stacktrace_pages = {}
-    self._cur_thread_list = {}
 end
 
 ---@return boolean
@@ -152,10 +150,8 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
         self:add_debug_term(session:name(), request.args, request.on_success, request.on_failure)
         return
     end
-    if event == "stopped" then
-        ---@type loop.dap.proto.StoppedEvent
-        local event = event_data
-        self:_on_session_stop_event(sess_id, session, event)
+    if event == "threads_stopped" then
+        self:_on_session_threads_stopped(sess_id, session, event_data.thread_id)
         return
     end
     error("unhandled dap session event: " .. event)
@@ -211,29 +207,27 @@ end
 ---@param page loop.pages.ItemListPage
 ---@param session loop.dap.Session
 ---@param thread_id number
----@param nb_threads number
-function DebugJob:load_stack_trace(page, session, thread_id, nb_threads)
+function DebugJob:load_stack_trace(page, session, thread_id)
+    local threads = session:stopped_threads()
     page:set_items({ { id = 0, text = "Loading stack trace..." } })
     session:request_stackTrace({
             threadId = thread_id,
             levels = 100, --TODO: make configurable
         },
-        function(response)
-            if not response.success then
+        function(err, resp)
+            if err or not resp then
                 page:set_items({
                     { id = 0, text = "Failed to load stack trace" },
-                    { id = 1, text = tostring(response.message) }
+                    { id = 1, text = tostring(err) }
                 })
                 return
             end
-            local data = response.body
-            ---@cast data loop.dap.proto.StackTraceResponse
-            local items = { {
-                id = 0,
-                text = string.format("Thread %s (%s total threads)", tostring(thread_id), tostring(nb_threads)),
-            } }
-            for idx, frame in ipairs(data.stackFrames) do
-                local text
+            local text = "Thread " .. tostring(thread_id)
+            if threads and #threads > 1 then 
+                text = text .. string.format("(%s total threads)", #threads)
+            end
+            local items = {{id = 0, text = text}}
+            for idx, frame in ipairs(resp.stackFrames) do
                 if frame.source then
                     text = string.format("%d: %s - %s:%d:%d",
                         frame.id, frame.name, frame.source.name, frame.line, frame.column)
@@ -251,8 +245,10 @@ end
 ---@param page loop.pages.ItemListPage
 ---@param session loop.dap.Session
 function DebugJob:select_n_load_stacktrace(page, session)
+    local threads = session:stopped_threads()
+    if not threads then return end
     local choices = {}
-    for _, thread in ipairs(self._cur_thread_list) do
+    for _, thread in ipairs(threads) do
         ---@type loop.SelectorItem
         local item = {
             label = tostring(thread.id) .. ' - ' .. thread.name,
@@ -262,15 +258,15 @@ function DebugJob:select_n_load_stacktrace(page, session)
     end
     selector.select("Select a thread", choices, nil, function(thread_id)
         if thread_id and type(thread_id) == "number" then
-            self:load_stack_trace(page, session, thread_id, #self._cur_thread_list)
+            self:load_stack_trace(page, session, thread_id)
         end
     end)
 end
 
 ---@param sess_id number
 ---@param session loop.dap.Session
----@param stopped_event loop.dap.proto.StoppedEvent
-function DebugJob:_on_session_stop_event(sess_id, session, stopped_event)
+---@param thread_id number|nil
+function DebugJob:_on_session_threads_stopped(sess_id, session, thread_id)
     ---@type loop.pages.ItemListPage|nil
     ---@diagnostic disable-next-line: assign-type-mismatch
     local page = self._stacktrace_pages[sess_id]
@@ -292,21 +288,11 @@ function DebugJob:_on_session_stop_event(sess_id, session, stopped_event)
             end
         end)
     end
-
-    session:request_threads(function(response)
-        if not response.success then
-            page:set_items({ { id = 0, text = "Thread list query failed " .. tostring(response.message) } })
-            return
-        end
-        local data = response.body
-        ---@cast data loop.dap.proto.ThreadsResponse
-        self._cur_thread_list = data.threads
-        if stopped_event.threadId then
-            self:load_stack_trace(page, session, stopped_event.threadId, #data.threads)
-        else
-            self:select_n_load_stacktrace(page, session)
-        end
-    end)
+    if thread_id then
+        self:load_stack_trace(page, session, thread_id)
+    else
+        self:select_n_load_stacktrace(page, session)
+    end
 end
 
 return DebugJob
