@@ -5,6 +5,7 @@ local Session  = require('loop.dap.Session')
 local TermProc = require('loop.tools.TermProc')
 local window   = require('loop.window')
 local selector = require("loop.selector")
+local uitools  = require('loop.tools.uitools')
 
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
@@ -13,6 +14,7 @@ local selector = require("loop.selector")
 ---@field _task_page loop.pages.OutputPage
 ---@field _output_pages table<number,loop.pages.OutputPage>
 ---@field _stacktrace_pages table<number,loop.pages.ItemListPage>
+---@field _cur_thread_list loop.dap.proto.Thread[]|nil
 local DebugJob = class(Job)
 
 ---Initializes the DebugJob instance.
@@ -22,6 +24,7 @@ function DebugJob:init()
     self._last_session_id = 0
     self._output_pages = {}
     self._stacktrace_pages = {}
+    self._cur_thread_list = {}
 end
 
 ---@return boolean
@@ -208,7 +211,8 @@ end
 ---@param page loop.pages.ItemListPage
 ---@param session loop.dap.Session
 ---@param thread_id number
-function DebugJob:load_stack_trace(page, session, thread_id)
+---@param nb_threads number
+function DebugJob:load_stack_trace(page, session, thread_id, nb_threads)
     page:set_items({ { id = 0, text = "Loading stack trace..." } })
     session:request_stackTrace({
             threadId = thread_id,
@@ -226,8 +230,7 @@ function DebugJob:load_stack_trace(page, session, thread_id)
             ---@cast data loop.dap.proto.StackTraceResponse
             local items = { {
                 id = 0,
-                text = string.format("Thread %s (gT to select a different thread)",
-                    tostring(thread_id))
+                text = string.format("Thread %s (%s total threads)", tostring(thread_id), tostring(nb_threads)),
             } }
             for idx, frame in ipairs(data.stackFrames) do
                 local text
@@ -238,7 +241,7 @@ function DebugJob:load_stack_trace(page, session, thread_id)
                     text = string.format("%d: %s", frame.id, frame.name)
                 end
                 ---@type loop.pages.ItemListPage.Item
-                local item = { id = idx, text = text }
+                local item = { id = idx, text = text, data = frame }
                 table.insert(items, item)
             end
             page:set_items(items)
@@ -248,27 +251,19 @@ end
 ---@param page loop.pages.ItemListPage
 ---@param session loop.dap.Session
 function DebugJob:select_n_load_stacktrace(page, session)
-    session:request_threads(function(response)
-        if not response.success then
-            self._task_page:add_lines({ "Thread list query failed", response.message }, "error")
-            return
+    local choices = {}
+    for _, thread in ipairs(self._cur_thread_list) do
+        ---@type loop.SelectorItem
+        local item = {
+            label = tostring(thread.id) .. ' - ' .. thread.name,
+            data = thread.id,
+        }
+        table.insert(choices, item)
+    end
+    selector.select("Select a thread", choices, nil, function(thread_id)
+        if thread_id and type(thread_id) == "number" then
+            self:load_stack_trace(page, session, thread_id, #self._cur_thread_list)
         end
-        local data = response.body
-        ---@cast data loop.dap.proto.ThreadsResponse
-        local choices = {}
-        for _, thread in pairs(data.threads) do
-            ---@type loop.SelectorItem
-            local item = {
-                label = tostring(thread.id) .. ' - ' .. thread.name,
-                data = thread.id,
-            }
-            table.insert(choices, item)
-        end
-        selector.select("Select thread", choices, nil, function(thread_id)
-            if thread_id and type(thread_id) == "number" then
-                self:load_stack_trace(page, session, thread_id)
-            end
-        end)
     end)
 end
 
@@ -282,19 +277,36 @@ function DebugJob:_on_session_stop_event(sess_id, session, stopped_event)
     if not page then
         page = window.add_stacktrace_page(session:name())
         self._stacktrace_pages[sess_id] = page
-        page:add_keymap("gT", { --TODO: make configurable
-            callback = function()
-                self:select_n_load_stacktrace(page, session)
-            end,
-            desc = "Select thread"
-        })
+        page:set_select_handler(function(item)
+            ---@type loop.pages.ItemListPage.Item
+            if item then
+                if item.id == 0 then
+                    self:select_n_load_stacktrace(page, session)
+                elseif item.data then
+                    local data = item.data
+                    ---@cast data loop.dap.proto.StackFrame
+                    if data.source and data.source.path then
+                        uitools.smart_open_file(data.source.path, data.line, data.column)
+                    end
+                end
+            end
+        end)
     end
-    local thread_id = stopped_event.threadId
-    if not thread_id then
-        self:select_n_load_stacktrace(page, session)
-        return
-    end
-    self:load_stack_trace(page, session, thread_id)
+
+    session:request_threads(function(response)
+        if not response.success then
+            page:set_items({ { id = 0, text = "Thread list query failed " .. tostring(response.message) } })
+            return
+        end
+        local data = response.body
+        ---@cast data loop.dap.proto.ThreadsResponse
+        self._cur_thread_list = data.threads
+        if stopped_event.threadId then
+            self:load_stack_trace(page, session, stopped_event.threadId, #data.threads)
+        else
+            self:select_n_load_stacktrace(page, session)
+        end
+    end)
 end
 
 return DebugJob

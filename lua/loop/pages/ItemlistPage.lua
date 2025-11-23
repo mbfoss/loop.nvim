@@ -3,7 +3,7 @@ local Page = require('loop.pages.Page')
 local uitools = require('loop.tools.uitools')
 
 ---@class loop.pages.ItemListPage.Item
----@field id number
+---@field id any
 ---@field text string
 ---@field data any
 
@@ -12,7 +12,8 @@ local _ns_id = vim.api.nvim_create_namespace('LoopPluginPage')
 ---@class loop.pages.ItemListPage : loop.pages.Page
 ---@field new fun(self: loop.pages.ItemListPage, name:string, keymaps:loop.pages.page.KeyMaps): loop.pages.Page
 ---@field _items loop.pages.ItemListPage.Item[]
----@field _index table<number,number>
+---@field _index table<any,number>
+---@field _item_selection_handler fun(item:loop.pages.ItemListPage.Item|nil)
 local ItemListPage = class(Page)
 
 ---@param name string
@@ -21,6 +22,16 @@ function ItemListPage:init(name, keymaps)
     Page.init(self, "list", name, keymaps)
     self._items = {}
     self._index = {}
+
+    self:add_keymap('<CR>', { callback = function() self:_on_item_selected() end, desc = "Select item"})
+    self:add_keymap('<2-LeftMouse>', { callback = function() self:_on_item_selected() end, desc = "Select item"})
+
+end
+
+---@param handler fun(item:loop.pages.ItemListPage.Item)
+function ItemListPage:set_select_handler(handler)
+    assert(not self._item_selection_handler)
+    self._item_selection_handler = handler
 end
 
 ---@param items loop.pages.ItemListPage.Item[]
@@ -45,7 +56,7 @@ function ItemListPage:add_item(item)
     self:_highlight(#self._items, #self._items)
 end
 
----@return number|nil  -- item id under cursor, or nil if buffer not active or no item
+---@return loop.pages.ItemListPage.Item|nil  -- item id under cursor, or nil if buffer not active or no item
 function ItemListPage:get_cur_item()
     local current_buf = vim.api.nvim_get_current_buf()
     local page_buf = self:get_buf()
@@ -54,33 +65,29 @@ function ItemListPage:get_cur_item()
     if current_buf ~= page_buf or page_buf == -1 then
         return nil
     end
-
     -- Get cursor position in the current window (which shows our buffer)
     local cursor = vim.api.nvim_win_get_cursor(0)
     local row = cursor[1] -- 1-based line number
 
     local item = self._items[row]
-    return item and item.id or nil
-end
-
----@param id number
----@return any
-function ItemListPage:get_item_data(id)
-    local idx = self._index[id]
-    local item = idx and self._items[idx]
     if item then
-        return item.data
+        return vim.tbl_extend("force", {}, item) --shallow copy
     end
     return nil
 end
 
----@return any
-function ItemListPage:get_cur_item_data()
-    local id = self:get_cur_item()
-    return id and self:get_item_data(id) or nil
+---@param id any
+---@return loop.pages.ItemListPage.Item|nil
+function ItemListPage:get_item(id)
+    local idx = self._index[id]
+    local item = idx and self._items[idx]
+    if item then
+        return vim.tbl_extend("force", {}, item) --shallow copy
+    end
+    return nil
 end
 
----@param id number
+---@param id any
 function ItemListPage:remove_item(id)
     local idx = self._index[id]
     if not idx then return end
@@ -109,21 +116,6 @@ function ItemListPage:get_or_create_buf()
     if not created then
         return buf, false
     end
-
-    self:add_keymap('<CR>', {
-        callback = function()
-            vim.notify("Item selected")
-        end,
-        desc = "Select item",
-    })
-
-    self:add_keymap('<2-LeftMouse>', {
-        callback = function()
-            vim.notify("Item double click")
-        end,
-        desc = "Select item",
-    })
-
     self:_refresh_buffer(buf)
     return buf, true
 end
@@ -172,6 +164,12 @@ function ItemListPage:_refresh_buffer(buf)
     vim.bo[buf].modifiable = false
 
     self:_highlight(1, #self._items)
+end
+
+function ItemListPage:_on_item_selected()
+    if  self._item_selection_handler then
+         self._item_selection_handler(self:get_cur_item())
+    end
 end
 
 return ItemListPage

@@ -1,6 +1,6 @@
 local class = require('loop.tools.class')
 local ItemListPage = require('loop.pages.ItemListPage')
-
+local uitools = require('loop.tools.uitools')
 
 local function _breakpoint_sign(entry)
     if entry.enabled == false then
@@ -41,6 +41,13 @@ local BreakpointsPage = class(ItemListPage)
 ---@param keymaps loop.pages.page.KeyMaps
 function BreakpointsPage:init(keymaps)
     ItemListPage.init(self, "Breakpoints", keymaps)
+    
+    self:set_select_handler(function (item)
+        ---@type loop.pages.ItemListPage.Item
+        if item then
+            uitools.smart_open_file(item.data.file, item.data.entry.line)
+        end
+    end)
 end
 
 function BreakpointsPage:set_breakpoints(breakpoints)
@@ -50,7 +57,8 @@ function BreakpointsPage:set_breakpoints(breakpoints)
         for _, entry in ipairs(lines) do
             table.insert(items, {
                 id = #items,
-                text = _breakpoint_sign(entry) .. ' ' .. file .. _format_entry(entry)
+                text = _breakpoint_sign(entry) .. ' ' .. file .. _format_entry(entry),
+                data = {file = file, entry = entry}
             })
         end
     end

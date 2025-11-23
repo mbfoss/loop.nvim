@@ -272,9 +272,18 @@ local function protect_split_window_buffer(buf)
 end
 
 function M.winbar_click(id, clicks, button, mods)
-    local tab = _tabs_arr[id]
-    if tab then
-        _setup_active_tab(tab)
+    if _active_tab_idx ~= id then
+        local tab = _tabs_arr[id]
+        if tab then
+            _setup_active_tab(tab)
+        end
+    else
+        local tab = _tabs_arr[id]
+        if tab then            
+            local pageidx = tab.active_page_idx + 1
+            if pageidx > #tab.pages then pageidx = 1 end
+            _setup_active_tab_idx(id, pageidx)
+        end
     end
 end
 
