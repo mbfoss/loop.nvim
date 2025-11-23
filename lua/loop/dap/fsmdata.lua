@@ -15,7 +15,6 @@ M.trigger =
     launch_resp_error = "launch_resp_error",
     terminated = "terminated",
     disconnect = "disconnect",
-    dap_stopped = "dap_stopped",
     disconnect_resp_ok = "disconnect_resp_ok",
     disconnect_resp_err = "disconnect_resp_err",
     killed = "killed",
@@ -57,12 +56,7 @@ function M.create_fsm_data(session)
             running = {
                 state_handler = function(...) session:_on_running_state(...) end,
                 triggers = {
-                    [M.trigger.dap_stopped] = "stopped",
-                }
-            },
-            stopped = {
-                state_handler = function(...) session:_on_stopped_state(...) end,
-                triggers = {
+                    [M.trigger.disconnect] = "disconnecting",
                 }
             },
             disconnecting = {

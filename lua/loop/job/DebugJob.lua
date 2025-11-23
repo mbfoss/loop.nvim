@@ -163,10 +163,14 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
         self:add_debug_term(session:name(), request.args, request.on_success, request.on_failure)
         return
     end
-    if event == "threads_stopped" then
-        self:_on_session_threads_stopped(sess_id, session, event_data.thread_id)
+    if event == "threads_paused" then
+        self:_on_session_threads_event(sess_id, session, "pause", event_data.thread_id)
         return
     end
+    if event == "threads_continued" then
+        self:_on_session_threads_event(sess_id, session, "continue")
+        return
+    end    
     error("unhandled dap session event: " .. event)
 end
 
@@ -228,6 +232,9 @@ function DebugJob:load_stack_trace(page, session, thread_id)
             levels = config.current.debug.stack_levels_limit or 100,
         },
         function(err, resp)
+            if not session:thread_is_stopped(thread_id) then
+                return
+            end
             if err or not resp then
                 page:set_items({
                     { id = 0, text = "Failed to load stack trace" },
@@ -237,7 +244,7 @@ function DebugJob:load_stack_trace(page, session, thread_id)
             end
             local text = "Thread " .. tostring(thread_id)
             if threads and #threads > 1 then 
-                text = text .. string.format(" (%s threads total)", #threads)
+                text = text .. string.format(" (%s paused threads)", #threads)
             end
             local items = {{id = 0, text = text}}
             for idx, frame in ipairs(resp.stackFrames) do
@@ -278,8 +285,9 @@ end
 
 ---@param sess_id number
 ---@param session loop.dap.Session
+---@param event "pause"|"continue"
 ---@param thread_id number|nil
-function DebugJob:_on_session_threads_stopped(sess_id, session, thread_id)
+function DebugJob:_on_session_threads_event(sess_id, session, event, thread_id)
     ---@type loop.pages.ItemListPage|nil
     ---@diagnostic disable-next-line: assign-type-mismatch
     local page = self._stacktrace_pages[sess_id]
@@ -301,10 +309,14 @@ function DebugJob:_on_session_threads_stopped(sess_id, session, thread_id)
             end
         end)
     end
-    if thread_id then
-        self:load_stack_trace(page, session, thread_id)
+    if event == "pause" then
+        if thread_id then
+            self:load_stack_trace(page, session, thread_id)
+        else
+            self:select_n_load_stacktrace(page, session)
+        end
     else
-        self:select_n_load_stacktrace(page, session)
+        page:set_items({{id = 0, text = "No paused threads"}})
     end
 end
 

@@ -5,10 +5,9 @@ local BaseSession = require("loop.dap.BaseSession")
 local FSM = require("loop.tools.FSM")
 
 local fsmdata = require('loop.dap.fsmdata')
-local strtools = require('loop.tools.strtools')
 
 ---@class loop.dap.session.notify.LogData
----@field level nil|"log"|"error"
+---@field level nil|"warn"|"error"
 ---@field lines string[]
 
 ---@class loop.dap.session.Args.DAP
@@ -31,7 +30,8 @@ local strtools = require('loop.tools.strtools')
 ---|"state"
 ---|"output"
 ---|"runInTerminal_request"
----|"threads_stopped"
+---|"threads_paused"
+---|"threads_continued"
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.Args
@@ -84,9 +84,7 @@ function Session:start(args)
     self._on_exit = args.exit_handler
 
     local stderr_handler = function(text)
-        ---@type loop.dap.session.notify.LogData
-        local data = { level = "error", lines = { "dap process error", text } }
-        self:_notify_tracker("log", data)
+        self:_notify_about_log("error", { "dap process error", text })
     end
 
     local exit_handler = function(code, signal)
@@ -129,6 +127,7 @@ function Session:start(args)
     self._base_session:set_event_handler("output", function(msg_body) self:_on_output_event(msg_body) end)
     self._base_session:set_event_handler("initialized", function(msg_body) self:_on_initialized_event(msg_body) end)
     self._base_session:set_event_handler("stopped", function(msg_body) self:_on_stopped_event(msg_body) end)
+    self._base_session:set_event_handler("continued", function(msg_body) self:_on_continued_event(msg_body) end)
 
     self._base_session:set_reverse_request_handler("runInTerminal",
         function(req_args, on_success, on_failure)
@@ -173,15 +172,12 @@ function Session:_notify_about_state()
     self:_notify_tracker("state", data)
 end
 
----@return fun(response:any)
-function Session:_simple_qery_resp_handler()
-    return function(response)
-        if not response.success then
-            ---@type loop.dap.session.notify.LogData
-            local data = { level = "error", lines = { "'" .. response.command .. "' error", response.message } }
-            self:_notify_tracker("log", data)
-        end
-    end
+---@param level nil|"warn"|"error"
+---@param lines string[]
+function Session:_notify_about_log(level, lines)
+    ---@type loop.dap.session.notify.LogData
+    local data = { level = level, lines = lines }
+    self:_notify_tracker("log", data)
 end
 
 ---@return string
@@ -191,19 +187,45 @@ function Session:state()
 end
 
 function Session:debug_continue()
-    self._base_session:request_continue({ threadId = 0 }, self:_simple_qery_resp_handler())
+    self._base_session:request_continue({ threadId = 0, singleThread = false },
+        function(err, resp)
+            if err or not resp then
+                self:_notify_about_log("error", { "continue error", tostring(err) })
+                return
+            end
+            if resp.allThreadsContinued == false then
+                self:_notify_about_log("error", { "unsupported single thread continue" })
+            end
+            if #self._stopped_threads > 0 then
+                self._stopped_threads = {}
+                self:_notify_tracker("threads_continued")
+            end
+        end)
 end
 
 function Session:debug_stepIn()
-    self._base_session:request_stepIn({ threadId = 0 }, self:_simple_qery_resp_handler())
+    self._base_session:request_stepIn({ threadId = 0, singleThread = false }, function(err)
+        if err then
+            self:_notify_about_log("error", { "stepIn error", tostring(err) })
+        end
+    end)
 end
 
 function Session:debug_stepOut()
-    self._base_session:request_stepOut({ threadId = 0 }, self:_simple_qery_resp_handler())
+    self._base_session:request_stepOut({ threadId = 0, singleThread = false }, function(err)
+        if err then
+            self:_notify_about_log("error", { "stepOut error", tostring(err) })
+        end
+    end)
 end
 
 function Session:debug_stepBack()
-    self._base_session:request_stepBack({ threadId = 0 }, self:_simple_qery_resp_handler())
+    self._base_session:request_stepBack({ threadId = 0, singleThread = false },
+        function(err)
+            if err then
+                self:_notify_about_log("error", { "stepBack error", tostring(err) })
+            end
+        end)
 end
 
 ---@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
@@ -228,7 +250,40 @@ end
 
 ---@param event loop.dap.proto.StoppedEvent|nil
 function Session:_on_stopped_event(event)
-    self._fsm:trigger(fsmdata.trigger.dap_stopped, event)
+    if self._fsm:curr_state() ~= "running" then
+        self:_notify_about_log("error", { "unexpected stopped event" })
+        return
+    end
+    assert(event)
+    if event.allThreadsStopped == false then
+        self._stopped_threads = { { id = event.threadId, name = "current" } }
+        self:_notify_tracker("threads_paused", { thread_id = event.threadId })
+    else
+        self._base_session:request_threads(function(err, resp)
+            if err or not resp then
+                self:_notify_about_log("error", { "Threads query error: " .. tostring(err) })
+            elseif resp.threads and type(resp.threads) == "table" and #resp.threads > 0 then
+                self._stopped_threads = resp.threads
+                self:_notify_tracker("threads_paused", { thread_id = event.threadId })
+            end
+        end)
+    end
+end
+
+---@param event loop.dap.proto.ContinuedEvent|nil
+function Session:_on_continued_event(event)
+    if self._fsm:curr_state() ~= "running" then
+        self:_notify_about_log("error", { "unexpected continued event" })
+        return
+    end
+    assert(event)
+    if event.allThreadsContinued == false then
+        self:_notify_about_log("error", { "unsupported single thread continue" })
+    end
+    if #self._stopped_threads > 0 then
+        self._stopped_threads = {}
+        self:_notify_tracker("threads_continued")
+    end
 end
 
 function Session:_on_initializing_state()
@@ -248,7 +303,8 @@ function Session:_on_initializing_state()
                 self._is_macos_lldb = true
             end
         end
-        local success_trigger = self._is_macos_lldb and fsmdata.trigger.initialize_resp_ok_macos_lldb or fsmdata.trigger.initialize_resp_ok
+        local success_trigger = self._is_macos_lldb and fsmdata.trigger.initialize_resp_ok_macos_lldb or
+            fsmdata.trigger.initialize_resp_ok
         self._fsm:trigger(err == nil and success_trigger or fsmdata.trigger.initialize_resp_err)
     end)
 end
@@ -258,7 +314,8 @@ function Session:_on_configuring_state()
     local nb_breakpoints = vim.tbl_count(breakpoints)
     local nb_success = 0
     local nb_failures = 0
-    local success_trigger = self._is_macos_lldb and fsmdata.trigger.configure_success_macos_lldb or fsmdata.trigger.configure_success
+    local success_trigger = self._is_macos_lldb and fsmdata.trigger.configure_success_macos_lldb or
+        fsmdata.trigger.configure_success
 
     if nb_breakpoints == 0 then
         self._base_session:request_configurationDone(function(err, resp)
@@ -321,7 +378,8 @@ function Session:_on_launching_state()
             stopOnEntry = stop_on_entry,
         },
         function(err)
-            local success_trigger = self._is_macos_lldb and fsmdata.trigger.launch_resp_ok_macos_lldb or fsmdata.trigger.launch_resp_ok
+            local success_trigger = self._is_macos_lldb and fsmdata.trigger.launch_resp_ok_macos_lldb or
+                fsmdata.trigger.launch_resp_ok
             self._fsm:trigger(err == nil and success_trigger or fsmdata.trigger.launch_resp_error)
         end)
 end
@@ -334,13 +392,13 @@ function Session:_on_disconnecting_state()
     self:_notify_about_state()
     self._base_session:request_disconnect({
         terminateDebuggee = self._target.terminate_on_disconnect
-    }, function (err, body)
+    }, function(err, body)
         self._fsm:trigger(err == nil and fsmdata.trigger.disconnect_resp_ok or fsmdata.trigger.disconnect_resp_err)
-    end)    
+    end)
 end
 
 function Session:_on_kill_state()
-    self:_notify_about_state()    
+    self:_notify_about_state()
     self._base_session:kill()
 end
 
@@ -348,35 +406,21 @@ function Session:_on_ended_state()
     self._fsm:trigger(fsmdata.trigger.killed)
 end
 
-
----@param trigger string
----@param trigger_data any
-function Session:_on_stopped_state(trigger, trigger_data)
-    self:_notify_about_state()
-    if trigger ~= "dap_stopped" then
-        return
-    end
-    ---@type loop.dap.proto.StoppedEvent
-    local stopped_event = trigger_data
-    if stopped_event.allThreadsStopped == false then
-        self._stopped_threads = { { id = stopped_event.threadId, name = "current" } }
-        self:_notify_tracker("threads_stopped", { thread_id = stopped_event.threadId })
-    else
-        self._base_session:request_threads(function(err, resp)
-            if err or not resp then
-                local data = { level = "error", lines = { "Threads query error: " .. tostring(err) } }
-                self:_notify_tracker("log", data)
-            else
-                self._stopped_threads = resp.threads
-                self:_notify_tracker("threads_stopped", { thread_id = stopped_event.threadId })
-            end
-        end)
-    end
-end
-
 ---@return loop.dap.proto.Thread[]|nil
 function Session:stopped_threads()
     return self._stopped_threads
+end
+
+---@param thread_id number
+---@return boolean
+function Session:thread_is_stopped(thread_id)
+    if not self._stopped_threads then return false end
+    for _,t in ipairs(self._stopped_threads) do
+        if thread_id == t.id then
+            return true
+        end
+    end
+    return false
 end
 
 ---@param args loop.dap.proto.StackTraceArguments
