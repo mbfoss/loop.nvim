@@ -52,7 +52,6 @@ local function _close_project()
     local have_breakpoints = breakpoints.have_breakpoints()
     if have_breakpoints then
         breakpoints.clear_all_breakpoints()
-        window.update_breakpoints(breakpoints.get_breakpoints(), _project_dir)
     end
 
     window.add_events({ "Project closed" })
@@ -79,9 +78,6 @@ local function _load_project(dir)
 
     window.load_settings(config_dir)
     breakpoints.load_breakpoints(config_dir)
-    if breakpoints.have_breakpoints() then
-        window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
-    end
 
     if not _save_timer then
         -- Create and start the repeating timer
@@ -233,7 +229,6 @@ function M.breakpoints_command(command)
     command = command and command:match("^%s*(.-)%s*$") or ""
     if command == "" or command == "toggle" then
         breakpoints.toggle_breakpoint()
-        window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
     elseif command == "clear_file" then
         local bufnr = vim.api.nvim_get_current_buf()
         if vim.api.nvim_buf_is_valid(bufnr) then
@@ -242,7 +237,6 @@ function M.breakpoints_command(command)
                 uitools.confirm_action("Clear breakpoints in file", false, function(accepted)
                     if accepted == true then
                         breakpoints.clear_file_breakpoints(full_path)
-                        window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
                     end
                 end)
             end
@@ -251,7 +245,6 @@ function M.breakpoints_command(command)
         uitools.confirm_action("Clear all breakpoints", false, function(accepted)
             if accepted == true then
                 breakpoints.clear_all_breakpoints()
-                window.update_breakpoints(breakpoints.get_breakpoints(), proj_dir)
             end
         end)
     else

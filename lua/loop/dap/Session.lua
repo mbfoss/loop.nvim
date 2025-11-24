@@ -37,6 +37,7 @@ local fsmdata = require('loop.dap.fsmdata')
 ---|"threads_paused"
 ---|"threads_continued"
 ---|"breakpoints"
+---|"debuggee_exit"
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.Args
@@ -134,6 +135,8 @@ function Session:start(args)
     self._base_session:set_event_handler("stopped", function(msg_body) self:_on_stopped_event(msg_body) end)
     self._base_session:set_event_handler("continued", function(msg_body) self:_on_continued_event(msg_body) end)
     self._base_session:set_event_handler("breakpoint", function(msg_body) self:_on_breakpoint_event(msg_body) end)
+    self._base_session:set_event_handler("exited", function(msg_body) self:_on_exited_event(msg_body) end)
+    self._base_session:set_event_handler("terminated", function(msg_body) self:_on_terminated_event(msg_body) end)
 
     self._base_session:set_reverse_request_handler("runInTerminal",
         function(req_args, on_success, on_failure)
@@ -277,7 +280,7 @@ function Session:_on_stopped_event(event)
     end
 end
 
----@param event loop.dap.proto.ContinuedEvent
+---@param event loop.dap.proto.ContinuedEvent|nil
 function Session:_on_continued_event(event)
     if self._fsm:curr_state() ~= "running" then
         self:_notify_about_log("error", { "unexpected continued event" })
@@ -294,13 +297,26 @@ function Session:_on_continued_event(event)
     end
 end
 
----@param event loop.dap.proto.BreakpointEvent
+---@param event loop.dap.proto.BreakpointEvent|nil
 function Session:_on_breakpoint_event(event)
     assert(event and event.breakpoint)
     local removed = event.reason == "removed"
     ---@type loop.dap.session.notify.BreakpointsEvent
     local data = { breakpoints = { event.breakpoint }, removed = removed }
     self:_notify_tracker("breakpoints", data)
+end
+
+---@param event loop.dap.proto.ExitedEvent|nil
+function Session:_on_exited_event(event)
+    self:_notify_tracker("debuggee_exit", event)    
+end
+
+---@param event loop.dap.proto.TerminatedEvent|nil
+function Session:_on_terminated_event(event)
+    assert(event)
+    if event.restart ~= true then
+        self._fsm:trigger(fsmdata.trigger.disconnect)
+    end
 end
 
 function Session:_on_initializing_state()

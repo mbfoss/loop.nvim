@@ -2,7 +2,6 @@ local M = {}
 local Page = require('loop.pages.Page')
 local OutputPage = require('loop.pages.OutputPage')
 local ItemListPage = require('loop.pages.ItemListPage')
-local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local selector = require("loop.selector")
@@ -41,9 +40,9 @@ local _tabs = {
     stacktrace = { index = 6, label = "Stack", pages = {}, list_prefix = "Stack - " },
 }
 
-local _tabs_arr = (function ()
+local _tabs_arr = (function()
     local arr = {}
-    for _,t in pairs(_tabs) do
+    for _, t in pairs(_tabs) do
         arr[t.index] = t
     end
     return arr
@@ -349,19 +348,19 @@ function M.add_events(lines, level)
     end
 end
 
----@param breakpoints table<string, integer[]>
----@param proj_dir string
-function M.update_breakpoints(breakpoints, proj_dir)
+---@return loop.pages.ItemListPage
+function M.get_breakpoints_page()
     assert(setup_done)
-    ---@type loop.pages.BreakpointsPage
+    ---@type loop.pages.ItemListPage
     ---@diagnostic disable-next-line: assign-type-mismatch
     local page = _tabs.breakpoints.pages[1]
     if not page then
-        page = BreakpointsPage:new(get_page_keymap())
+        ---@diagnostic disable-next-line: cast-local-type
+        page = ItemListPage:new("Breakpoints", get_page_keymap())
         _add_tab_page(_tabs.breakpoints, page)
     end
-    assert(getmetatable(page) == BreakpointsPage)
-    page:set_breakpoints(breakpoints, proj_dir)
+    assert(getmetatable(page) == ItemListPage)
+    return page
 end
 
 function M.show_window()

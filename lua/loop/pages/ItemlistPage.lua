@@ -50,13 +50,19 @@ function ItemListPage:set_items(items)
 end
 
 ---@param item loop.pages.ItemListPage.Item
-function ItemListPage:add_item(item)
-    table.insert(self._items, item)
-    self._index[item.id] = #self._items
+function ItemListPage:set_item(item)
+    local cur_pos = self._index[item.id]
+    if cur_pos then
+        self._items[cur_pos] = item
+    else
+        table.insert(self._items, item)
+        self._index[item.id] = #self._items
+    end
 
     local buf = self:get_buf()
     if buf == -1 then return end
 
+    --TODO, improve performance by modifying only the affected line
     vim.api.nvim_buf_set_lines(buf, #self._items - 1, #self._items - 1, false, { item.text })
     self:_highlight(#self._items, #self._items)
 end

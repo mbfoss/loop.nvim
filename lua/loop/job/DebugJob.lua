@@ -72,7 +72,7 @@ function DebugJob:start(args)
     self._last_session_id = session_id
 
     local function session_exit_handler(code)
-        -- this runs in the fast event context, so use schedule hereby
+        -- this runs in the fast event context, so use schedule
         vim.schedule(function()
             self._sessions[session_id] = nil
             if next(self._sessions) == nil then
@@ -110,7 +110,6 @@ function DebugJob:start(args)
 
     self._sessions[session_id] = session
 
-    breakpoints.clear_live_breakpoints()
     session:set_breakpoints(self._breakpoints)
 
     self._task_page = window.add_debug_task_page(args.name)
@@ -197,6 +196,10 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
         ---@type loop.dap.session.notify.BreakpointsEvent
         local data = event_data
         self:_on_session_breakpoints_event(sess_id, session, data)
+        return
+    end
+    if event == "debuggee_exit" then
+            breakpoints.clear_live_breakpoints()
         return
     end
     error("unhandled dap session event: " .. event)
@@ -371,11 +374,15 @@ end
 function DebugJob:_on_session_breakpoints_event(sess_id, session, event)
     if event.removed then
         for _, bp in ipairs(event.breakpoints) do
-            breakpoints.remove_live_breakpoint(bp.source.path, bp.line)
+            if bp and bp.source and bp.source.path then
+                breakpoints.remove_live_breakpoint(bp.source.path, bp.line)
+            end
         end
     else
         for _, bp in ipairs(event.breakpoints) do
-            breakpoints.set_live_breakpoint(bp.source.path, bp.line, bp.verified)
+            if bp and bp.source and bp.source.path then
+                breakpoints.set_live_breakpoint(bp.source.path, bp.line, bp.verified)
+            end
         end
     end
 end
