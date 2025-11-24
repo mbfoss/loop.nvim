@@ -7,6 +7,10 @@ local M = {}
 ---@type table<string, loop.dap.proto.SourceBreakpoint[]>
 local _breakpoints = {}
 
+---Internal table mapping file paths to breakpoints states by line
+---@type table<string, table<number,boolean>>
+local _livebreakpoints = {}
+
 --- Whether setup() has been called.
 ---@type boolean
 local _setup_done = false
@@ -15,11 +19,21 @@ local _setup_done = false
 ---@type boolean
 local _need_saving = false
 
+---@param file string
+---@param line number
+---@return boolean|nil
+function _get_live_bp_state(file, line)
+    local f = vim.fn.fnamemodify(file, ":p")
+    local bpts = _livebreakpoints[f]
+    if not bpts then return nil end
+    return bpts[line]
+end
+
 --- Check if a file has a breakpoint on a specific line.
 ---@param file string  File path
 ---@param line integer  Line number
 ---@return boolean has_breakpoint  True if a breakpoint exists on that line
-local function _have_file_breakpoint(file, line)
+local function _have_breakpoint(file, line)
     local bps = _breakpoints[file]
     if not bps then
         return false
@@ -32,40 +46,30 @@ local function _have_file_breakpoint(file, line)
     return false
 end
 
-function M.has_breakpoint(file, line)
-  local f = vim.fn.fnamemodify(file, ":p")
-  return _have_file_breakpoint(f, line)
+---@param path string File path (possibly relative)
+---@param line integer Line number
+local function _refresh_breakpoint_sign(path, line)
+    local file = vim.fn.fnamemodify(path, ":p")
+    local verified
+    if _livebreakpoints[file] then
+        local filebreakpoints = _livebreakpoints[file]
+        verified = filebreakpoints[line]
+    end
+    if _have_breakpoint(file, line) then
+        local sign = verified ~= false and "active_breakpoint" or "inactive_breakpoint"
+        signs.place_file_sign(file, line, "breakpoints", sign)
+    else
+        signs.remove_file_sign(file, line, "breakpoints")
+    end
 end
 
---- Add a breakpoint to a file if it doesn't already exist on that line.
----@param file string  File path
----@param line integer  Line number
----@param condition? string|nil  Optional conditional expression
----@param hitCondition? string|nil  Optional hit condition
----@param logMessage? string|nil  Optional log message
----@return boolean added  True if a new breakpoint was added, false if one already existed
-local function _add_file_breakpoint(file, line, condition, hitCondition, logMessage)
-    if _have_file_breakpoint(file, line) then
-        return false
-    end
-    if not _breakpoints[file] then
-        _breakpoints[file] = {}
-    end
-    table.insert(_breakpoints[file], {
-        line = line,
-        condition = condition,
-        hitCondition = hitCondition,
-        logMessage = logMessage,
-    })
-    _need_saving = true
-    return true
-end
+--- Remove a single breakpoint and its sign.
+---@param path string File path (possibly relative)
+---@param line integer Line number
+---@return boolean removed True if a breakpoint was removed
+local function _remove_breakpoint(path, line)
+    local file = vim.fn.fnamemodify(path, ":p")
 
---- Remove a breakpoint from a specific line in a file.
----@param file string  File path
----@param line integer  Line number
----@return boolean removed  True if a breakpoint was removed, false if none was found
-local function _remove_file_breakpoint(file, line)
     local bps = _breakpoints[file]
     if not bps then
         return false
@@ -76,23 +80,15 @@ local function _remove_file_breakpoint(file, line)
             table.insert(new_bps, v)
         end
     end
+
     _breakpoints[file] = new_bps
     local changed = #bps ~= #new_bps
     _need_saving = _need_saving or changed
-    return changed
-end
 
---- Remove a single breakpoint and its sign.
----@param path string File path (possibly relative)
----@param line integer Line number
----@return boolean removed True if a breakpoint was removed
-local function _remove_breakpoint(path, line)
-    local file = vim.fn.fnamemodify(path, ":p")
-    local removed = _remove_file_breakpoint(file, line)
-    if removed then
+    if changed then
         signs.remove_file_sign(file, line, "breakpoints")
     end
-    return removed
+    return changed
 end
 
 ---@param path string File path (possibly relative)
@@ -125,10 +121,22 @@ end
 ---@param logMessage? string Optional log message
 local function _add_breakpoint(path, line, condition, hitCondition, logMessage)
     local file = vim.fn.fnamemodify(path, ":p")
-    local added = _add_file_breakpoint(file, line, condition, hitCondition, logMessage)
-    if added then
-        signs.add_file_sign(file, line, "breakpoints", "active_breakpoint")
+
+    if _have_breakpoint(file, line) then
+        return false
     end
+    if not _breakpoints[file] then
+        _breakpoints[file] = {}
+    end
+    table.insert(_breakpoints[file], {
+        line = line,
+        condition = condition,
+        hitCondition = hitCondition,
+        logMessage = logMessage,
+    })
+
+    _need_saving = true
+    _refresh_breakpoint_sign(file, line)
 end
 
 -- ----------------------------------------------------------------------
@@ -149,11 +157,11 @@ function M.toggle_breakpoint()
 end
 
 function M.get_breakpoint(file, line)
-  local full = vim.fn.fnamemodify(file, ":p")
-  local bps = _breakpoints[full] or {}
-  for _, bp in ipairs(bps) do
-    if bp.line == line then return bp end
-  end
+    local full = vim.fn.fnamemodify(file, ":p")
+    local bps = _breakpoints[full] or {}
+    for _, bp in ipairs(bps) do
+        if bp.line == line then return bp end
+    end
 end
 
 ---@param filepath string
@@ -189,13 +197,15 @@ function M.load_breakpoints(proj_config_dir)
             end
         end
     end
-    _breakpoints = data
-    for file, filebps in pairs(_breakpoints) do
-        signs.remove_file_signs(file, "breakpoints")
-        for _,bp in ipairs(filebps) do
-            signs.add_file_sign(file, bp.line, "breakpoints", "active_breakpoint")
+
+    _clear_breakpoints()
+    for file, bps in pairs(data) do
+        local fullpath = vim.fn.fnamemodify(file, ":p")
+        for _, bp in ipairs(bps) do
+            _add_breakpoint(fullpath, bp.line, bp.condition, bp.hitCondition, bp.logMessage)
         end
     end
+
     _need_saving = false
     return true, nil
 end
@@ -229,6 +239,34 @@ end
 ---@return table<string,loop.dap.proto.SourceBreakpoint[]>
 function M.get_breakpoints()
     return vim.deepcopy(_breakpoints)
+end
+
+function M.clear_live_breakpoints()
+    _livebreakpoints = {}
+end
+
+---@param path string
+---@param line number
+---@param verified boolean
+function M.set_live_breakpoint(path, line, verified)
+    local file = vim.fn.fnamemodify(path, ":p")
+    _livebreakpoints[file] = _livebreakpoints[file] or {}
+    local filebreakpoints = _livebreakpoints[file]
+    filebreakpoints[line] = verified
+    _refresh_breakpoint_sign(file, line)
+end
+
+---@param path string
+---@param line number
+function M.remove_live_breakpoint(path, line)
+    local file = vim.fn.fnamemodify(path, ":p")
+    if _livebreakpoints[file] then
+        local filebreakpoints = _livebreakpoints[file]
+        if filebreakpoints[line] then
+            filebreakpoints[line] = nil
+            _refresh_breakpoint_sign(file, line)
+        end
+    end
 end
 
 --- Setup the breakpoint sign system and autocommands.

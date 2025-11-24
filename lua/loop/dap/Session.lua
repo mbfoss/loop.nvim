@@ -10,12 +10,16 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field level nil|"warn"|"error"
 ---@field lines string[]
 
+---@class loop.dap.session.notify.BreakpointsEvent
+---@field breakpoints loop.dap.proto.Breakpoint[]
+---@field removed boolean|nil
+
 ---@class loop.dap.session.Args.DAP
 ---@field name string
 ---@field cmd string|string[]
 ---@field env table<string,string>|nil
 ---@field cwd string
----@
+
 ---@class loop.dap.session.Args.Target
 ---@field name string
 ---@field cmd string|string[]
@@ -32,6 +36,7 @@ local fsmdata = require('loop.dap.fsmdata')
 ---|"runInTerminal_request"
 ---|"threads_paused"
 ---|"threads_continued"
+---|"breakpoints"
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.Args
@@ -128,6 +133,7 @@ function Session:start(args)
     self._base_session:set_event_handler("initialized", function(msg_body) self:_on_initialized_event(msg_body) end)
     self._base_session:set_event_handler("stopped", function(msg_body) self:_on_stopped_event(msg_body) end)
     self._base_session:set_event_handler("continued", function(msg_body) self:_on_continued_event(msg_body) end)
+    self._base_session:set_event_handler("breakpoint", function(msg_body) self:_on_breakpoint_event(msg_body) end)
 
     self._base_session:set_reverse_request_handler("runInTerminal",
         function(req_args, on_success, on_failure)
@@ -271,7 +277,7 @@ function Session:_on_stopped_event(event)
     end
 end
 
----@param event loop.dap.proto.ContinuedEvent|nil
+---@param event loop.dap.proto.ContinuedEvent
 function Session:_on_continued_event(event)
     if self._fsm:curr_state() ~= "running" then
         self:_notify_about_log("error", { "unexpected continued event" })
@@ -286,6 +292,15 @@ function Session:_on_continued_event(event)
         self._stopped_threads = nil
         self:_notify_tracker("threads_continued")
     end
+end
+
+---@param event loop.dap.proto.BreakpointEvent
+function Session:_on_breakpoint_event(event)
+    assert(event and event.breakpoint)
+    local removed = event.reason == "removed"
+    ---@type loop.dap.session.notify.BreakpointsEvent
+    local data = { breakpoints = { event.breakpoint }, removed = removed }
+    self:_notify_tracker("breakpoints", data)
 end
 
 function Session:_on_initializing_state()
@@ -336,7 +351,7 @@ function Session:_on_configuring_state()
                 breakpoints = bps
             },
             function(err, resp)
-                if err == nil then
+                if err == nil and resp then
                     nb_success = nb_success + 1
                 else
                     nb_failures = nb_failures + 1
@@ -347,6 +362,11 @@ function Session:_on_configuring_state()
                     end)
                 elseif nb_failures > 0. and nb_success + nb_failures == nb_breakpoints then
                     self._fsm:trigger(fsmdata.trigger.configure_error)
+                end
+                if resp then
+                    ---@type loop.dap.session.notify.BreakpointsEvent
+                    local data = { breakpoints = resp.breakpoints }
+                    self:_notify_tracker("breakpoints", data)   
                 end
             end)
     end

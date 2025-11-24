@@ -1,13 +1,14 @@
-local class    = require('loop.tools.class')
-local config   = require('loop.config')
-local Job      = require('loop.job.Job')
-local strtools = require('loop.tools.strtools')
-local Session  = require('loop.dap.Session')
-local TermProc = require('loop.tools.TermProc')
-local window   = require('loop.window')
-local selector = require("loop.selector")
-local uitools  = require('loop.tools.uitools')
-local signs    = require('loop.signs')
+local class       = require('loop.tools.class')
+local config      = require('loop.config')
+local Job         = require('loop.job.Job')
+local strtools    = require('loop.tools.strtools')
+local Session     = require('loop.dap.Session')
+local TermProc    = require('loop.tools.TermProc')
+local window      = require('loop.window')
+local breakpoints = require('loop.breakpoints')
+local selector    = require("loop.selector")
+local uitools     = require('loop.tools.uitools')
+local signs       = require('loop.signs')
 
 ---@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"
 
@@ -20,7 +21,7 @@ local signs    = require('loop.signs')
 ---@field _output_pages table<number,loop.pages.OutputPage>
 ---@field _stacktrace_pages table<number,loop.pages.ItemListPage>
 ---@field _current_session loop.dap.Session|nil
-local DebugJob = class(Job)
+local DebugJob    = class(Job)
 
 ---Initializes the DebugJob instance.
 function DebugJob:init()
@@ -109,6 +110,7 @@ function DebugJob:start(args)
 
     self._sessions[session_id] = session
 
+    breakpoints.clear_live_breakpoints()
     session:set_breakpoints(self._breakpoints)
 
     self._task_page = window.add_debug_task_page(args.name)
@@ -189,6 +191,12 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
     end
     if event == "threads_continued" then
         self:_on_session_threads_event(sess_id, session, "continue")
+        return
+    end
+    if event == "breakpoints" then
+        ---@type loop.dap.session.notify.BreakpointsEvent
+        local data = event_data
+        self:_on_session_breakpoints_event(sess_id, session, data)
         return
     end
     error("unhandled dap session event: " .. event)
@@ -284,7 +292,7 @@ function DebugJob:load_stack_trace(page, session, thread_id)
                 local frame = resp.stackFrames[1]
                 if frame.source and frame.source.path and frame.line then
                     signs.remove_signs("currentframe")
-                    signs.add_file_sign(frame.source.path, frame.line, "currentframe", "currentframe")
+                    signs.place_file_sign(frame.source.path, frame.line, "currentframe", "currentframe")
                 end
             end
             page:set_items(items)
@@ -354,6 +362,21 @@ function DebugJob:_on_session_threads_event(sess_id, session, event, thread_id)
         page:set_items({ { id = 0, text = "No paused threads" } })
     else
         self._task_page:add_lines({ "Unhandled event " .. event }, "error")
+    end
+end
+
+---@param sess_id number
+---@param session loop.dap.Session
+---@param event loop.dap.session.notify.BreakpointsEvent
+function DebugJob:_on_session_breakpoints_event(sess_id, session, event)
+    if event.removed then
+        for _, bp in ipairs(event.breakpoints) do
+            breakpoints.remove_live_breakpoint(bp.source.path, bp.line)
+        end
+    else
+        for _, bp in ipairs(event.breakpoints) do
+            breakpoints.set_live_breakpoint(bp.source.path, bp.line, bp.verified)
+        end
     end
 end
 

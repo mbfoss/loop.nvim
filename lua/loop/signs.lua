@@ -89,7 +89,7 @@ end
 ---@param line integer 1-based line number
 ---@param group loop.signs.SignGroup
 ---@param name loop.signs.SignName
-function M.add_file_sign(file, line, group, name)
+function M.place_file_sign(file, line, group, name)
     assert(_setup_done, "loop.signs.setup() must be called first")
 
     file = vim.fn.fnamemodify(file, ":p")
