@@ -88,7 +88,7 @@ end
 ---@return boolean
 ---@return string | nil
 function M.save_to_file(filepath, data, order_handler)
-    local json = json_encode_pretty(data, order_handler)
+    local json = json_encode_pretty(data, order_handler, nil)
     assert(type(json) == 'string')
     local fd = io.open(filepath, "w")
     if not fd then

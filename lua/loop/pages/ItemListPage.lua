@@ -46,6 +46,7 @@ function ItemListPage:set_items(items)
     for i, item in ipairs(items) do
         self._index[item.id] = i
     end
+
     self:_refresh_buffer(self:get_buf())
 end
 
@@ -116,16 +117,8 @@ function ItemListPage:remove_item(id)
     if self._refresh_timer then
         self._refresh_timer:stop()
     end
-
     self._refresh_timer = vim.defer_fn(function()
-        local buf = self:get_buf()
-        if buf ~= -1 then
-            vim.bo[buf].modifiable = true
-            vim.api.nvim_buf_set_lines(buf, idx - 1, idx, false, {})
-            vim.bo[buf].modifiable = false
-            vim.api.nvim_buf_clear_namespace(buf, _ns_id, idx - 1, -1)
-            self:_highlight(idx, #self._items)
-        end
+        self:_refresh_buffer(self:get_buf())
         self._refresh_timer = nil
     end, 100)
 end

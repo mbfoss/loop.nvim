@@ -16,7 +16,6 @@ local signs       = require('loop.signs')
 ---@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
 ---@field _sessions table<number,loop.dap.Session>
 ---@field _last_session_id number
----@field _breakpoints table<string,loop.dap.proto.SourceBreakpoint[]>
 ---@field _task_page loop.pages.OutputPage
 ---@field _output_pages table<number,loop.pages.OutputPage>
 ---@field _stacktrace_pages table<number,loop.pages.ItemListPage>
@@ -28,7 +27,6 @@ function DebugJob:init()
     ---@type table<number,loop.dap.Session>
     self._sessions = {}
     self._last_session_id = 0
-    self._breakpoints = {}
     self._output_pages = {}
     self._stacktrace_pages = {}
 end
@@ -110,7 +108,7 @@ function DebugJob:start(args)
 
     self._sessions[session_id] = session
 
-    session:set_breakpoints(self._breakpoints)
+    session:set_breakpoints(breakpoints.get_breakpoints())
 
     self._task_page = window.add_debug_task_page(args.name)
 
@@ -118,14 +116,6 @@ function DebugJob:start(args)
     tostring(session_id) .. ' (' .. tostring(args.name) .. ')' })
 
     return true
-end
-
----@param breakpoints table<string,loop.dap.proto.SourceBreakpoint[]>
-function DebugJob:set_breakpoints(breakpoints)
-    self._breakpoints = breakpoints
-    for _, s in pairs(self._sessions) do
-        s:set_breakpoints(breakpoints)
-    end
 end
 
 ---@param command loop.job.DebugJob.Command|nil
@@ -199,7 +189,7 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
         return
     end
     if event == "debuggee_exit" then
-            breakpoints.clear_live_breakpoints()
+            vim.notify("debuggee_exit not implemented yet")
         return
     end
     error("unhandled dap session event: " .. event)
@@ -372,19 +362,7 @@ end
 ---@param session loop.dap.Session
 ---@param event loop.dap.session.notify.BreakpointsEvent
 function DebugJob:_on_session_breakpoints_event(sess_id, session, event)
-    if event.removed then
-        for _, bp in ipairs(event.breakpoints) do
-            if bp and bp.source and bp.source.path then
-                breakpoints.remove_live_breakpoint(bp.source.path, bp.line)
-            end
-        end
-    else
-        for _, bp in ipairs(event.breakpoints) do
-            if bp and bp.source and bp.source.path then
-                breakpoints.set_live_breakpoint(bp.source.path, bp.line, bp.verified)
-            end
-        end
-    end
+    breakpoints.update_breakpoint(event)
 end
 
 return DebugJob

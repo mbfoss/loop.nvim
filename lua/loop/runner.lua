@@ -8,7 +8,6 @@ local TermJob = require('loop.job.TermJob')
 local DebugJob = require('loop.job.DebugJob')
 local LuaFunc = require('loop.job.LuaFunc')
 local window = require('loop.window')
-local breakpoints = require('loop.breakpoints')
 local config = require('loop.config')
 
 ---@class loop.runner.TaskChain
@@ -227,7 +226,6 @@ local function _start_one_task(task, task_exit_handler)
             on_exit_handler = exit_handler,
         }
         local job = DebugJob:new()
-        job:set_breakpoints(breakpoints.get_breakpoints())
         local ok, err = job:start(args)
         if not ok then
             return nil, err

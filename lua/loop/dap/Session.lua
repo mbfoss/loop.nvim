@@ -6,12 +6,20 @@ local FSM = require("loop.tools.FSM")
 
 local fsmdata = require('loop.dap.fsmdata')
 
+---@class loop.dap.session.Breakpoint
+---@field id number
+---@field verified boolean
+---@field file string
+---@field source_breakpoint loop.dap.proto.SourceBreakpoint
+
+---@alias loop.dap.session.Breakpoints loop.dap.session.Breakpoint[]
+
 ---@class loop.dap.session.notify.LogData
 ---@field level nil|"warn"|"error"
 ---@field lines string[]
 
 ---@class loop.dap.session.notify.BreakpointsEvent
----@field breakpoints loop.dap.proto.Breakpoint[]
+---@field breakpoints loop.dap.session.Breakpoints
 ---@field removed boolean|nil
 
 ---@class loop.dap.session.Args.DAP
@@ -55,7 +63,8 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field _output_handler fun(msg_body:table)
 ---@field _on_exit fun(code:number)
 ---@field _tracker loop.session.Tracker
----@field _breakpoints table<string,loop.dap.proto.SourceBreakpoint[]>
+---@field _breakpoints loop.dap.session.Breakpoints
+---@field _breakpoints_by_dap_id table<number,loop.dap.session.Breakpoint>
 ---@field _stopped_threads loop.dap.proto.Thread[]|nil
 ---@field _stopped_thread_id number|nil
 local Session = class()
@@ -63,6 +72,7 @@ local Session = class()
 function Session:init()
     self._started = false
     self._breakpoints = {}
+    self._breakpoints_by_dap_id = {}
 end
 
 ---@param args loop.dap.session.Args
@@ -163,7 +173,7 @@ function Session:name()
     return self._name or "(Unnamed session)"
 end
 
----@param breakpoints table<string,loop.dap.proto.SourceBreakpoint[]>
+---@param breakpoints loop.dap.session.Breakpoints
 function Session:set_breakpoints(breakpoints)
     self._breakpoints = breakpoints
 end
@@ -300,9 +310,12 @@ end
 ---@param event loop.dap.proto.BreakpointEvent|nil
 function Session:_on_breakpoint_event(event)
     assert(event and event.breakpoint)
+    local breakpoint = self._breakpoints_by_dap_id[event.breakpoint.id]
+    if not breakpoint then return end
+
     local removed = event.reason == "removed"
     ---@type loop.dap.session.notify.BreakpointsEvent
-    local data = { breakpoints = { event.breakpoint }, removed = removed }
+    local data = { breakpoints = { breakpoint }, removed = removed }
     self:_notify_tracker("breakpoints", data)
 end
 
@@ -313,8 +326,7 @@ end
 
 ---@param event loop.dap.proto.TerminatedEvent|nil
 function Session:_on_terminated_event(event)
-    assert(event)
-    if event.restart ~= true then
+    if not event or event.restart ~= true then
         self._fsm:trigger(fsmdata.trigger.disconnect)
     end
 end
@@ -343,28 +355,42 @@ function Session:_on_initializing_state()
 end
 
 function Session:_on_configuring_state()
-    local breakpoints = self._breakpoints
-    local nb_breakpoints = vim.tbl_count(breakpoints)
+
+    ---@type table<string, loop.dap.session.Breakpoints>
+    local breakpoints_by_source = {}
+    for _,bp in ipairs(self._breakpoints) do
+        if bp.file and bp.source_breakpoint then
+            breakpoints_by_source[bp.file] = breakpoints_by_source[bp.file] or {}
+            table.insert(breakpoints_by_source[bp.file], bp)
+        end
+    end
+
+    local nb_sources = vim.tbl_count(breakpoints_by_source)
     local nb_success = 0
     local nb_failures = 0
     local success_trigger = self._is_macos_lldb and fsmdata.trigger.configure_success_macos_lldb or
         fsmdata.trigger.configure_success
 
-    if nb_breakpoints == 0 then
+    if nb_sources == 0 then
         self._base_session:request_configurationDone(function(err, resp)
             self._fsm:trigger(err == nil and success_trigger or fsmdata.trigger.configure_error)
         end)
         return
     end
 
-    for file, bps in pairs(breakpoints) do
-        self.log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(bps))
+    for file, source_breakpoints in pairs(breakpoints_by_source) do
+        ---@type loop.dap.proto.SourceBreakpoint[]
+        local dap_breakpoints = {}
+        for _,bpts in ipairs(source_breakpoints) do
+            table.insert(dap_breakpoints, bpts.source_breakpoint)
+        end
+        self.log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(dap_breakpoints))
         self._base_session:request_setBreakpoints({
                 source = {
                     name = vim.fn.fnamemodify(file, ":t"),
                     path = file
                 },
-                breakpoints = bps
+                breakpoints = dap_breakpoints
             },
             function(err, resp)
                 if err == nil and resp then
@@ -372,16 +398,20 @@ function Session:_on_configuring_state()
                 else
                     nb_failures = nb_failures + 1
                 end
-                if nb_success == nb_breakpoints then
+                if nb_success == nb_sources then
                     self._base_session:request_configurationDone(function(config_err)
                         self._fsm:trigger(config_err == nil and success_trigger or fsmdata.trigger.configure_error)
                     end)
-                elseif nb_failures > 0. and nb_success + nb_failures == nb_breakpoints then
+                elseif nb_failures > 0. and nb_success + nb_failures == nb_sources then
                     self._fsm:trigger(fsmdata.trigger.configure_error)
                 end
                 if resp then
+                    for idx, bp in ipairs(resp.breakpoints) do
+                        self._breakpoints_by_dap_id[bp.id] = source_breakpoints[idx]
+                        source_breakpoints[idx].verified = bp.verified
+                    end
                     ---@type loop.dap.session.notify.BreakpointsEvent
-                    local data = { breakpoints = resp.breakpoints }
+                    local data = { breakpoints = vim.deepcopy(source_breakpoints) }                    
                     self:_notify_tracker("breakpoints", data)   
                 end
             end)

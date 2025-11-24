@@ -7,12 +7,8 @@ local M = {}
 
 local _last_breakpoint_id = 1000
 
----@class loop.breakpoint.Data
----@field verified boolean
----@field file string
----@field source_breakpoint loop.dap.proto.SourceBreakpoint
 
----@type table<number, loop.breakpoint.Data>
+---@type loop.dap.session.Breakpoints
 local _breakpoints = {} -- breakpoints by unique id
 
 ---@type table<string,table<number,number>> -- file --> line --> id
@@ -30,7 +26,7 @@ local _need_saving = false
 ---@param file string  File path
 ---@param line integer  Line number
 ---@return number|nil
----@return loop.breakpoint.Data|nil
+---@return loop.dap.session.Breakpoint|nil
 local function _get_source_breakpoint(file, line)
     local lines = _source_breakpoints[file]
     if not lines then return nil, nil end
@@ -116,8 +112,9 @@ local function _add_breakpoint(file, line, condition, hitCondition, logMessage)
     local id = _last_breakpoint_id + 1
     _last_breakpoint_id = id
 
-    ---@type loop.breakpoint.Data
+    ---@type loop.dap.session.Breakpoint
     local bp = {
+        id = id,
         verified = true,
         file = file,
         source_breakpoint = {
@@ -180,6 +177,12 @@ function M.clear_all_breakpoints()
     _clear_breakpoints()
 end
 
+---@param event loop.dap.session.notify.BreakpointsEvent
+function M.update_breakpoint(event)
+    vim.notify("breakpoints update - not implemented yet")
+end
+
+
 --- Load breakpoints from a JSON file in the given project config directory.
 ---@param proj_config_dir string Path to project config directory
 ---@return boolean success True on success
@@ -196,7 +199,7 @@ function M.load_breakpoints(proj_config_dir)
 
     _clear_breakpoints()
 
-    ---@type table<number, loop.breakpoint.Data>
+    ---@type loop.dap.session.Breakpoints
     local breakpoints = data
     for id, bp in pairs(breakpoints) do
         if bp and bp.file and bp.source_breakpoint then
@@ -223,7 +226,7 @@ function M.save_breakpoints(proj_config_dir)
         return false, "Invalid argument"
     end
     -- we don't need to save verified
-    ---@type table<number, loop.breakpoint.Data>    
+    ---@type loop.dap.session.Breakpoints    
     local breakpoints = vim.deepcopy(_breakpoints)
     for _, b in pairs(breakpoints) do
         b.verified = nil
@@ -242,9 +245,15 @@ function M.have_breakpoints()
     return next(_breakpoints) ~= nil
 end
 
----@return table<number, table<number, loop.breakpoint.Data>>
+---@return loop.dap.session.Breakpoints
 function M.get_breakpoints()
-    return vim.deepcopy(_breakpoints)
+    ---@type loop.dap.session.Breakpoints
+    local arr = {}
+    for id, bp in pairs(_breakpoints) do
+        assert(id == bp.id)
+        table.insert(arr, vim.deepcopy(bp))
+    end
+    return arr
 end
 
 --- Setup the breakpoint sign system and autocommands.
