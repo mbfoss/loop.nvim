@@ -51,20 +51,20 @@ end
 
 ---@param item loop.pages.ItemListPage.Item
 function ItemListPage:set_item(item)
-    local cur_pos = self._index[item.id]
-    if cur_pos then
-        self._items[cur_pos] = item
-    else
-        table.insert(self._items, item)
-        self._index[item.id] = #self._items
-    end
+    assert(item and item.id and item.text and type(item.text) == "string")
+    local pos = self._index[item.id] or (#self._items + 1)
+    self._items[pos] = item
+    self._index[item.id] = pos
 
     local buf = self:get_buf()
     if buf == -1 then return end
 
-    --TODO, improve performance by modifying only the affected line
-    vim.api.nvim_buf_set_lines(buf, #self._items - 1, #self._items - 1, false, { item.text })
-    self:_highlight(#self._items, #self._items)
+    local lines = {}
+    lines[1] = item.text:gsub("\n", " ")
+    vim.bo[buf].modifiable = true
+    vim.api.nvim_buf_set_lines(buf, pos - 1, pos - 1, false, lines)
+    vim.bo[buf].modifiable = false
+    self:_highlight(pos, pos)
 end
 
 ---@return loop.pages.ItemListPage.Item|nil  -- item id under cursor, or nil if buffer not active or no item
@@ -103,8 +103,6 @@ function ItemListPage:remove_item(id)
     local idx = self._index[id]
     if not idx then return end
 
-    local buf = self:get_buf()
-
     -- Remove from table
     table.remove(self._items, idx)
     self._index[id] = nil
@@ -114,12 +112,22 @@ function ItemListPage:remove_item(id)
         self._index[self._items[i].id] = i
     end
 
-    if buf == -1 then return end
+    -- debounce the UI part
+    if self._refresh_timer then
+        self._refresh_timer:stop()
+    end
 
-    -- Delete buffer line and re-highlight remaining lines
-    vim.api.nvim_buf_set_lines(buf, idx - 1, idx, false, {})
-    vim.api.nvim_buf_clear_namespace(buf, _ns_id, idx - 1, -1)
-    self:_highlight(idx, #self._items)
+    self._refresh_timer = vim.defer_fn(function()
+        local buf = self:get_buf()
+        if buf ~= -1 then
+            vim.bo[buf].modifiable = true
+            vim.api.nvim_buf_set_lines(buf, idx - 1, idx, false, {})
+            vim.bo[buf].modifiable = false
+            vim.api.nvim_buf_clear_namespace(buf, _ns_id, idx - 1, -1)
+            self:_highlight(idx, #self._items)
+        end
+        self._refresh_timer = nil
+    end, 100)
 end
 
 function ItemListPage:get_or_create_buf()
@@ -170,7 +178,7 @@ function ItemListPage:_refresh_buffer(buf)
     -- build lines
     local lines = {}
     for _, item in ipairs(self._items) do
-        lines[#lines + 1] = item.text
+        lines[#lines + 1] = item.text:gsub("\n", " ")
     end
 
     -- update buffer

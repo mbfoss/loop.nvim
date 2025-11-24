@@ -30,8 +30,8 @@ local function validate(schema, data, path)
     local sch_type = schema.type
     if sch_type then
         local ok = false
-        if sch_type == "object" and type(data) == "table" and not vim.isarray(data) then ok = true end
-        if sch_type == "array" and vim.isarray(data) then ok = true end
+        if sch_type == "object" and type(data) == "table" and not vim.islist(data) then ok = true end
+        if sch_type == "array" and vim.islist(data) then ok = true end
         if sch_type == "string" and type(data) == "string" then ok = true end
         if sch_type == "number" and type(data) == "number" then ok = true end
         if sch_type == "boolean" and type(data) == "boolean" then ok = true end

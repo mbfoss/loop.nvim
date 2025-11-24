@@ -1,4 +1,5 @@
 local json = require('loop.tools.json')
+local uitools = require('loop.tools.uitools')
 local signs = require('loop.signs')
 local window = require('loop.window')
 
@@ -6,7 +7,12 @@ local M = {}
 
 local _last_breakpoint_id = 1000
 
----@type table<number, loop.dap.proto.Breakpoint>
+---@class loop.breakpoint.Data
+---@field verified boolean
+---@field file string
+---@field source_breakpoint loop.dap.proto.SourceBreakpoint
+
+---@type table<number, loop.breakpoint.Data>
 local _breakpoints = {} -- breakpoints by unique id
 
 ---@type table<string,table<number,number>> -- file --> line --> id
@@ -23,13 +29,14 @@ local _need_saving = false
 --- Check if a file has a breakpoint on a specific line.
 ---@param file string  File path
 ---@param line integer  Line number
----@return loop.dap.proto.Breakpoint|nil
+---@return number|nil
+---@return loop.breakpoint.Data|nil
 local function _get_source_breakpoint(file, line)
     local lines = _source_breakpoints[file]
-    if not lines then return nil end
+    if not lines then return nil, nil end
     local id = lines[line]
-    if not id then return nil end
-    return _breakpoints[id]
+    if not id then return nil, nil end
+    return id, _breakpoints[id]
 end
 
 --- Check if a file has a breakpoint on a specific line.
@@ -44,13 +51,11 @@ end
 ---@param file string File path (possibly relative)
 ---@param line integer Line number
 local function _refresh_breakpoint_sign(file, line)
-    local bp = _get_source_breakpoint(file, line)
-    if bp then
+    local id, bp = _get_source_breakpoint(file, line)
+    if id and bp then
         local sign = bp.verified and "active_breakpoint" or "inactive_breakpoint"
         signs.place_file_sign(file, line, "breakpoints", sign)
-        window.get_breakpoints_page():add_item({id = id, text = vim.inspect(bp)})
-    else
-        signs.remove_file_sign(file, line, "breakpoints")
+        window.get_breakpoints_page():set_item({ id = id, text = vim.inspect(bp) })
     end
 end
 
@@ -69,15 +74,18 @@ local function _remove_source_breakpoint(file, line)
     _breakpoints[id] = nil
 
     signs.remove_file_sign(file, line, "breakpoints")
+    window.get_breakpoints_page():remove_item(id)
     return true
 end
 
 ---@param file string File path
 local function _clear_file_breakpoints(file)
+    local page = window.get_breakpoints_page()
     local lines = _source_breakpoints[file]
     if not lines then return end
     for _, id in pairs(lines) do
         _breakpoints[id] = nil
+        page:remove_item(id)
     end
     _source_breakpoints[file] = nil
     signs.remove_file_signs(file, "breakpoints")
@@ -87,6 +95,7 @@ local function _clear_breakpoints()
     for file, _ in pairs(_source_breakpoints) do
         signs.remove_file_signs(file, "breakpoints")
     end
+    window.get_breakpoints_page():set_items({})
     _breakpoints = {}
     _source_breakpoints = {}
     _need_saving = true
@@ -96,7 +105,7 @@ end
 --- Add a new breakpoint and display its sign.
 ---@param file string File path
 ---@param line integer Line number
----@param condition? string Optional condition
+---@param condition? string condition
 ---@param hitCondition? string Optional hit condition
 ---@param logMessage? string Optional log message
 ---@return boolean added
@@ -107,13 +116,16 @@ local function _add_breakpoint(file, line, condition, hitCondition, logMessage)
     local id = _last_breakpoint_id + 1
     _last_breakpoint_id = id
 
-    ---@type loop.dap.proto.Breakpoint
+    ---@type loop.breakpoint.Data
     local bp = {
-        verified = false,
-        line = line,
-        condition = condition,
-        hitCondition = hitCondition,
-        logMessage = logMessage,
+        verified = true,
+        file = file,
+        source_breakpoint = {
+            line = line,
+            condition = condition,
+            hitCondition = hitCondition,
+            logMessage = logMessage
+        }
     }
     _breakpoints[id] = bp
 
@@ -136,6 +148,9 @@ end
 --- Toggle a breakpoint on the current line.
 --- If a breakpoint exists, remove it; otherwise, add one.
 function M.toggle_breakpoint()
+    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
+        return
+    end
     local file = vim.fn.expand("%:p")
     if file == "" then
         return
@@ -178,22 +193,16 @@ function M.load_breakpoints(proj_config_dir)
     if not loaded or type(data) ~= "table" then
         return false, data
     end
-    for file, bps in pairs(data) do
-        if type(file) ~= "string" or type(bps) ~= "table" then
-            return false, "invalid file or breakpoint list"
-        end
-        for i, bp in ipairs(bps) do
-            if type(bp.line) ~= "number" or bp.line < 1 then
-                return false, "invalid line number at index " .. i
-            end
-        end
-    end
 
     _clear_breakpoints()
-    for file, bps in pairs(data) do
-        local fullpath = vim.fn.fnamemodify(file, ":p")
-        for _, bp in ipairs(bps) do
-            _add_breakpoint(fullpath, bp.line, bp.condition, bp.hitCondition, bp.logMessage)
+
+    ---@type table<number, loop.breakpoint.Data>
+    local breakpoints = data
+    for id, bp in pairs(breakpoints) do
+        if bp and bp.file and bp.source_breakpoint then
+            local sb = bp.source_breakpoint
+            local file = vim.fn.fnamemodify(bp.file, ":p")
+            _add_breakpoint(file, sb.line, sb.condition, sb.hitCondition, sb.logMessage)
         end
     end
 
@@ -213,8 +222,14 @@ function M.save_breakpoints(proj_config_dir)
     if type(proj_config_dir) ~= 'string' or vim.fn.isdirectory(proj_config_dir) == 0 then
         return false, "Invalid argument"
     end
+    -- we don't need to save verified
+    ---@type table<number, loop.breakpoint.Data>    
+    local breakpoints = vim.deepcopy(_breakpoints)
+    for _, b in pairs(breakpoints) do
+        b.verified = nil
+    end
     local breakpoints_file = vim.fs.joinpath(proj_config_dir, 'breakpoints.json')
-    local ok, err = json.save_to_file(breakpoints_file, _breakpoints)
+    local ok, err = json.save_to_file(breakpoints_file, breakpoints)
     if not ok then
         return false, err
     end
@@ -227,7 +242,7 @@ function M.have_breakpoints()
     return next(_breakpoints) ~= nil
 end
 
----@return table<number, loop.dap.proto.Breakpoint>
+---@return table<number, table<number, loop.breakpoint.Data>>
 function M.get_breakpoints()
     return vim.deepcopy(_breakpoints)
 end

@@ -24,7 +24,7 @@ local function json_encode_pretty(obj, order_handler, indent)
         if t == "nil" or t == "number" or t == "boolean" or t == "string" then
             return encode_one(value)
         elseif t == "table" then
-            if vim.isarray(value) then
+            if vim.islist(value) then
                 -- ARRAY STYLE
                 if #value == 0 then return "[]" end
 
@@ -65,7 +65,7 @@ local function json_encode_pretty(obj, order_handler, indent)
                 if #keys == 0 then return "{}" end
                 local parts = { "{" }
                 for _, k in ipairs(keys) do
-                    local key_json = type(k) == "string" and encode_one(k) or tostring(k)
+                    local key_json = type(k) == "string" and encode_one(k) or ('"' .. tostring(k) .. '"')
                     local val_json = serialize(value[k], level + 1, path .. k .. '/')
                     table.insert(parts, "\n" .. next_indent .. key_json .. ": " .. val_json .. ",")
                 end

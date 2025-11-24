@@ -2,33 +2,33 @@ local M = {}
 
 local filetools = require("loop.tools.file")
 
+function M.is_regular_buffer(bufnr)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return false
+    end
+    local buftype = vim.bo[bufnr].buftype
+    local buflisted = vim.bo[bufnr].buflisted
+
+    -- Exclude special buffer types
+    if buftype ~= '' or not buflisted then
+        return false
+    end
+    return true
+end
+
 ---@return number window number
 local function find_regular_window()
     -- Get current tabpage and all its windows
     local tabpage = vim.api.nvim_get_current_tabpage()
     local windows = vim.api.nvim_tabpage_list_wins(tabpage)
     -- Helper: check if a buffer is "regular" (listed, not special, etc.)
-    local function is_regular_buffer(bufnr)
-        if not vim.api.nvim_buf_is_valid(bufnr) then
-            return false
-        end
-        local buftype = vim.bo[bufnr].buftype
-        local buflisted = vim.bo[bufnr].buflisted
-
-        -- Exclude special buffer types
-        if buftype ~= '' or not buflisted then
-            return false
-        end
-        return true
-    end
-
     -- Search through all windows in current tab
     for _, winid in ipairs(windows) do
         if vim.api.nvim_win_is_valid(winid) then
             local cfg = vim.api.nvim_win_get_config(winid)
             if cfg.relative == "" then -- skip poup windows
                 local bufnr = vim.api.nvim_win_get_buf(winid)
-                if is_regular_buffer(bufnr) then
+                if M.is_regular_buffer(bufnr) then
                     return winid
                 end
             end
@@ -41,7 +41,7 @@ local function find_regular_window()
 
     -- Ensure the new buffer is regular (it should be by default)
     -- But just in case, create an empty buffer if needed
-    if not is_regular_buffer(new_buf) then
+    if not M.is_regular_buffer(new_buf) then
         local buf = vim.api.nvim_create_buf(true, false) -- listed, not scratch
         vim.api.nvim_win_set_buf(new_win, buf)
     end
