@@ -136,7 +136,7 @@ end
 ---@param order_handler (fun(path: string, attrs: string[]) : string[])| nil
 ---@return string
 function M.to_string(data, order_handler)
-    return json_encode_pretty(data, order_handler)
+    return json_encode_pretty(data, order_handler, nil)
 end
 
 return M

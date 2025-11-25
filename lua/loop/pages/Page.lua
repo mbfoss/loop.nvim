@@ -7,7 +7,7 @@ local class = require('loop.tools.class')
 ---@field desc string
 
 ---@class loop.pages.Page
----@field new fun(self: loop.pages.Page, type : string, name:string, keymaps:loop.pages.page.KeyMaps): loop.pages.Page
+---@field new fun(self: loop.pages.Page, type : string, name:string): loop.pages.Page
 local Page = class()
 
 local buffer_flag_key = "loopplugin_page_efc0bed4-145b"
@@ -19,11 +19,10 @@ end
 
 ---@param type string
 ---@param name string
----@param keymaps table<string,loop.pages.page.KeyMap>
-function Page:init(type, name, keymaps)
+function Page:init(type, name)
     self._type = type
     self._name = name
-    self._keymaps = keymaps
+    self._keymaps = {}
     self._buf = -1
 end
 
@@ -134,8 +133,18 @@ end
 ---@param key string
 ---@param keymap loop.pages.page.KeyMap
 function Page:add_keymap(key, keymap)
+    assert(not self._keymaps[key])
     self._keymaps[key] = keymap
     self:_apply_keymap(key, keymap)
+end
+
+---@param keymaps table<string, loop.pages.page.KeyMap>
+function Page:add_keymaps(keymaps)
+    for key, keymap in pairs(keymaps) do
+        assert(not self._keymaps[key])
+        self._keymaps[key] = keymap
+        self:_apply_keymap(key, keymap)
+    end
 end
 
 function Page:_apply_keymaps()
@@ -153,8 +162,8 @@ function Page:_apply_keymap(key, item)
         local modes = { "n" }
         --local ok =
         pcall(function() vim.keymap.del(modes, key, { buffer = self._buf }) end)
-        vim.keymap.set(modes, key, function() item.callback() end, { buffer = self._buf, desc = item.desc })
         --vim.notify("keymap removed " .. tostring(ok))
+        vim.keymap.set(modes, key, function() item.callback() end, { buffer = self._buf, desc = item.desc })
     end
 end
 

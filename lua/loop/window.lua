@@ -1,7 +1,9 @@
 local M = {}
 local Page = require('loop.pages.Page')
 local OutputPage = require('loop.pages.OutputPage')
-local ItemListPage = require('loop.pages.ItemListPage')
+local StackTracePage = require('loop.pages.StackTracePage')
+local BreakpointsPage = require('loop.pages.BreakpointsPage')
+local DebugSessionsPage = require('loop.pages.DebugSessionsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local selector = require("loop.selector")
@@ -33,16 +35,19 @@ local _tabs = {
     ---@type loop.TabInfo
     tasks = { index = 3, label = "Task", pages = {}, list_prefix = "Task - " },
     ---@type loop.TabInfo
-    debug = { index = 4, label = "Debug", pages = {}, list_prefix = "Debug - " },
+    debug_sessions = { index = 4, label = "Debug Sessions", pages = {} },
     ---@type loop.TabInfo
-    threads = { index = 5, label = "Threads", pages = {}, list_prefix = "Threads - " },
+    debug_output = { index = 5, label = "Debug Console", pages = {}, list_prefix = "Debug Console - " },
     ---@type loop.TabInfo
-    stacktrace = { index = 6, label = "Stack", pages = {}, list_prefix = "Stack - " },
+    threads = { index = 6, label = "Threads", pages = {}, list_prefix = "Threads - " },
+    ---@type loop.TabInfo
+    stacktrace = { index = 7, label = "Call Stack", pages = {}, list_prefix = "Call Stack - " },
 }
 
 local _tabs_arr = (function()
     local arr = {}
     for _, t in pairs(_tabs) do
+        assert(not arr[t.index])
         arr[t.index] = t
     end
     return arr
@@ -227,15 +232,27 @@ local function get_page_keymap()
     ---@type table<string,loop.pages.page.KeyMap>
     local keymaps = {
         ["<c-p>"] = {
-            callback = function() _cycle_pages("prev") end,
+            callback = function()
+                if vim.api.nvim_get_current_win() == _loop_win then
+                    _cycle_pages("prev")
+                end
+            end,
             desc = "Move to previous page",
         },
         ["<c-n>"] = {
-            callback = function() _cycle_pages("next") end,
+            callback = function()
+                if vim.api.nvim_get_current_win() == _loop_win then
+                    _cycle_pages("next")
+                end
+            end,
             desc = "Move to previous page",
         },
         ["<c-l>"] = {
-            callback = _ui_select_page,
+            callback = function()
+                if vim.api.nvim_get_current_win() == _loop_win then
+                    _ui_select_page()
+                end
+            end,
             desc = "Select page",
         },
     }
@@ -315,8 +332,9 @@ local function create_window()
     })
 end
 
+-- do not allow our buffers in another window
+--[[
 local function _on_window_enter()
-    -- do not allow our buffers in another window
     local win = vim.api.nvim_get_current_win()
     if win ~= _loop_win then
         local buf = vim.api.nvim_win_get_buf(win)
@@ -326,6 +344,7 @@ local function _on_window_enter()
         end
     end
 end
+]] --
 
 ---@param lines string[]
 ---@param level nil|"warn"|"error"
@@ -348,18 +367,17 @@ function M.add_events(lines, level)
     end
 end
 
----@return loop.pages.ItemListPage
+---@return loop.pages.BreakpointsPage
 function M.get_breakpoints_page()
     assert(setup_done)
-    ---@type loop.pages.ItemListPage
-    ---@diagnostic disable-next-line: assign-type-mismatch
     local page = _tabs.breakpoints.pages[1]
     if not page then
-        ---@diagnostic disable-next-line: cast-local-type
-        page = ItemListPage:new("Breakpoints", get_page_keymap())
+        page = BreakpointsPage:new()
+        page:add_keymaps(get_page_keymap())
         _add_tab_page(_tabs.breakpoints, page)
     end
-    assert(getmetatable(page) == ItemListPage)
+    assert(getmetatable(page) == BreakpointsPage)
+    ---@diagnostic disable-next-line: return-type-mismatch
     return page
 end
 
@@ -406,7 +424,8 @@ end
 
 function M.delete_task_buffers()
     _delete_tab_pages(_tabs.tasks)
-    _delete_tab_pages(_tabs.debug)
+    _delete_tab_pages(_tabs.debug_sessions)
+    _delete_tab_pages(_tabs.debug_output)
     _delete_tab_pages(_tabs.stacktrace)
 end
 
@@ -417,7 +436,8 @@ function M.add_term_task_page(name, bufnr)
     assert(type(name) == "string")
     assert(vim.api.nvim_buf_is_valid(bufnr))
 
-    local page = Page:new("term", name, get_page_keymap())
+    local page = Page:new("term", name)
+    page:add_keymaps(get_page_keymap())
     page:assign_buf(bufnr)
 
     _add_tab_page(_tabs.tasks, page)
@@ -430,9 +450,22 @@ function M.add_debug_task_page(name)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = OutputPage:new(name, get_page_keymap())
+    local page = OutputPage:new(name)
+    page:add_keymaps(get_page_keymap())
     _add_tab_page(_tabs.tasks, page)
     return page
+end
+
+---@return loop.pages.DebugSessionsPage
+function M.get_debugsessions_page()
+    assert(setup_done)
+    if #_tabs.debug_sessions.pages == 0 then
+        local page = DebugSessionsPage:new()
+        page:add_keymaps(get_page_keymap())    
+        _add_tab_page(_tabs.debug_sessions, page)
+    end
+    ---@diagnostic disable-next-line: return-type-mismatch
+    return _tabs.debug_sessions.pages[1]
 end
 
 ---@param name string -- task name
@@ -441,9 +474,10 @@ function M.add_debug_term_page(name, bufnr)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = Page:new("term", name, get_page_keymap())
+    local page = Page:new("term", name)
+    page:add_keymaps(get_page_keymap())
     page:assign_buf(bufnr)
-    _add_tab_page(_tabs.debug, page)
+    _add_tab_page(_tabs.debug_output, page)
 end
 
 ---@param name string -- task name
@@ -452,18 +486,20 @@ function M.add_debug_output_page(name)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = OutputPage:new(name, get_page_keymap())
-    _add_tab_page(_tabs.debug, page)
+    local page = OutputPage:new(name)
+    page:add_keymaps(get_page_keymap())
+    _add_tab_page(_tabs.debug_output, page)
     return page
 end
 
 ---@param name string -- task name
----@return loop.pages.ItemListPage
+---@return loop.pages.StackTracePage
 function M.add_stacktrace_page(name)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = ItemListPage:new(name, get_page_keymap())
+    local page = StackTracePage:new()
+    page:add_keymaps(get_page_keymap())    
     _add_tab_page(_tabs.stacktrace, page)
     return page
 end
@@ -490,7 +526,8 @@ function M.setup(_)
     -- setup only once
     setup_done = true
 
-    table.insert(_tabs.events.pages, OutputPage:new("Messages", get_page_keymap()))
+    _tabs.events.pages[1] = OutputPage:new("Messages")
+    _tabs.events.pages[1]:add_keymaps(get_page_keymap())   
 
     do
         vim.api.nvim_set_hl(0, "LoopPluginInactiveTab", { link = "WinBar" })
@@ -499,7 +536,7 @@ function M.setup(_)
         vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "ErrorMsg" })
     end
 
-    vim.api.nvim_create_autocmd("WinEnter", { callback = _on_window_enter })
+    --vim.api.nvim_create_autocmd("WinEnter", { callback = _on_window_enter })
 
     vim.api.nvim_create_autocmd("WinNew", {
         callback = function(_)

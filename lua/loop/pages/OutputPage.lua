@@ -6,7 +6,7 @@ local class = require('loop.tools.class')
 local _error_hl_ns = vim.api.nvim_create_namespace("LoopPluginOutputPageHl")
 
 ---@class loop.pages.OutputPage: loop.pages.Page
----@field new fun(self: loop.pages.OutputPage, name:string, keymaps:loop.pages.page.KeyMaps) : loop.pages.OutputPage
+---@field new fun(self: loop.pages.OutputPage, name:string) : loop.pages.OutputPage
 local OutputPage = class(Page)
 
 
@@ -66,9 +66,8 @@ local function append_lines(buf, lines, highlight, highligh_endcol)
 end
 
 ---@param name string
----@param keymaps loop.pages.page.KeyMaps
-function OutputPage:init(name, keymaps)
-    Page.init(self, "output", name, keymaps)
+function OutputPage:init(name)
+    Page.init(self, "output", name)
     self:follow_last_line()
 end
 

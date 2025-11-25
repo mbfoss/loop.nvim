@@ -72,7 +72,9 @@ function DebugJob:start(args)
     local function session_exit_handler(code)
         -- this runs in the fast event context, so use schedule
         vim.schedule(function()
-            self._sessions[session_id] = nil
+            self:_on_session_exit(session_id, Session)
+        end)
+        vim.schedule(function()        
             if next(self._sessions) == nil then
                 ---no more sessions
                 args.on_exit_handler(code)
@@ -115,7 +117,20 @@ function DebugJob:start(args)
     self._task_page:add_lines({ "New debug session started: " ..
     tostring(session_id) .. ' (' .. tostring(args.name) .. ')' })
 
+    self:_refresh_debug_sessions_page()
+
     return true
+end
+
+function DebugJob:_refresh_debug_sessions_page()
+    local page = window:get_debugsessions_page()
+    ---@type loop.pages.ItemListPage.Item[]
+    local items = {}
+    for id, session in pairs(self._sessions) do
+        table.insert(items, { id = id, text = session:name() })
+    end
+    table.sort(items, function(a, b) return a.id < b.id end)
+    page:set_items(items)
 end
 
 ---@param command loop.job.DebugJob.Command|nil
@@ -366,7 +381,7 @@ end
 function DebugJob:_on_session_breakpoints_event(sess_id, session, event)
     --TODO: handle multisession
     if sess_id == 1 then
-        for _,evtbp in ipairs(event.breakpoints) do
+        for _, evtbp in ipairs(event.breakpoints) do
             breakpoints.update_verified_status(evtbp.id, evtbp.verified)
         end
     end
@@ -375,21 +390,31 @@ end
 ---@param sess_id number
 ---@param session loop.dap.Session
 function DebugJob:_on_session_debuggee_exit(sess_id, session)
+
     if self._current_session == session then
         self._current_session = nil
     end
-    
-    signs.remove_signs("currentframe")
 
+    signs.remove_signs("currentframe")
     local page = self._stacktrace_pages[sess_id]
     if page then
         page:set_items({})
     end
-    
+
     --TODO: handle multisession
     if sess_id == 1 then
         breakpoints.reset_verified_status()
     end
 end
+
+---@param sess_id number
+---@param session loop.dap.Session
+function DebugJob:_on_session_exit(sess_id, session)
+    self:_on_session_debuggee_exit(sess_id, session)
+    self._sessions[sess_id] = nil
+    self._current_session = nil
+    self:_refresh_debug_sessions_page()
+end
+
 
 return DebugJob

@@ -13,30 +13,34 @@ local uitools = require('loop.tools.uitools')
 ---@field data any
 ---@field highlights loop.pages.ItemListPage.highlight[]|nil
 
-local _ns_id = vim.api.nvim_create_namespace('LoopPluginPage')
+local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 
 ---@class loop.pages.ItemListPage : loop.pages.Page
----@field new fun(self: loop.pages.ItemListPage, name:string, keymaps:loop.pages.page.KeyMaps): loop.pages.Page
+---@field new fun(self: loop.pages.ItemListPage, name:string): loop.pages.ItemListPage
 ---@field _items loop.pages.ItemListPage.Item[]
 ---@field _index table<any,number>
----@field _item_selection_handler fun(item:loop.pages.ItemListPage.Item|nil)
+---@field _select_handler fun(item:loop.pages.ItemListPage.Item|nil)
 local ItemListPage = class(Page)
 
 ---@param name string
----@param keymaps loop.pages.page.KeyMaps
-function ItemListPage:init(name, keymaps)
-    Page.init(self, "list", name, keymaps)
+function ItemListPage:init(name)
+    Page.init(self, "list", name)
     self._items = {}
     self._index = {}
 
-    self:add_keymap('<CR>', { callback = function() self:_on_item_selected() end, desc = "Select item" })
-    self:add_keymap('<2-LeftMouse>', { callback = function() self:_on_item_selected() end, desc = "Select item" })
+    local select_handler = function()
+        if self._select_handler then
+            self._select_handler(self:get_cur_item())
+        end
+    end
+
+    self:add_keymap('<CR>', { callback = select_handler, desc = "Select item" })
+    self:add_keymap('<2-LeftMouse>', { callback = select_handler, desc = "Select item" })
 end
 
 ---@param handler fun(item:loop.pages.ItemListPage.Item)
 function ItemListPage:set_select_handler(handler)
-    assert(not self._item_selection_handler)
-    self._item_selection_handler = handler
+    self._select_handler = handler
 end
 
 ---@param items loop.pages.ItemListPage.Item[]
@@ -44,6 +48,7 @@ function ItemListPage:set_items(items)
     self._items = items
     self._index = {}
     for i, item in ipairs(items) do
+        assert(not self._index[item.id], "duplicate item id")
         self._index[item.id] = i
     end
 
@@ -182,12 +187,6 @@ function ItemListPage:_refresh_buffer(buf)
     vim.bo[buf].modifiable = false
 
     self:_highlight(1, #self._items)
-end
-
-function ItemListPage:_on_item_selected()
-    if self._item_selection_handler then
-        self._item_selection_handler(self:get_cur_item())
-    end
 end
 
 return ItemListPage
