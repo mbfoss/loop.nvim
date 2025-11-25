@@ -179,7 +179,6 @@ function M.update_verified_status(id, verified)
 end
 
 function M.reset_verified_status()
-    vim.notify("reset verified breakpoint")
     for _,bp in pairs(_breakpoints) do
         bp.verified = true
         _refresh_breakpoint_sign(bp)

@@ -62,9 +62,11 @@ function ItemListPage:set_item(item)
 
     local lines = {}
     lines[1] = item.text:gsub("\n", " ")
+
     vim.bo[buf].modifiable = true
-    vim.api.nvim_buf_set_lines(buf, pos - 1, pos - 1, false, lines)
+    vim.api.nvim_buf_set_lines(buf, pos - 1, pos, false, lines)
     vim.bo[buf].modifiable = false
+
     self:_highlight(pos, pos)
 end
 
