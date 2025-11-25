@@ -189,7 +189,7 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
         return
     end
     if event == "debuggee_exit" then
-            vim.notify("debuggee_exit not implemented yet")
+        self:_on_session_debuggee_exit(sess_id, session)
         return
     end
     error("unhandled dap session event: " .. event)
@@ -362,7 +362,21 @@ end
 ---@param session loop.dap.Session
 ---@param event loop.dap.session.notify.BreakpointsEvent
 function DebugJob:_on_session_breakpoints_event(sess_id, session, event)
-    breakpoints.update_breakpoint(event)
+    --TODO: handle multisession
+    if sess_id == 1 then
+        for _,evtbp in ipairs(event.breakpoints) do
+            breakpoints.update_verified_status(evtbp.id, evtbp.verified)
+        end
+    end
+end
+
+---@param sess_id number
+---@param session loop.dap.Session
+function DebugJob:_on_session_debuggee_exit(sess_id, session)
+    --TODO: handle multisession
+    if sess_id == 1 then
+        breakpoints.reset_verified_status()
+    end
 end
 
 return DebugJob

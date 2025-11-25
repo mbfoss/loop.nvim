@@ -8,7 +8,7 @@ local M = {}
 local _last_breakpoint_id = 1000
 
 
----@type loop.dap.session.Breakpoints
+---@type table<number,loop.dap.session.Breakpoint>
 local _breakpoints = {} -- breakpoints by unique id
 
 ---@type table<string,table<number,number>> -- file --> line --> id
@@ -44,14 +44,13 @@ local function _have_source_breakpoint(file, line)
 end
 
 
----@param file string File path (possibly relative)
----@param line integer Line number
-local function _refresh_breakpoint_sign(file, line)
-    local id, bp = _get_source_breakpoint(file, line)
-    if id and bp then
+---@param bp loop.dap.session.Breakpoint
+local function _refresh_breakpoint_sign(bp)
+    if bp.file and bp.source_breakpoint then
+        local line = bp.source_breakpoint.line
         local sign = bp.verified and "active_breakpoint" or "inactive_breakpoint"
-        signs.place_file_sign(file, line, "breakpoints", sign)
-        window.get_breakpoints_page():set_item({ id = id, text = vim.inspect(bp) })
+        signs.place_file_sign(bp.file, line, "breakpoints", sign)
+        window.get_breakpoints_page():set_item({ id = bp.id, text = vim.inspect(bp) })
     end
 end
 
@@ -134,7 +133,7 @@ local function _add_breakpoint(file, line, condition, hitCondition, logMessage)
 
     _need_saving = true
 
-    _refresh_breakpoint_sign(file, line)
+    _refresh_breakpoint_sign(bp)
     return true
 end
 
@@ -158,14 +157,6 @@ function M.toggle_breakpoint()
     end
 end
 
-function M.get_breakpoint(file, line)
-    local full = vim.fn.fnamemodify(file, ":p")
-    local bps = _breakpoints[full] or {}
-    for _, bp in ipairs(bps) do
-        if bp.line == line then return bp end
-    end
-end
-
 ---@param file string
 function M.clear_file_breakpoints(file)
     file = vim.fn.fnamemodify(file, ":p")
@@ -177,11 +168,23 @@ function M.clear_all_breakpoints()
     _clear_breakpoints()
 end
 
----@param event loop.dap.session.notify.BreakpointsEvent
-function M.update_breakpoint(event)
-    vim.notify("breakpoints update - not implemented yet")
+---@param id number
+---@param verified boolean
+function M.update_verified_status(id, verified)
+    local bp = _breakpoints[id]
+    if bp then
+        bp.verified = verified
+        _refresh_breakpoint_sign(bp)
+    end
 end
 
+function M.reset_verified_status()
+    vim.notify("reset verified breakpoint")
+    for _,bp in pairs(_breakpoints) do
+        bp.verified = true
+        _refresh_breakpoint_sign(bp)
+    end
+end
 
 --- Load breakpoints from a JSON file in the given project config directory.
 ---@param proj_config_dir string Path to project config directory
