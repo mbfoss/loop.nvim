@@ -30,7 +30,8 @@ function ItemListPage:init(name)
 
     local select_handler = function()
         if self._select_handler then
-            self._select_handler(self:get_cur_item())
+            local cur = self:get_cur_item()
+            self._select_handler(cur)
         end
     end
 
@@ -40,6 +41,7 @@ end
 
 ---@param handler fun(item:loop.pages.ItemListPage.Item)
 function ItemListPage:set_select_handler(handler)
+    assert(not self._select_handler)
     self._select_handler = handler
 end
 
@@ -90,7 +92,7 @@ function ItemListPage:get_cur_item()
 
     local item = self._items[row]
     if item then
-        return vim.tbl_extend("force", {}, item) --shallow copy
+        return item
     end
     return nil
 end
@@ -101,7 +103,7 @@ function ItemListPage:get_item(id)
     local idx = self._index[id]
     local item = idx and self._items[idx]
     if item then
-        return vim.tbl_extend("force", {}, item) --shallow copy
+        return item
     end
     return nil
 end

@@ -3,32 +3,50 @@ local Page  = require('loop.pages.Page')
 
 local ns_id = vim.api.nvim_create_namespace('LoopPluginTreePage')
 
+--------------------------------------------------------------------------------
+-- Types
+--------------------------------------------------------------------------------
+
 ---@class loop.pages.ItemTreeNode.highlight
----@field group string
----@field start_col number 0-based
----@field end_col number 0-based
+---@field group string                 -- highlight group name
+---@field start_col number             -- 0-based start column
+---@field end_col number               -- 0-based end column
 
 ---@class loop.pages.ItemTreeNode
----@field id any
----@field text string
----@field data any
+---@field id any                       -- unique identifier
+---@field text string                  -- text to display
+---@field data any                     -- arbitrary payload
 ---@field children loop.pages.ItemTreeNode[]|nil
----@field expanded boolean|nil
+---@field expanded boolean|nil         -- whether the node is expanded
 ---@field highlights loop.pages.ItemTreeNode.highlight[]|nil
 
+---@class loop.pages.ItemTreePage.FlatEntry
+---@field node loop.pages.ItemTreeNode
+---@field depth number                 -- depth in the tree
+
 ---@class loop.pages.ItemTreePage : loop.pages.Page
+---@field _roots loop.pages.ItemTreeNode[]      -- top-level roots
+---@field _flat  loop.pages.ItemTreePage.FlatEntry[]   -- linearized tree
+---@field _index table<any, number>             -- id → flat index
+---@field _select_handler fun(cur: loop.pages.ItemTreePage.FlatEntry|nil)|nil
 local ItemTreePage = class(Page)
 
+--------------------------------------------------------------------------------
+-- Constructor
+--------------------------------------------------------------------------------
+
+---Initialize the tree page.
+---@param name string
 function ItemTreePage:init(name)
     Page.init(self, "tree", name)
 
-    self._roots = {}        -- top-level nodes
-    self._flat  = {}        -- flattened list [(node, depth)]
-    self._index = {}        -- id → flat index
+    self._roots = {}
+    self._flat  = {}
+    self._index = {}
 
     self:add_keymap("<CR>", {
         callback = function() self:_on_select() end,
-        desc = "Select item",
+        desc = "Select node",
     })
 
     self:add_keymap("<Tab>", {
@@ -37,28 +55,39 @@ function ItemTreePage:init(name)
     })
 end
 
--- PUBLIC API -----------------------------------------------------
+--------------------------------------------------------------------------------
+-- Public API
+--------------------------------------------------------------------------------
 
+---Set the selection callback.
+---@param handler fun(cur: loop.pages.ItemTreePage.FlatEntry|nil)
 function ItemTreePage:set_select_handler(handler)
+    assert(not self._select_handler)
     self._select_handler = handler
 end
 
+---Set the tree’s list of root nodes.
+---@param roots loop.pages.ItemTreeNode[]
 function ItemTreePage:set_items(roots)
     self._roots = roots or {}
     self:_rebuild_flat()
     self:_refresh_buffer(self:get_buf())
 end
 
+---Toggle expand/collapse on the node under cursor.
 function ItemTreePage:toggle_expand()
     local cur = self:get_cur_item()
     if not cur then return end
+    local node = cur.node
 
-    cur.node.expanded = not cur.node.expanded
+    node.expanded = not node.expanded
+
     self:_rebuild_flat()
     self:_refresh_buffer(self:get_buf())
 end
 
----@return { node: loop.pages.ItemTreeNode, depth: number }|nil
+---Get the tree node under the cursor.
+---@return loop.pages.ItemTreePage.FlatEntry|nil
 function ItemTreePage:get_cur_item()
     local buf = self:get_buf()
     if buf == -1 or buf ~= vim.api.nvim_get_current_buf() then
@@ -69,31 +98,38 @@ function ItemTreePage:get_cur_item()
     return self._flat[row]
 end
 
+---Replace/update an existing node by id.
+---@param item loop.pages.ItemTreeNode
 function ItemTreePage:set_item(item)
-    -- replace node by id
+    if not item or item.id == nil then return end
+
     for _, entry in ipairs(self._flat) do
         if entry.node.id == item.id then
-            entry.node.text        = item.text
-            entry.node.data        = item.data
-            entry.node.highlights  = item.highlights
-            -- children and expanded state remain
+            entry.node.text       = item.text
+            entry.node.data       = item.data
+            entry.node.highlights = item.highlights
             break
         end
     end
+
     self:_refresh_buffer(self:get_buf())
 end
 
+---Remove a node by id (searches recursively).
+---@param id any
 function ItemTreePage:remove_item(id)
-    local function rec_remove(list)
-        for i, node in ipairs(list) do
-            if node.id == id then
-                table.remove(list, i)
+
+    local function rec_remove(nodes)
+        for i, n in ipairs(nodes) do
+            if n.id == id then
+                table.remove(nodes, i)
                 return true
             end
-            if node.children and rec_remove(node.children) then
+            if n.children and rec_remove(n.children) then
                 return true
             end
         end
+        return false
     end
 
     rec_remove(self._roots)
@@ -101,23 +137,27 @@ function ItemTreePage:remove_item(id)
     self:_refresh_buffer(self:get_buf())
 end
 
--- INTERNAL -------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Internal helpers
+--------------------------------------------------------------------------------
 
+---Call select handler (if any).
 function ItemTreePage:_on_select()
-    local cur = self:get_cur_item()
     if self._select_handler then
+        local cur = self:get_cur_item()
         self._select_handler(cur)
     end
 end
 
+---Rebuild flattened list from hierarchical tree.
 function ItemTreePage:_rebuild_flat()
-    self._flat = {}
+    self._flat  = {}
     self._index = {}
 
     local function walk(list, depth)
         for _, node in ipairs(list) do
-            local entry = { node = node, depth = depth }
-            table.insert(self._flat, entry)
+            local e = { node = node, depth = depth }
+            table.insert(self._flat, e)
             self._index[node.id] = #self._flat
 
             if node.expanded and node.children then
@@ -129,6 +169,12 @@ function ItemTreePage:_rebuild_flat()
     walk(self._roots, 0)
 end
 
+--------------------------------------------------------------------------------
+-- Buffer Management + Rendering
+--------------------------------------------------------------------------------
+
+---Redraw the tree into the buffer.
+---@param buf number
 function ItemTreePage:_refresh_buffer(buf)
     if buf == -1 or not vim.api.nvim_buf_is_valid(buf) then
         return
@@ -139,29 +185,34 @@ function ItemTreePage:_refresh_buffer(buf)
     vim.bo[buf].modifiable = true
 
     local lines = {}
+    ---@type {start:number, stop:number}[]
     local folds = {}
 
     for i, entry in ipairs(self._flat) do
-        local prefix
-        if entry.node.children and #entry.node.children > 0 then
-            prefix = entry.node.expanded and "▾ " or "▸ "
+        local node  = entry.node
+        local depth = entry.depth
+
+        local indent = string.rep("  ", depth)
+        local icon
+
+        if node.children and #node.children > 0 then
+            icon = node.expanded and "▾ " or "▸ "
         else
-            prefix = "  "
+            icon = "  "
         end
 
-        local indent = string.rep("  ", entry.depth)
-        lines[i] = indent .. prefix .. entry.node.text:gsub("\n", " ")
+        lines[i] = indent .. icon .. node.text:gsub("\n", " ")
 
-        -- create folds: fold over children
-        if entry.node.children and entry.node.expanded == false then
-            -- collapse fold
+        -- collapsed node → compute closed fold range
+        if node.children and node.expanded == false then
             local start = i
-            local stop = i
-            -- fold entire subtree until depth <= parent depth
+            local stop  = i
+
             for j = i + 1, #self._flat do
-                if self._flat[j].depth <= entry.depth then break end
+                if self._flat[j].depth <= depth then break end
                 stop = j
             end
+
             if stop > start then
                 table.insert(folds, { start = start, stop = stop })
             end
@@ -171,17 +222,30 @@ function ItemTreePage:_refresh_buffer(buf)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.bo[buf].modifiable = false
 
-    -- FOLDS ------------------------------------------------------
-    vim.api.nvim_command("setlocal foldmethod=manual")
-    vim.api.nvim_buf_set_folds(buf, folds)
+    --------------------------------------------------------------------------
+    -- Classic manual-fold implementation:
+    --------------------------------------------------------------------------
 
-    -- HIGHLIGHTS -------------------------------------------------
+    vim.api.nvim_set_option_value("foldmethod", "manual", { scope = "local", buf = buf })
+    vim.api.nvim_buf_call(buf, function()
+        vim.cmd("normal! zE")
+    end)
+
+    for _, f in ipairs(folds) do
+        vim.api.nvim_buf_call(buf, function()
+            vim.cmd(f.start .. "," .. f.stop .. "fold")
+        end)
+    end
+
+    --------------------------------------------------------------------------
+    -- Highlights
+    --------------------------------------------------------------------------
     for i, entry in ipairs(self._flat) do
         local node = entry.node
         if node.highlights then
             for _, hl in ipairs(node.highlights) do
                 vim.api.nvim_buf_set_extmark(buf, ns_id, i - 1, hl.start_col, {
-                    end_col = hl.end_col,
+                    end_col  = hl.end_col,
                     hl_group = hl.group,
                     priority = 200,
                 })

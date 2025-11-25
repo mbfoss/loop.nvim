@@ -144,7 +144,8 @@ local function _get_dap_config(task)
         name = task.debug.adapter,
         cmd = cfg.command,
         cwd = cfg.cwd,
-        env = cfg.env
+        env = cfg.env,
+        init_commands = cfg.init_commands,
     }
     return dap, nil
 end

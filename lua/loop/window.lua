@@ -457,15 +457,18 @@ function M.add_debug_task_page(name)
 end
 
 ---@return loop.pages.DebugSessionsPage
+---@return boolean created
 function M.get_debugsessions_page()
     assert(setup_done)
+    local created = false
     if #_tabs.debug_sessions.pages == 0 then
         local page = DebugSessionsPage:new()
         page:add_keymaps(get_page_keymap())    
         _add_tab_page(_tabs.debug_sessions, page)
+        created = true
     end
     ---@diagnostic disable-next-line: return-type-mismatch
-    return _tabs.debug_sessions.pages[1]
+    return _tabs.debug_sessions.pages[1], created
 end
 
 ---@param name string -- task name

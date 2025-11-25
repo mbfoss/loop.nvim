@@ -421,5 +421,11 @@ function BaseSession:request_disassemble(args, callback)
     self:_request("disassemble", args, self:_wrap(callback))
 end
 
+---@param args any
+---@param callback fun(err: string|nil, body: any)|nil
+function BaseSession:request_custom(args, callback)
+    self:_request("customRequest", args, self:_wrap(callback))
+end
+
 
 return BaseSession

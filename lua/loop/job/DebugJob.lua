@@ -74,7 +74,7 @@ function DebugJob:start(args)
         vim.schedule(function()
             self:_on_session_exit(session_id, Session)
         end)
-        vim.schedule(function()        
+        vim.schedule(function()
             if next(self._sessions) == nil then
                 ---no more sessions
                 args.on_exit_handler(code)
@@ -123,11 +123,32 @@ function DebugJob:start(args)
 end
 
 function DebugJob:_refresh_debug_sessions_page()
-    local page = window:get_debugsessions_page()
+    local page, created = window:get_debugsessions_page()
     ---@type loop.pages.ItemListPage.Item[]
+    if created then
+        page:set_select_handler(function(item)
+            if item then
+                self:_set_current_session(self._sessions[item.id])
+            end
+        end)
+    end
     local items = {}
     for id, session in pairs(self._sessions) do
-        table.insert(items, { id = id, text = session:name() })
+        local current = session == self._current_session
+        local prefix = current and "> " or "  "
+        ---@type loop.pages.ItemListPage.Item
+        local item = {
+            id = id,
+            text = prefix .. session:name(),
+            highlights = current and {
+                {
+                    group = "Todo",
+                    start_col = 0,
+                    end_col = 2,
+                }
+            } or nil
+        }
+        table.insert(items, item)
     end
     table.sort(items, function(a, b) return a.id < b.id end)
     page:set_items(items)
@@ -358,16 +379,13 @@ function DebugJob:_on_session_threads_event(sess_id, session, event, thread_id)
         end)
     end
     if event == "pause" then
-        self._current_session = session
+        self:_set_current_session(session)
         if thread_id then
             self:load_stack_trace(page, session, thread_id)
         else
             self:select_n_load_stacktrace(page, session)
         end
     elseif event == "continue" then
-        if self._current_session == session then
-            self._current_session = nil
-        end
         signs.remove_signs("currentframe")
         page:set_items({ { id = 0, text = "No paused threads" } })
     else
@@ -379,8 +397,7 @@ end
 ---@param session loop.dap.Session
 ---@param event loop.dap.session.notify.BreakpointsEvent
 function DebugJob:_on_session_breakpoints_event(sess_id, session, event)
-    --TODO: handle multisession
-    if sess_id == 1 then
+    if session == self._current_session then
         for _, evtbp in ipairs(event.breakpoints) do
             breakpoints.update_verified_status(evtbp.id, evtbp.verified)
         end
@@ -390,20 +407,19 @@ end
 ---@param sess_id number
 ---@param session loop.dap.Session
 function DebugJob:_on_session_debuggee_exit(sess_id, session)
-
-    if self._current_session == session then
-        self._current_session = nil
+    if not self._sessions[sess_id] then
+        return
     end
 
-    signs.remove_signs("currentframe")
+    self._sessions[sess_id] = nil
+
+    if self._current_session == session then
+        self:_set_current_session(next(self._sessions)[2]) -- TODO: test this
+    end
+
     local page = self._stacktrace_pages[sess_id]
     if page then
         page:set_items({})
-    end
-
-    --TODO: handle multisession
-    if sess_id == 1 then
-        breakpoints.reset_verified_status()
     end
 end
 
@@ -411,10 +427,26 @@ end
 ---@param session loop.dap.Session
 function DebugJob:_on_session_exit(sess_id, session)
     self:_on_session_debuggee_exit(sess_id, session)
-    self._sessions[sess_id] = nil
-    self._current_session = nil
-    self:_refresh_debug_sessions_page()
 end
 
+---@param session loop.dap.Session
+function DebugJob:_set_current_session(session)
+    if session == self._current_session then
+        return
+    end
+
+    signs.remove_signs("currentframe")
+    breakpoints.reset_verified_status()
+
+    self._current_session = session
+    self:_refresh_debug_sessions_page()
+
+    if self._current_session then
+        local bpts = self._current_session:get_breakpoints()
+        for _, bp in ipairs(bpts) do
+            breakpoints.update_verified_status(bp.id, bp.verified)
+        end
+    end
+end
 
 return DebugJob
