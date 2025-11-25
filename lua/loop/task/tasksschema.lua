@@ -21,9 +21,9 @@ return [[
           "type": {
             "type": "string",
             "enum": [
+              "vimcmd",
               "tool",
               "app",
-              "lua",
               "debug"
             ],
             "description": "Task type. Use colon for subtypes (e.g., debug:launch)."

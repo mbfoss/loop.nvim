@@ -155,8 +155,19 @@ function Session:start(args)
         end
     )
 
+    ---@type loop.dap.fsmdata.StateHandlers
+    local state_handlers = {
+        initializing = function(_, _) self:_on_initializing_state() end,
+        configuring = function(_, _) self:_on_configuring_state() end,
+        launching = function(_, _) self:_on_launching_state() end,
+        running = function(_, _) self:_on_running_state() end,
+        disconnecting = function(_, _) self:_on_disconnecting_state() end,
+        kill = function(_, _) self:_on_kill_state() end,
+        ended = function(_, _) self:_on_ended_state() end,
+    }
+
     -- start the FSM
-    self._fsm = FSM:new(name, fsmdata.create_fsm_data(self))
+    self._fsm = FSM:new(name, fsmdata.create_fsm_data(state_handlers))
     vim.schedule(function()
         self._fsm:start()
     end)
@@ -325,7 +336,7 @@ end
 
 ---@param event loop.dap.proto.ExitedEvent|nil
 function Session:_on_exited_event(event)
-    self:_notify_tracker("debuggee_exit", event)    
+    self:_notify_tracker("debuggee_exit", event)
 end
 
 ---@param event loop.dap.proto.TerminatedEvent|nil
@@ -359,10 +370,9 @@ function Session:_on_initializing_state()
 end
 
 function Session:_on_configuring_state()
-
     ---@type table<string, loop.dap.session.Breakpoints>
     local breakpoints_by_source = {}
-    for _,bp in ipairs(self._breakpoints) do
+    for _, bp in ipairs(self._breakpoints) do
         if bp.file and bp.source_breakpoint then
             breakpoints_by_source[bp.file] = breakpoints_by_source[bp.file] or {}
             table.insert(breakpoints_by_source[bp.file], bp)
@@ -385,7 +395,7 @@ function Session:_on_configuring_state()
     for file, source_breakpoints in pairs(breakpoints_by_source) do
         ---@type loop.dap.proto.SourceBreakpoint[]
         local dap_breakpoints = {}
-        for _,bpts in ipairs(source_breakpoints) do
+        for _, bpts in ipairs(source_breakpoints) do
             table.insert(dap_breakpoints, bpts.source_breakpoint)
         end
         self.log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(dap_breakpoints))
@@ -415,8 +425,8 @@ function Session:_on_configuring_state()
                         source_breakpoints[idx].verified = bp.verified
                     end
                     ---@type loop.dap.session.notify.BreakpointsEvent
-                    local data = { breakpoints = vim.deepcopy(source_breakpoints) }                    
-                    self:_notify_tracker("breakpoints", data)   
+                    local data = { breakpoints = vim.deepcopy(source_breakpoints) }
+                    self:_notify_tracker("breakpoints", data)
                 end
             end)
     end
@@ -461,6 +471,7 @@ function Session:_on_running_state()
 end
 
 function Session:_on_disconnecting_state()
+    self._stopped_threads = {}
     self:_notify_about_state()
     self._base_session:request_disconnect({
         terminateDebuggee = self._target.terminate_on_disconnect
@@ -470,6 +481,7 @@ function Session:_on_disconnecting_state()
 end
 
 function Session:_on_kill_state()
+    self._stopped_threads = {}
     self:_notify_about_state()
     self._base_session:kill()
 end

@@ -375,6 +375,17 @@ end
 ---@param sess_id number
 ---@param session loop.dap.Session
 function DebugJob:_on_session_debuggee_exit(sess_id, session)
+    if self._current_session == session then
+        self._current_session = nil
+    end
+    
+    signs.remove_signs("currentframe")
+
+    local page = self._stacktrace_pages[sess_id]
+    if page then
+        page:set_items({})
+    end
+    
     --TODO: handle multisession
     if sess_id == 1 then
         breakpoints.reset_verified_status()

@@ -19,15 +19,26 @@ M.trigger =
     killed = "killed",
 }
 
+---@alias loop.dap.fsmdata.StateHandler fun(trigger:string, triggerdata:any)
+
+---@class loop.dap.fsmdata.StateHandlers
+---@field initializing loop.dap.fsmdata.StateHandler
+---@field configuring loop.dap.fsmdata.StateHandler
+---@field launching loop.dap.fsmdata.StateHandler
+---@field running loop.dap.fsmdata.StateHandler
+---@field disconnecting loop.dap.fsmdata.StateHandler
+---@field kill loop.dap.fsmdata.StateHandler
+---@field ended loop.dap.fsmdata.StateHandler
+
+---@param handlers loop.dap.fsmdata.StateHandlers
 ---@return loop.tools.FSMData
-function M.create_fsm_data(session)
+function M.create_fsm_data(handlers)
     ---@type loop.tools.FSMData
     return {
         initial = "initializing",
         states = {
             initializing = {
-                desc = "Initializing",
-                state_handler = function(...) session:_on_initializing_state(...) end,
+                state_handler = handlers.initializing,
                 triggers = {
                     [M.trigger.initialize_resp_ok_macos_lldb] = "launching",
                     [M.trigger.initialize_resp_ok] = "configuring",
@@ -36,7 +47,7 @@ function M.create_fsm_data(session)
                 }
             },
             configuring = {
-                state_handler = function(...) session:_on_configuring_state(...) end,
+                state_handler = handlers.configuring,
                 triggers = {
                     [M.trigger.disconnect] = "disconnecting",
                     [M.trigger.configure_success] = "launching",
@@ -45,7 +56,7 @@ function M.create_fsm_data(session)
                 }
             },
             launching = {
-                state_handler = function(...) session:_on_launching_state(...) end,
+                state_handler = handlers.launching,
                 triggers = {
                     [M.trigger.disconnect] = "disconnecting",
                     [M.trigger.launch_resp_ok] = "running",
@@ -54,26 +65,26 @@ function M.create_fsm_data(session)
                 }
             },
             running = {
-                state_handler = function(...) session:_on_running_state(...) end,
+                state_handler = handlers.running,
                 triggers = {
                     [M.trigger.disconnect] = "disconnecting",
                 }
             },
             disconnecting = {
-                state_handler = function(...) session:_on_disconnecting_state(...) end,
+                state_handler = handlers.disconnecting,
                 triggers = {
                     [M.trigger.disconnect_resp_ok] = "ended",
                     [M.trigger.disconnect_resp_err] = "kill"
                 }
             },
             kill = {
-                state_handler = function(...) session:_on_kill_state(...) end,
+                state_handler = handlers.kill,
                 triggers = {
                     [M.trigger.killed] = "ended",
                 }
             },
             ended = {
-                state_handler = function(...) session:_on_ended_state(...) end,
+                state_handler = handlers.ended,
                 triggers = {}
             },
         }

@@ -1,4 +1,4 @@
----@alias loop.TaskType "lua"|"tool"|"app"|"debug"
+---@alias loop.TaskType "vimcmd"|"tool"|"app"|"debug"
 
 ---@class loop.task.DebugConfig
 ---@field adapter string

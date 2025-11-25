@@ -6,7 +6,7 @@ local vartools = require('loop.tools.vars')
 local strtools = require('loop.tools.strtools')
 local TermJob = require('loop.job.TermJob')
 local DebugJob = require('loop.job.DebugJob')
-local LuaFunc = require('loop.job.LuaFunc')
+local VimCmdJob = require('loop.job.VimCmdJob')
 local window = require('loop.window')
 local config = require('loop.config')
 
@@ -150,6 +150,78 @@ local function _get_dap_config(task)
 end
 
 ---@param task loop.Task
+---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
+---@param exit_handler fun(code : number)
+local function _create_vimcmd_job(task, output_handler, exit_handler)
+    ---@type loop.VimCmdJob.StartArgs
+    local args = {
+        command = task.command,
+        on_exit_handler = exit_handler
+    }
+    local job = VimCmdJob:new()
+    local ok, err = job:start(args)
+    if not ok then
+        return nil, err
+    end
+    return job, nil
+end
+
+---@param task loop.Task
+---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
+---@param exit_handler fun(code : number)
+local function _create_tool_job(task, output_handler, exit_handler)
+    ---@type loop.tools.TermProc.StartArgs
+    local args = {
+        name = task.name,
+        command = task.command,
+        command_env = task.env,
+        command_cwd = task.cwd,
+        output_handler = output_handler,
+        on_exit_handler = exit_handler,
+    }
+    local job = TermJob:new()
+    local ok, err = job:start(args)
+    if not ok then
+        return nil, err
+    end
+    return job, nil
+end
+
+---@param task loop.Task
+---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
+---@param exit_handler fun(code : number)
+local function _create_debug_job(task, output_handler, exit_handler)
+    ---@type loop.dap.session.Args.DAP|nil,string|nil
+    local dap, dap_error = _get_dap_config(task)
+    if not dap then
+        return nil, dap_error or "Invalid debugger config"
+    end
+    local run_in_terminal = task.debug and task.debug.run_in_terminal or false
+    local stop_on_entry = task.debug and task.debug.stop_on_entry or false
+    ---@type loop.DebugJob.StartArgs
+    local args = {
+        name = task.name,
+        debugger = dap,
+        target = {
+            name = task.name,
+            cmd = task.command,
+            cwd = task.cwd,
+            env = task.env,
+            run_in_terminal = run_in_terminal,
+            stop_on_entry = stop_on_entry
+        },
+        output_handler = output_handler,
+        on_exit_handler = exit_handler,
+    }
+    local job = DebugJob:new()
+    local ok, err = job:start(args)
+    if not ok then
+        return nil, err
+    end
+    return job, nil
+end
+
+---@param task loop.Task
 ---@return loop.job.Job|nil, string|nil
 ---@param task_exit_handler fun(exit_code : number)
 local function _start_one_task(task, task_exit_handler)
@@ -157,7 +229,6 @@ local function _start_one_task(task, task_exit_handler)
         return nil, "Invalid or empty command"
     end
 
-    local tasktype = task.type
     local output_parser = _make_output_parser(task)
 
     ---@param lines string[]
@@ -174,65 +245,14 @@ local function _start_one_task(task, task_exit_handler)
         task_exit_handler(exit_code)
     end
 
-    if tasktype == "lua" then
-        ---@type loop.LuaFunc.StartArgs
-        local args = {
-            command = task.command,
-            on_exit_handler = exit_handler
-        }
-        local job = LuaFunc:new()
-        local ok, err = job:start(args)
-        if not ok then
-            return nil, err
-        end
-        return job, nil
+    local tasktype = task.type
+    if tasktype == "vimcmd" then
+        return _create_vimcmd_job(task, output_handler, exit_handler)
     elseif tasktype == "tool" or tasktype == "app" then
-        ---@type loop.tools.TermProc.StartArgs
-        local args = {
-            name = task.name,
-            command = task.command,
-            command_env = task.env,
-            command_cwd = task.cwd,
-            output_handler = output_handler,
-            on_exit_handler = exit_handler,
-        }
-        local job = TermJob:new()
-        local ok, err = job:start(args)
-        if not ok then
-            return nil, err
-        end
-        return job, nil
+        return _create_tool_job(task, output_handler, exit_handler)
     elseif tasktype == "debug" then
-        ---@type loop.dap.session.Args.DAP|nil,string|nil
-        local dap, dap_error = _get_dap_config(task)
-        if not dap then
-            return nil, dap_error or "Invalid debugger config"
-        end
-        local run_in_terminal = task.debug and task.debug.run_in_terminal or false
-        local stop_on_entry = task.debug and task.debug.stop_on_entry or false
-        ---@type loop.DebugJob.StartArgs
-        local args = {
-            name = task.name,
-            debugger = dap,
-            target = {
-                name = task.name,
-                cmd = task.command,
-                cwd = task.cwd,
-                env = task.env,
-                run_in_terminal = run_in_terminal,
-                stop_on_entry = stop_on_entry
-            },
-            output_handler = output_handler,
-            on_exit_handler = exit_handler,
-        }
-        local job = DebugJob:new()
-        local ok, err = job:start(args)
-        if not ok then
-            return nil, err
-        end
-        return job, nil
+        return _create_debug_job(task, output_handler, exit_handler)
     end
-
     return nil, "Unhandled task type: " .. tasktype
 end
 
@@ -355,11 +375,11 @@ end
 ---@param command loop.job.DebugJob.Command|nil
 function M.debug_task_command(command)
     if not _current_task_chain or not _current_task_chain.active_job or getmetatable(_current_task_chain.active_job) ~= DebugJob then
-        window.add_events({"Debug command not usable, no debut task is currently running"})
+        window.add_events({ "Debug command not usable, no debut task is currently running" })
         return
     end
-     ---@type loop.job.DebugJob 
----@diagnostic disable-next-line: assign-type-mismatch
+    ---@type loop.job.DebugJob
+    ---@diagnostic disable-next-line: assign-type-mismatch
     local job = _current_task_chain.active_job
     job:debug_command(command)
 end
