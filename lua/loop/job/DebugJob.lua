@@ -10,7 +10,7 @@ local selector    = require("loop.selector")
 local uitools     = require('loop.tools.uitools')
 local signs       = require('loop.signs')
 
----@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"
+---@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"|"terminate"
 
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
@@ -133,6 +133,8 @@ function DebugJob:debug_command(command)
         self._current_session:debug_stepOut()
     elseif command == "step_over" then
         self._current_session:debug_stopOver()
+    elseif command == "terminate" then
+        self._current_session:debug_terminate()
     else
         self._task_page:add_lines({ 'loop.nvim: Invalid debug command: ' .. tostring(command) }, "error")
     end

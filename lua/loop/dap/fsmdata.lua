@@ -13,7 +13,6 @@ M.trigger =
     launch_resp_ok = "launch_resp_ok",
     launch_resp_ok_macos_lldb = "launch_resp_ok_macos_lldb",
     launch_resp_error = "launch_resp_error",
-    terminated = "terminated",
     disconnect = "disconnect",
     disconnect_resp_ok = "disconnect_resp_ok",
     disconnect_resp_err = "disconnect_resp_err",
@@ -33,21 +32,22 @@ function M.create_fsm_data(session)
                     [M.trigger.initialize_resp_ok_macos_lldb] = "launching",
                     [M.trigger.initialize_resp_ok] = "configuring",
                     [M.trigger.initialize_resp_err] = "disconnecting",
+                    [M.trigger.disconnect] = 'disconnecting',
                 }
             },
             configuring = {
                 state_handler = function(...) session:_on_configuring_state(...) end,
                 triggers = {
+                    [M.trigger.disconnect] = "disconnecting",
                     [M.trigger.configure_success] = "launching",
                     [M.trigger.configure_success_macos_lldb] = "running",
                     [M.trigger.configure_error] = "disconnecting",
-                    [M.trigger.terminated] = 'disconnecting',
-                    [M.trigger.disconnect] = "disconnecting",
                 }
             },
             launching = {
                 state_handler = function(...) session:_on_launching_state(...) end,
                 triggers = {
+                    [M.trigger.disconnect] = "disconnecting",
                     [M.trigger.launch_resp_ok] = "running",
                     [M.trigger.launch_resp_ok_macos_lldb] = "configuring",
                     [M.trigger.launch_resp_error] = "disconnecting",

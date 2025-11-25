@@ -247,6 +247,10 @@ function Session:debug_stopOver()
     end)
 end
 
+function Session:debug_terminate()
+    self._fsm:trigger(fsmdata.trigger.disconnect)
+end
+
 ---@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
 function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
     ---@class loop.dap.session.notify.RunInTerminalReq
