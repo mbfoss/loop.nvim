@@ -443,8 +443,7 @@ end
 ---@param session loop.dap.Session
 ---@param newsession_args loop.dap.session.Args
 function DebugJob:_on_subsession_request(sess_id, session, newsession_args)
-    --TODO: manage subsession
-    --self:add_new_session(newsession_args, sess_id)
+    self:add_new_session(newsession_args, sess_id)
 end
 
 ---@param sess_id number

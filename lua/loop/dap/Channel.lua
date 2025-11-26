@@ -41,6 +41,7 @@ end
 
 ---@param opts loop.dap.Channel.Opts
 function Channel:init(name, opts)
+    self.name = name
     self.on_message = opts.on_message -- function(msg: table) called for non-response messages
     self.on_stderr = opts.on_stderr
     assert(type(self.on_message) == "function")
@@ -121,7 +122,7 @@ end
 function Channel:send_message(msg)
     assert(msg)
     if msg_log_enabled then
-        log_msg_content("\n========\nSending msg: " .. strtools.to_pretty_str(msg))
+        log_msg_content("\n==[" .. self.name .. "]==\nSending msg: " .. strtools.to_pretty_str(msg))
     end
 
     local body, encode_err = json.encode(msg)
@@ -179,7 +180,7 @@ function Channel:_on_data(buffer, data)
         end
 
         if msg_log_enabled then
-            log_msg_content("\n========\nReceived msg: " .. strtools.to_pretty_str(message) .. '\n\n')
+            log_msg_content("\n==[" .. self.name .. "]==\nReceived msg: " .. strtools.to_pretty_str(message) .. '\n\n')
         end
 
         -- 8. Dispatch the message (in the nvim main thread)

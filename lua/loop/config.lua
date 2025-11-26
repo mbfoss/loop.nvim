@@ -28,7 +28,7 @@ M.defaut_config = {
         },
         python = {
             command = "python -m debugpy.adapter",
-            configure_post_launch = false
+            configure_post_launch = true
         },
     }
 }

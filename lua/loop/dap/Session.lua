@@ -27,7 +27,7 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field host string|nil
 ---@field port number|nil
 ---@field name string
----@field cmd string|string[]
+---@field cmd string|string[]|nil
 ---@field env table<string,string>|nil
 ---@field cwd string|nil
 ---@field init_commands string[]|nil
@@ -56,7 +56,7 @@ local fsmdata = require('loop.dap.fsmdata')
 
 ---@class loop.dap.session.DebugArgs
 ---@field dap loop.dap.session.Args.DAP
----@field target loop.dap.session.Args.Target
+---@field target loop.dap.session.Args.Target|nil
 
 ---@class loop.dap.session.Args
 ---@field name string
@@ -77,14 +77,12 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field _breakpoints_by_dap_id table<number,loop.dap.session.Breakpoint>
 ---@field _stopped_threads loop.dap.proto.Thread[]|nil
 ---@field _stopped_thread_id number|nil
----@field _connectedDebugPySockets table<string,boolean>
 local Session = class()
 
 function Session:init()
     self._started = false
     self._breakpoints = {}
     self._breakpoints_by_dap_id = {}
-    self._connectedDebugPySockets = {}
 end
 
 ---@param args loop.dap.session.Args
@@ -170,8 +168,6 @@ function Session:start(args)
     self._base_session:set_event_handler("breakpoint", function(msg_body) self:_on_breakpoint_event(msg_body) end)
     self._base_session:set_event_handler("exited", function(msg_body) self:_on_exited_event(msg_body) end)
     self._base_session:set_event_handler("terminated", function(msg_body) self:_on_terminated_event(msg_body) end)
-    -- non standard
-    self._base_session:set_event_handler("debugpySockets", function(msg_body) self:_on_debugpy_event(msg_body) end)
 
     self._base_session:set_reverse_request_handler("runInTerminal",
         function(req_args, on_success, on_failure)
@@ -179,6 +175,7 @@ function Session:start(args)
             self:_on_runInTerminal_request(req_args, on_success, on_failure)
         end
     )
+
 
     ---@type loop.dap.fsmdata.StateHandlers
     local state_handlers = {
@@ -311,7 +308,8 @@ end
 
 ---@param event loop.dap.proto.StoppedEvent|nil
 function Session:_on_stopped_event(event)
-    if self._fsm:curr_state() ~= "running" then
+    local cur_state = self._fsm:curr_state()
+    if cur_state ~= "running" then
         self:_notify_about_log("error", { "unexpected stopped event" })
         return
     end
@@ -378,30 +376,6 @@ function Session:_on_terminated_event(event)
     end
 end
 
-function Session:_on_debugpy_event(event)
-    if event and event.sockets and vim.islist(event.sockets) then
-        for _, socket in ipairs(event.sockets) do
-            if type(socket.host) == "string" and type(socket.port) == "number" then
-                local key = socket.host .. ":" .. tostring(socket.port)
-                if not self._connectedDebugPySockets[key] then
-                    self._connectedDebugPySockets[key] = true
-                    ---@type loop.dap.session.Args
-                    local args = {
-                        name = self:name() .. '/subsession',
-                        remote_args = {
-                            host = socket.host,
-                            port = socket.port,
-                        },
-                        tracker = function(...) end,
-                        exit_handler = function() end,
-                    }
-                    self:_notify_tracker("subsession_request", args)
-                end
-            end
-        end
-    end
-end
-
 ---@param on_complete fun(success:boolean)
 function Session:_send_initialize(on_complete)
     local req_args = {
@@ -432,6 +406,27 @@ function Session:_send_initialize(on_complete)
     end)
 end
 
+---@param on_complete fun(success:boolean)
+function Session:_send_attach(on_complete)
+    if not self._args.debug_args.target then
+        self._base_session:request_attach({
+            adapterID = self._args.debug_args.dap.name,
+            host = self._args.debug_args.dap.host,
+            port = self._args.debug_args.dap.port,
+            columnsStartAt1 = true,
+            linesStartAt1 = true,
+            pathFormat = "path",
+        }, function(err)
+            if err then
+                self:_notify_about_log("error", { "attach request error", tostring(err) })
+            end
+            on_complete(err == nil)
+        end)
+        return
+    end
+    return
+end
+
 function Session:_on_initializing_state()
     local on_complete = function(success)
         if not success then
@@ -439,7 +434,17 @@ function Session:_on_initializing_state()
         end
     end
 
-    self:_send_initialize(on_complete)
+    self:_send_initialize(function(success)
+        if success and self._args.debug_args.dap.type == "remote" then
+            if self._args.debug_args.target then
+            --self:_send_launch(on_complete)
+            else
+                self:_send_attach(on_complete) --TODO: check if this is sent at the right moment
+            end
+        else
+            on_complete(success)
+        end
+    end)
 end
 
 ---@param on_complete fun(success:boolean)
@@ -583,12 +588,16 @@ function Session:_send_configurationDone(on_complete)
 end
 
 function Session:_on_launching_state()
-    if not self._args.debug_args.target then
+    local target = self._args.debug_args.target
+    if not target then
+        if self._args.debug_args.dap.type == "remote" then
+            -- ok with remote session
+            return
+        end
+        -- should not happen
         self._fsm:trigger(fsmdata.trigger.launch_resp_ok)
         return
     end
-
-    local target          = self._args.debug_args.target
 
     local cmdparts        = strtools.cmd_to_string_array(target.cmd)
     local target_program  = cmdparts[1]
