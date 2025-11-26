@@ -58,6 +58,7 @@ local function validate(schema, data, path)
     end
     if not ok then
       local expected = table.concat(allowed_types, " or ")
+      ---@type string
       local got = type(data)
       if got == "table" then
         got = vim.islist(data) and "array" or "object"

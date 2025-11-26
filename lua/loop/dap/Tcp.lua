@@ -18,6 +18,8 @@ function Tcp:init(name, opts)
     assert(type(opts.host) == "string", "host required")
     assert(type(opts.port) == "number", "port required")
 
+    self.log = require('loop.tools.Logger').create_logger("dap.tcp[" .. name .. ']')
+
     self.name = name
     self.host = opts.host
     self.port = opts.port
@@ -32,51 +34,50 @@ function Tcp:init(name, opts)
     return self
 end
 
--- Internal: resolve host and connect
+-- Internal: resolve host if needed, then connect
 function Tcp:_resolve_and_connect()
-    local host = self.host
+  local host = self.host
 
-    -- Fast path: already an IP address (IPv4 or IPv6)
-    if uv.net.is_ip(host) then
-        self.ip = host
-        self:_connect()
-        return
+  -- Fast path: already looks like an IP address (IPv4 or IPv6)
+  if host:match("^%d+%.%d+%.%d+%.%d+$") -- IPv4
+      or host:match("^%x*:") -- IPv6 (has colon)
+      or host == "localhost" then
+    self.ip = host
+    self:_connect()
+    return
+  end
+
+  -- Async DNS lookup
+  self.log:debug("Resolving host: " .. host)
+  uv.getaddrinfo(host, nil, { family = "inet" }, function(err, res)
+    if err or not res or #res == 0 then
+      self.log:error("DNS resolution failed for '" .. host .. "': " .. (err or "no address"))
+      if self.on_exit then
+        vim.schedule(function()
+          self.on_exit()
+        end)
+      end
+      return
     end
 
-    -- Otherwise: resolve hostname
-    self.log:debug("Resolving host: " .. host)
-    uv.getaddrinfo(host, nil, { family = "inet" }, function(err, res)
-        if err or not res or #res == 0 then
-            self.log:error("Failed to resolve host '" .. host .. "': " .. (err or "no addresses"))
-            if self.on_exit then
-                vim.schedule(function()
-                    self.on_exit(1, 0)
-                end)
-            end
-            return
-        end
+    -- Prefer IPv4
+    local addr = res[1]
+    for _, r in ipairs(res) do
+      if r.family == "inet" then
+        addr = r
+        break
+      end
+    end
 
-        -- Use first IPv4 address (you can prefer IPv6 if you want)
-        local addr = res[1]
-        if addr.family == "inet6" then
-            for _, r in ipairs(res) do
-                if r.family == "inet" then
-                    addr = r
-                    break
-                end
-            end
-        end
+    self.ip = addr.addr
+    self.log:info("Resolved " .. host .. " → " .. self.ip)
 
-        self.ip = addr.addr
-        self.log:info("Resolved " .. host .. " → " .. self.ip)
-
-        -- Now connect using resolved IP
-        vim.schedule(function()
-            if not self.killed then
-                self:_connect()
-            end
-        end)
+    vim.schedule(function()
+      if not self.killed then
+        self:_connect()
+      end
     end)
+  end)
 end
 
 -- Optional: graceful shutdown
@@ -92,7 +93,7 @@ function Tcp:_close()
         self.exited = true
         if self.on_exit then
             vim.schedule(function()
-                self.on_exit(0, 0)
+                self.on_exit()
             end)
         end
     end

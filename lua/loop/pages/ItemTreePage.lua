@@ -185,7 +185,6 @@ function ItemTreePage:_refresh_buffer(buf)
     vim.bo[buf].modifiable = true
 
     local lines = {}
-    ---@type {start:number, stop:number}[]
     local folds = {}
 
     for i, entry in ipairs(self._flat) do
