@@ -8,6 +8,7 @@ local M = {}
 ---@field cwd string|nil
 ---@field env table<string,string>|nil
 ---@field init_commands string[]|nil
+---@field configure_post_launch boolean|nil
 
 ---@class loop.Config
 ---@field debug loop.Config.Debug
@@ -23,18 +24,11 @@ M.defaut_config = {
     debuggers = {
         lldb = {
             command = "lldb-dap",
-            init_commands = {
-                -- follow BOTH parent and child
-                "settings set target.process.follow-fork-mode both",
-                -- Linux: catch clone
-                "settings set target.process.attach-on-fork true",
-                "settings set target.process.attach-on-clone true",
-                -- macOS: catch fork
-                "settings set target.process.attach-on-fork true",
-            },
+            init_commands = {},
         },
-        pthon = {
-            command = "python -m debugpy.adapter"
+        python = {
+            command = "python -m debugpy.adapter",
+            configure_post_launch = false
         },
     }
 }

@@ -518,8 +518,7 @@
 -- Response Bodies (COMPLETE)
 --====================================================================--
 
----@class loop.dap.proto.InitializeResponse
----@field capabilities loop.dap.proto.Capabilities
+---@alias loop.dap.proto.InitializeResponse loop.dap.proto.Capabilities
 
 ---@class loop.dap.proto.SetBreakpointsResponse
 ---@field breakpoints loop.dap.proto.Breakpoint[]

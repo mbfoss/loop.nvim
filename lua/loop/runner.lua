@@ -146,6 +146,7 @@ local function _get_dap_config(task)
         cwd = cfg.cwd,
         env = cfg.env,
         init_commands = cfg.init_commands,
+        configure_post_launch = cfg.configure_post_launch,
     }
     return dap, nil
 end

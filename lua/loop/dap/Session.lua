@@ -28,6 +28,7 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field env table<string,string>|nil
 ---@field cwd string
 ---@field init_commands string[]|nil
+---@field configure_post_launch boolean|nil
 
 ---@class loop.dap.session.Args.Target
 ---@field name string
@@ -61,6 +62,7 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field _name string
 ---@field _target loop.dap.session.Args.Target
 ---@field _dap_init_commands string[]|nil
+---@field _dap_configure_post_launch boolean|nil
 ---@field _capabilities table<string,string>
 ---@field _output_handler fun(msg_body:table)
 ---@field _on_exit fun(code:number)
@@ -97,6 +99,7 @@ function Session:start(args)
     self._dap_name = dap.name
     self._target = target
     self._dap_init_commands = dap.init_commands
+    self._dap_configure_post_launch = dap.configure_post_launch
     self._capabilities = {}
     self._process_ended = false
     self._tracker = args.tracker
@@ -161,8 +164,9 @@ function Session:start(args)
     ---@type loop.dap.fsmdata.StateHandlers
     local state_handlers = {
         initializing = function(_, _) self:_on_initializing_state() end,
-        configuring = function(_, _) self:_on_configuring_state() end,
+        configuring1 = function(_, _) self:_on_configuring1_state() end,
         launching = function(_, _) self:_on_launching_state() end,
+        configuring2 = function(_, _) self:_on_configuring2_state() end,
         running = function(_, _) self:_on_running_state() end,
         disconnecting = function(_, _) self:_on_disconnecting_state() end,
         kill = function(_, _) self:_on_kill_state() end,
@@ -283,6 +287,7 @@ function Session:_on_output_event(event)
 end
 
 function Session:_on_initialized_event(event)
+    self._fsm:trigger(fsmdata.trigger.initialized)
 end
 
 ---@param event loop.dap.proto.StoppedEvent|nil
@@ -354,7 +359,8 @@ function Session:_on_terminated_event(event)
     end
 end
 
-function Session:_on_initializing_state()
+---@param on_complete fun(success:boolean)
+function Session:_send_initialize(on_complete)
     local req_args = {
         adapterID = self._dap_name or "unknown",
         linesStartAt1 = true,
@@ -363,28 +369,44 @@ function Session:_on_initializing_state()
     }
     self._base_session:request_initialize(req_args, function(err, resp)
         if resp then
-            self._capabilities = resp.capabilities
-            ---@diagnostic disable-next-line: undefined-field
-            local is_lldb = resp.__lldb ~= nil
-            if is_lldb and vim.fn.has("mac") == 1 then
-                self.log:info("macos lldb")
-                self._is_macos_lldb = true
+            self._capabilities = resp
+            if not self._dap_configure_post_launch then
+                -- heureustic
+                ---@diagnostic disable-next-line: undefined-field
+                local is_lldb = resp.__lldb ~= nil
+                if is_lldb and vim.fn.has("mac") == 1 then
+                    self.log:info("macos lldb")
+                    self._dap_configure_post_launch = true
+                    -- workaround for macos lldb (intialized not sent)
+                    self._fsm:trigger(fsmdata.trigger.initialized)
+                end
             end
+            on_complete(true)
+        else
+            self:_notify_about_log("error", { "initialize request error", tostring(err) })
+            on_complete(false)
         end
-        local success_trigger = self._is_macos_lldb and fsmdata.trigger.initialize_resp_ok_macos_lldb or
-            fsmdata.trigger.initialize_resp_ok
-        self._fsm:trigger(err == nil and success_trigger or fsmdata.trigger.initialize_resp_err)
     end)
 end
 
----@param complete_handler fun(success:boolean)
-function Session:_send_init_commands(complete_handler)
+function Session:_on_initializing_state()
+    local on_complete = function(success)
+        if not success then
+            self._fsm:trigger(fsmdata.trigger.initialize_resp_err)
+        end
+    end
+
+    self:_send_initialize(on_complete)
+end
+
+---@param on_complete fun(success:boolean)
+function Session:_send_init_commands(on_complete)
     local nb_commands = self._dap_init_commands and #self._dap_init_commands or 0
     local nb_success = 0
     local nb_failures = 0
 
     if nb_commands == 0 then
-        complete_handler(true)
+        on_complete(true)
         return
     end
 
@@ -399,16 +421,57 @@ function Session:_send_init_commands(complete_handler)
                     self:_notify_about_log("error", { "init command error", tostring(command), err or "" })
                 end
                 if nb_success == nb_commands then
-                    complete_handler(true)
+                    on_complete(true)
                 elseif nb_failures > 0. and nb_success + nb_failures == nb_commands then
-                    complete_handler(false)
+                    on_complete(false)
                 end
             end)
     end
 end
 
----@param complete_handler fun(success:boolean)
-function Session:_send_breakpoints(complete_handler)
+---@param on_complete fun(success:boolean)
+function Session:_send_configuration(on_complete)
+    self:_send_breakpoints(function(bpts_ok)
+        if bpts_ok then
+            self:_send_init_commands(function(inicmds_ok)
+                if inicmds_ok then
+                    self:_send_configurationDone(on_complete)
+                else
+                    on_complete(false)
+                end
+            end)
+        else
+            on_complete(false)
+        end
+    end)
+end
+
+function Session:_on_configuring1_state()
+    local on_complete = function(success)
+        self._fsm:trigger(success and fsmdata.trigger.configure1_success or fsmdata.trigger.configure1_error)
+    end
+
+    if self._dap_configure_post_launch == true then
+        on_complete(true)
+    else
+        self:_send_configuration(on_complete)
+    end
+end
+
+function Session:_on_configuring2_state()
+    local on_complete = function(success)
+        self._fsm:trigger(success and fsmdata.trigger.configure2_success or fsmdata.trigger.configure2_error)
+    end
+
+    if self._dap_configure_post_launch == true then
+        self:_send_configuration(on_complete)
+    else
+        on_complete(true)
+    end
+end
+
+---@param on_complete fun(success:boolean)
+function Session:_send_breakpoints(on_complete)
     ---@type table<string, loop.dap.session.Breakpoints>
     local breakpoints_by_source = {}
     for _, bp in ipairs(self._breakpoints) do
@@ -423,7 +486,7 @@ function Session:_send_breakpoints(complete_handler)
     local nb_failures = 0
 
     if nb_sources == 0 then
-        complete_handler(true)
+        on_complete(true)
         return
     end
 
@@ -444,8 +507,10 @@ function Session:_send_breakpoints(complete_handler)
             function(err, resp)
                 if resp then
                     for idx, bp in ipairs(resp.breakpoints) do
-                        self._breakpoints_by_dap_id[bp.id] = source_breakpoints[idx]
-                        source_breakpoints[idx].verified = bp.verified
+                        if bp.id then --TODO: handle the case with no id
+                            self._breakpoints_by_dap_id[bp.id] = source_breakpoints[idx]
+                            source_breakpoints[idx].verified = bp.verified
+                        end
                     end
                     ---@type loop.dap.session.notify.BreakpointsEvent
                     local data = { breakpoints = vim.deepcopy(source_breakpoints) }
@@ -459,40 +524,18 @@ function Session:_send_breakpoints(complete_handler)
                     self:_notify_about_log("error", { "failed to set breakpoints", err or "" })
                 end
                 if nb_success == nb_sources then
-                    complete_handler(true)
+                    on_complete(true)
                 elseif nb_failures > 0. and nb_success + nb_failures == nb_sources then
-                    complete_handler(false)
+                    on_complete(false)
                 end
             end)
     end
 end
 
----@param complete_handler fun(success:boolean)
-function Session:_send_configurationDone(complete_handler)
+---@param on_complete fun(success:boolean)
+function Session:_send_configurationDone(on_complete)
     self._base_session:request_configurationDone(function(err, _)
-        complete_handler(err == nil)
-    end)
-end
-
-function Session:_on_configuring_state()
-    local complete_handler = function(success)
-        local success_trigger = self._is_macos_lldb and fsmdata.trigger.configure_success_macos_lldb or
-            fsmdata.trigger.configure_success
-        self._fsm:trigger(success and success_trigger or fsmdata.trigger.configure_error)
-    end
-
-    self:_send_init_commands(function(commands_ok)
-        if commands_ok then
-            self:_send_breakpoints(function(bpts_ok)
-                if bpts_ok then
-                    self:_send_configurationDone(complete_handler)
-                else
-                    complete_handler(false)
-                end
-            end)
-        else
-            complete_handler(false)
-        end
+        on_complete(err == nil)
     end)
 end
 
@@ -500,7 +543,7 @@ function Session:_on_launching_state()
     local target          = self._target
     local cmdparts        = strtools.cmd_to_string_array(target.cmd)
     local target_program  = cmdparts[1]
-    local targe_args      = unpack(cmdparts, 2)
+    local target_args     = { unpack(cmdparts, 2) }
     local run_in_terminal = target.run_in_terminal
     local stop_on_entry   = target.stop_on_entry
 
@@ -517,16 +560,14 @@ function Session:_on_launching_state()
             linesStartAt1 = true,
             pathFormat = "path",
             program = target_program,
-            args = targe_args,
+            args = target_args,
             cwd = target.cwd,
             env = target.env,
             runInTerminal = run_in_terminal,
             stopOnEntry = stop_on_entry,
         },
         function(err)
-            local success_trigger = self._is_macos_lldb and fsmdata.trigger.launch_resp_ok_macos_lldb or
-                fsmdata.trigger.launch_resp_ok
-            self._fsm:trigger(err == nil and success_trigger or fsmdata.trigger.launch_resp_error)
+            self._fsm:trigger(err == nil and fsmdata.trigger.launch_resp_ok or fsmdata.trigger.launch_resp_error)
         end)
 end
 

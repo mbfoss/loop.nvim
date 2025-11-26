@@ -37,13 +37,23 @@ function BaseSession:init(name, opts)
     self.reverse_request_handlers = {}
 
     local channel_opts = {
-        dap_cmd = opts.dap_cmd,
-        dap_args = opts.dap_args,
-        dap_env = opts.dap_env,
-        dap_cwd = opts.dap_cwd,
-        on_message = function(msg) self:_on_message(msg) end,
-        on_stderr = function(text) opts.on_stderr(text) end,
-        on_exit = opts.on_exit,
+        dap_cmd    = opts.dap_cmd,
+        dap_args   = opts.dap_args,
+        dap_env    = opts.dap_env,
+        dap_cwd    = opts.dap_cwd,
+        on_message = vim.schedule_wrap(
+        -- schedule to avoid processing in the fast event context
+            function(msg)
+                self:_on_message(msg)
+            end),
+        on_stderr  = vim.schedule_wrap(
+        -- schedule to avoid processing in the fast event context
+            function(text)
+                vim.schedule(function()
+                    opts.on_stderr(text)
+                end)
+            end),
+        on_exit    = opts.on_exit,
     }
 
     self.channel = Channel:new(name, channel_opts)
@@ -96,14 +106,11 @@ function BaseSession:_handle_event(msg)
         self.log:warn("Unhandled DAP event: " .. msg.event)
         return
     end
-    -- schedule to avoid processing in the fast event context
-    vim.schedule(function()
-        local cb_error = function(err)
-            self.log:error("Error in event handler for " .. msg.event ..
-                debug.traceback("Error: " .. tostring(err) .. "\n", 2))
-        end
-        xpcall(function() handler(msg.body) end, cb_error)
-    end)
+    local cb_error = function(err)
+        self.log:error("Error in event handler for " .. msg.event ..
+            debug.traceback("Error: " .. tostring(err) .. "\n", 2))
+    end
+    xpcall(function() handler(msg.body) end, cb_error)
 end
 
 ---@param msg loop.dap.proto.Response
@@ -115,14 +122,11 @@ function BaseSession:_handle_resp(msg)
     end
     self.callbacks[msg.request_seq] = nil
 
-    -- schedule to avoid processing in the fast event context
-    vim.schedule(function()
-        local error_cb = function(err)
-            self.log:error("Error in response handler for " .. tostring(msg.command) ..
-                debug.traceback("Error: " .. tostring(err) .. "\n", 2))
-        end
-        xpcall(function() cb(msg) end, error_cb)
-    end)
+    local error_cb = function(err)
+        self.log:error("Error in response handler for " .. tostring(msg.command) ..
+            debug.traceback("Error: " .. tostring(err) .. "\n", 2))
+    end
+    xpcall(function() cb(msg) end, error_cb)
 end
 
 ---@param msg loop.dap.proto.Request
@@ -149,19 +153,16 @@ function BaseSession:_handle_rev_req(msg)
         return
     end
 
-    -- schedule to avoid processing in the fast event context
-    vim.schedule(function()
-        local error_cb = function(err)
-            self.log:error("Error in reverse request handler for " .. tostring(msg.command) ..
-                debug.traceback("Error: " .. tostring(err) .. "\n", 2))
-        end
-        local ok = xpcall(function()
-            handler(msg.arguments or {}, send_success, send_failure)
-        end, error_cb)
-        if not ok then
-            send_failure("Error in reverse request handler")
-        end
-    end)
+    local error_cb = function(err)
+        self.log:error("Error in reverse request handler for " .. tostring(msg.command) ..
+            debug.traceback("Error: " .. tostring(err) .. "\n", 2))
+    end
+    local ok = xpcall(function()
+        handler(msg.arguments or {}, send_success, send_failure)
+    end, error_cb)
+    if not ok then
+        send_failure("Error in reverse request handler")
+    end
 end
 
 ---@param command string
@@ -258,7 +259,6 @@ end
 function BaseSession:request_terminate(args, callback)
     self:_request("terminate", args, self:_wrap(callback))
 end
-
 
 -- Breakpoints --------------------------------------------------------
 
@@ -426,6 +426,5 @@ end
 function BaseSession:request_custom(args, callback)
     self:_request("customRequest", args, self:_wrap(callback))
 end
-
 
 return BaseSession

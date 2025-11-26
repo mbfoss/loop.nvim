@@ -62,8 +62,8 @@ function DebugJob:start(args)
     local cmd_parts = strtools.cmd_to_string_array(args.target.cmd)
     local name = vim.fn.fnamemodify(cmd_parts[1] or "", ":t")
 
-    if vim.fn.executable(cmd_parts[1]) == 0 then
-        return false, "Debug target is not an executable: " .. tostring(cmd_parts[1])
+    if not cmd_parts[1] or cmd_parts[1] == "" then
+        return false, "Debug target missing"
     end
 
     local session_id = self._last_session_id + 1
@@ -414,7 +414,8 @@ function DebugJob:_on_session_debuggee_exit(sess_id, session)
     self._sessions[sess_id] = nil
 
     if self._current_session == session then
-        self:_set_current_session(next(self._sessions)[2]) -- TODO: test this
+        local _,next = next(self._sessions or {})
+        self:_set_current_session(next) -- TODO: test this
     end
 
     local page = self._stacktrace_pages[sess_id]
