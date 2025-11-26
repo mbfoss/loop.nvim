@@ -40,7 +40,6 @@ function DebugJob:kill()
     for _, s in pairs(self._sessions) do
         s:kill()
     end
-    self._sessions = {}
 end
 
 ---@class loop.DebugJob.StartArgs
@@ -90,7 +89,7 @@ function DebugJob:start(args)
         launch_args = launch_args,
     }
 
-    self._task_page = window.add_debug_task_page(args.name)
+    self._task_page       = window.add_debug_task_page(args.name)
 
     self:add_new_session(args.name, debug_args)
 
@@ -144,21 +143,28 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
 end
 
 function DebugJob:_session_exit_handler(session_id, code)
-    -- this runs in the fast event context, so use schedule
-    local session = self._sessions[session_id] -- capture it now
-    if not session then return end
+    vim.schedule(function()
 
-    vim.schedule(function()
-        self:_on_session_exit(session_id, session)
-    end)
-    vim.schedule(function()
-        if next(self._sessions) == nil then
-            ---no more sessions
-            self._on_exit_handler(code)
+        if self._current_session == self._sessions[session_id] then
+            local _, next = next(self._sessions or {})
+            self:_set_current_session(next) -- TODO: test this
         end
+
+        self._sessions[session_id] = nil
+
+        local page = self._stacktrace_pages[session_id]
+        if page then
+            page:set_items({})
+        end
+
         if self._task_page then
             self._task_page:add_lines({ "Session " ..
             tostring(session_id) .. " debugger exited (code " .. tostring(code) .. ")" })
+        end
+
+        if next(self._sessions) == nil then
+            ---no more sessions
+            self._on_exit_handler(code)
         end
     end)
 end
@@ -454,21 +460,6 @@ end
 ---@param sess_id number
 ---@param session loop.dap.Session
 function DebugJob:_on_session_debuggee_exit(sess_id, session)
-    if not self._sessions[sess_id] then
-        return
-    end
-
-    self._sessions[sess_id] = nil
-
-    if self._current_session == session then
-        local _, next = next(self._sessions or {})
-        self:_set_current_session(next) -- TODO: test this
-    end
-
-    local page = self._stacktrace_pages[sess_id]
-    if page then
-        page:set_items({})
-    end
 end
 
 ---@param sess_id number
@@ -493,12 +484,6 @@ function DebugJob:_on_subsession_request(sess_id, session, request)
     }
 
     self:add_new_session(request.name, child_debug_args)
-end
-
----@param sess_id number
----@param session loop.dap.Session
-function DebugJob:_on_session_exit(sess_id, session)
-    self:_on_session_debuggee_exit(sess_id, session)
 end
 
 ---@param session loop.dap.Session|nil

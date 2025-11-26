@@ -328,7 +328,7 @@ end
 ---@param event loop.dap.proto.StoppedEvent|nil
 function Session:_on_stopped_event(event)
     local cur_state = self._fsm:curr_state()
-    if cur_state ~= "running" then
+    if cur_state == "disconnecting" or cur_state == "kill" or cur_state == "ended" then
         self:_notify_about_log("error", { "unexpected stopped event" })
         return
     end
