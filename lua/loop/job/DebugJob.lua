@@ -45,9 +45,14 @@ end
 
 ---@class loop.DebugJob.StartArgs
 ---@field name string
----@field debugger loop.dap.session.Args.DAP
----@field target loop.dap.session.Args.Target
+---@field dap loop.dap.session.Args.DAP
+---@field run_in_terminal boolean
+---@field stop_on_entry boolean
+---@field command string[]|string|nil
+---@field cwd string|nil
+---@field env table<string,string>|nil
 ---@field on_exit_handler fun(code : number)
+
 
 ---Starts a new terminal job.
 ---@param args loop.DebugJob.StartArgs
@@ -60,49 +65,67 @@ function DebugJob:start(args)
     assert(args.on_exit_handler)
     self._on_exit_handler = args.on_exit_handler
 
-    ---@type loop.dap.session.Args
-    local session_args = {
-        name = args.name,
-        debug_args = {
-            dap = args.debugger,
-            target = args.target,
-        },
-        tracker = function(...) end,
-        exit_handler = function() end,
+    local cmdparts        = strtools.cmd_to_string_array(args.command)
+    local target_program  = cmdparts[1]
+    local target_args     = { unpack(cmdparts, 2) }
+
+    ---@type loop.dap.proto.LaunchRequestArguments
+    local launch_args     = {
+        adapterID = args.dap.name,
+        columnsStartAt1 = true,
+        linesStartAt1 = true,
+        pathFormat = "path",
+        program = target_program,
+        args = target_args,
+        cwd = args.cwd,
+        env = args.env,
+        runInTerminal = args.run_in_terminal,
+        stopOnEntry = args.stop_on_entry,
     }
-    local session_id = self:add_new_session(session_args)
 
-    self._task_page = window.add_debug_task_page(args.name)
+    ---@type loop.dap.session.DebugArgs
+    local debug_args      = {
+        dap = args.dap,
+        request = "launch",
+        launch_args = launch_args,
+    }
 
-    self._task_page:add_lines({ "New debug session started: " ..
-    tostring(session_id) .. ' (' .. tostring(args.name) .. ')' })
+    self._task_page       = window.add_debug_task_page(args.name)
 
-    self:_refresh_debug_sessions_page()
+    self:add_new_session(args.name, debug_args)
 
     return true
 end
 
----@param session_args loop.dap.session.Args
+---@param name string
+---@param debug_args loop.dap.session.DebugArgs
 ---@param parent_sess_id number|nil
-function DebugJob:add_new_session(session_args, parent_sess_id)
-    local session_id = self._last_session_id + 1
+function DebugJob:add_new_session(name, debug_args, parent_sess_id)
+    local session_id      = self._last_session_id + 1
     self._last_session_id = session_id
-
 
     ---@param session loop.dap.Session
     ---@param event loop.session.TrackerEvent
     ---@param event_data any
-    local tracker             = function(session, event, event_data)
+    local tracker         = function(session, event, event_data)
         self:_on_session_event(session_id, session, event, event_data)
     end
 
-    session_args.tracker      = tracker
-    session_args.exit_handler = function(code)
+    local exit_handler    = function(code)
         self:_session_exit_handler(session_id, code)
     end
 
+
+    ---@type loop.dap.session.Args
+    local session_args = {
+        name = name,
+        debug_args = debug_args,
+        tracker = tracker,
+        exit_handler = exit_handler,
+    }
+
     -- start new session
-    local session             = Session:new()
+    local session      = Session:new()
     session:set_breakpoints(breakpoints.get_breakpoints())
 
     local started, start_err = session:start(session_args)
@@ -111,13 +134,22 @@ function DebugJob:add_new_session(session_args, parent_sess_id)
     end
 
     self._sessions[session_id] = session
+
+    self._task_page:add_lines({ "New debug session started: " ..
+    tostring(session_id) .. ' (' .. tostring(name) .. ')' })
+
+    self:_refresh_debug_sessions_page()
+
     return session_id
 end
 
 function DebugJob:_session_exit_handler(session_id, code)
     -- this runs in the fast event context, so use schedule
+    local session = self._sessions[session_id] -- capture it now
+    if not session then return end
+
     vim.schedule(function()
-        self:_on_session_exit(session_id, Session)
+        self:_on_session_exit(session_id, session)
     end)
     vim.schedule(function()
         if next(self._sessions) == nil then
@@ -240,9 +272,9 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
         return
     end
     if event == "subsession_request" then
-        ---@type loop.dap.session.Args
-        local args = event_data
-        self:_on_subsession_request(sess_id, session, args)
+        ---@type loop.dap.session.notify.SubsessionRequest
+        local request = event_data
+        self:_on_subsession_request(sess_id, session, request)
         return
     end
     error("unhandled dap session event: " .. event)
@@ -441,9 +473,26 @@ end
 
 ---@param sess_id number
 ---@param session loop.dap.Session
----@param newsession_args loop.dap.session.Args
-function DebugJob:_on_subsession_request(sess_id, session, newsession_args)
-    self:add_new_session(newsession_args, sess_id)
+---@param request loop.dap.session.notify.SubsessionRequest
+function DebugJob:_on_subsession_request(sess_id, session, request)
+    local dapreq_type = request.dap_request.request -- "launch" or "attach"
+    local dapreq_args = request.dap_request.arguments or {}
+
+    if dapreq_type ~= "launch" and dapreq_type ~= "attach" then
+        return request.on_failure("Unsupported request type: " .. tostring(dapreq_type))
+    end
+
+    self._task_page:add_lines({ "Starting subsession via startDebugging: " .. dapreq_type })
+
+    ---@type loop.dap.session.DebugArgs
+    local child_debug_args = {
+        dap         = request.dap_config,
+        request     = dapreq_type,
+        launch_args = dapreq_type == "launch" and dapreq_args or nil,
+        attach_args = dapreq_type == "attach" and dapreq_args or nil,
+    }
+
+    self:add_new_session(request.name, child_debug_args)
 end
 
 ---@param sess_id number

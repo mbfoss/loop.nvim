@@ -125,37 +125,31 @@ end
 ---@return loop.dap.session.Args.DAP|nil
 ---@return string|nil
 local function _get_dap_config(task)
-    local dbg = task.debug
-    if not dbg then
-        return nil, "Debugger section missing in task config"
+    local dbg_type = task.debug_type or "local"
+    if dbg_type ~= "local" and dbg_type ~= "remote" then
+        return nil, "invalid debug_type: " .. tostring(dbg_type)
     end
-    if dbg.type == "local" and not dbg.adapter then
+    if  dbg_type == "local" and not task.debug_adapter then
         return nil, "Debug adapter name missing in task config (local mode)"
     end
-    if dbg.type == "remote" and (not dbg.host or not dbg.port) then
+    if  dbg_type == "remote" and (not task.debugger_host or not task.debugger_port) then
         return nil, "Debug host/port missing in task config (remote mode)"
     end
-    local cfg = config.current.debuggers[dbg.adapter]
-    if dbg.type == "local" then
-        if not cfg then
-            return nil, "Invalid debugger name: " .. tostring(dbg.adapter) .. "'"
-        end
-        local cmd = strtools.cmd_to_string_array(cfg.command)
-        if #cmd == 0 or vim.fn.executable(cmd[1]) == 0 then
-            return nil, "Debugger command is not executable: '" .. tostring(cmd[1]) .. "'"
-        end
+    local debugger = config.current.debuggers[task.debug_adapter]
+    if  not debugger and dbg_type == "local" then
+        return nil, "Invalid debugger name: " .. tostring(task.debug_adapter) .. "'"
     end
     ---@type loop.dap.session.Args.DAP
     local dap = {
-        name = (dbg.type == "local" and dbg.adapter or "remote"),
-        type = dbg.type,
-        host = dbg.host,
-        port = dbg.port,
-        cmd = cfg and cfg.command or nil,
-        cwd = cfg and cfg.cwd or nil,
-        env = cfg and cfg.env or nil,
-        init_commands = cfg and cfg.init_commands or nil,
-        configure_post_launch = cfg and cfg.configure_post_launch or nil,
+        name = task.debug_adapter,
+        type = task.debug_type,
+        host = task.debugger_host,
+        port = task.debugger_port,
+        cmd = debugger and debugger.command or nil,
+        cwd = debugger and debugger.cwd or nil,
+        env = debugger and debugger.env or nil,
+        init_commands = debugger and debugger.init_commands or nil,
+        configure_post_launch = debugger and debugger.configure_post_launch or nil,
     }
     return dap, nil
 end
@@ -207,20 +201,16 @@ local function _create_debug_job(task, output_handler, exit_handler)
     if not dap then
         return nil, dap_error or "Invalid debugger config"
     end
-    local run_in_terminal = task.debug and task.debug.run_in_terminal or false
-    local stop_on_entry = task.debug and task.debug.stop_on_entry or false
+
     ---@type loop.DebugJob.StartArgs
     local args = {
         name = task.name,
-        debugger = dap,
-        target = {
-            name = task.name,
-            cmd = task.command,
-            cwd = task.cwd,
-            env = task.env,
-            run_in_terminal = run_in_terminal,
-            stop_on_entry = stop_on_entry
-        },
+        dap = dap,
+        cmd = task.command,
+        cwd = task.cwd,
+        env = task.env,
+        run_in_terminal = task.run_in_terminal or false,
+        stop_on_entry = task.stop_on_entry or false,
         output_handler = output_handler,
         on_exit_handler = exit_handler,
     }

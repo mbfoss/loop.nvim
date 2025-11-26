@@ -33,15 +33,6 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field init_commands string[]|nil
 ---@field configure_post_launch boolean|nil
 
----@class loop.dap.session.Args.Target
----@field name string
----@field cmd string|string[]
----@field env table<string,string>|nil
----@field cwd string
----@field run_in_terminal boolean
----@field stop_on_entry boolean
----@field terminate_on_disconnect boolean|nil
-
 ---@alias loop.session.TrackerEvent
 ---|"log"
 ---|"state"
@@ -55,8 +46,11 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
 
 ---@class loop.dap.session.DebugArgs
----@field dap loop.dap.session.Args.DAP
----@field target loop.dap.session.Args.Target|nil
+---@field dap          loop.dap.session.Args.DAP
+---@field request      "launch" | "attach"          -- mandatory
+---@field launch_args  loop.dap.proto.LaunchRequestArguments | nil                   -- used only for launch
+---@field attach_args  loop.dap.proto.AttachRequestArguments | nil                   -- used only for attach
+---@field terminate_debuggee boolean|nil
 
 ---@class loop.dap.session.Args
 ---@field name string
@@ -77,12 +71,14 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field _breakpoints_by_dap_id table<number,loop.dap.session.Breakpoint>
 ---@field _stopped_threads loop.dap.proto.Thread[]|nil
 ---@field _stopped_thread_id number|nil
+---@field _subsession_id number
 local Session = class()
 
 function Session:init()
     self._started = false
     self._breakpoints = {}
     self._breakpoints_by_dap_id = {}
+    self._subsession_id = 0
 end
 
 ---@param args loop.dap.session.Args
@@ -306,9 +302,17 @@ end
 
 ---@type fun(sef:loop.dap.Session, req_args, on_success:fun(resp_body:table), on_failure:fun(reason:string))
 function Session:_on_startDebugging_request(req_args, on_success, on_failure)
-    --TODO not implemented yet
-    self.log:warn("startDebugging reverse request received but subsessions not supported")
-    on_failure("Subsession debugging not supported by this client")
+    self._subsession_id = self._subsession_id + 1
+    local name = self:name() .. '/' .. tostring(self._subsession_id)
+    ---@class loop.dap.session.notify.SubsessionRequest
+    local data = {
+        name = name,
+        dap_config = vim.deepcopy(self._args.debug_args.dap),
+        dap_request = req_args,
+        on_success = on_success,
+        on_failure = on_failure
+    }
+    self:_notify_tracker("subsession_request", data)
 end
 
 ---@param event loop.dap.proto.OutputEvent|nil
@@ -420,24 +424,17 @@ end
 
 ---@param on_complete fun(success:boolean)
 function Session:_send_attach(on_complete)
-    if self._args.debug_args.target then
-        -- direct target, no attach
+    local target = self._args.debug_args
+    assert(target)
+
+    if target.request ~= "attach" then
         on_complete(true)
         return
     end
-    self._base_session:request_attach({
-        adapterID = self._args.debug_args.dap.name,
-        host = self._args.debug_args.dap.host,
-        port = self._args.debug_args.dap.port,
-        columnsStartAt1 = true,
-        linesStartAt1 = true,
-        pathFormat = "path",
-    }, function(err)
-        if err then
-            self:_notify_about_log("error", { "attach request error", tostring(err) })
-        end
-        on_complete(err == nil)
-    end)
+
+    assert(target.attach_args)
+    self.log:info('attaching: ' .. vim.inspect(target.attach_args))
+    self._base_session:request_attach(target.attach_args, function(err) on_complete(err == nil) end)
 end
 
 function Session:_on_initializing_state()
@@ -596,7 +593,7 @@ function Session:_send_breakpoints(on_complete)
                 end
                 if nb_success == nb_sources then
                     on_complete(true)
-                elseif nb_failures > 0. and nb_success + nb_failures == nb_sources then
+                elseif nb_failures > 0 and nb_success + nb_failures == nb_sources then
                     on_complete(false)
                 end
             end)
@@ -611,42 +608,17 @@ function Session:_send_configurationDone(on_complete)
 end
 
 function Session:_on_launching_state()
-    local target = self._args.debug_args.target
-    if not target then
-        if self._args.debug_args.dap.type == "remote" then
-            -- ok with remote session
-            return
-        end
-        -- should not happen
+    local target = self._args.debug_args
+    assert(target)
+
+    if target.request ~= "launch" then
         self._fsm:trigger(fsmdata.trigger.launch_resp_ok)
         return
     end
 
-    local cmdparts        = strtools.cmd_to_string_array(target.cmd)
-    local target_program  = cmdparts[1]
-    local target_args     = { unpack(cmdparts, 2) }
-    local run_in_terminal = target.run_in_terminal
-    local stop_on_entry   = target.stop_on_entry
-
-    if run_in_terminal and not self._capabilities["supportsRunInTerminalRequest"] then
-        self.log:error('run_in_terminal not supported by this adapter')
-        self._fsm:trigger(fsmdata.trigger.launch_resp_error)
-        return
-    end
-
+    assert(target.launch_args)
     self.log:info('launching: ' .. vim.inspect(target))
-    self._base_session:request_launch({
-            adapterID = self._args.debug_args.dap.name,
-            columnsStartAt1 = true,
-            linesStartAt1 = true,
-            pathFormat = "path",
-            program = target_program,
-            args = target_args,
-            cwd = target and target.cwd or nil,
-            env = target and target.env or nil,
-            runInTerminal = run_in_terminal,
-            stopOnEntry = stop_on_entry,
-        },
+    self._base_session:request_launch(target.launch_args,
         function(err)
             self._fsm:trigger(err == nil and fsmdata.trigger.launch_resp_ok or fsmdata.trigger.launch_resp_error)
         end)
@@ -657,10 +629,7 @@ function Session:_on_running_state()
 end
 
 function Session:_on_disconnecting_state()
-    local terminate_debuggee = false
-    if self._args.debug_args.target then
-        terminate_debuggee = self._args.debug_args.target.terminate_on_disconnect or false
-    end
+    local terminate_debuggee = self._args.debug_args.terminate_debuggee
 
     self._stopped_threads = {}
     self:_notify_about_state()
