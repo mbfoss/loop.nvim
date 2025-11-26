@@ -51,7 +51,13 @@ function Tcp:_connect_with_resolution()
     ---@diagnostic disable-next-line: undefined-field
     uv.getaddrinfo(host, nil, { family = "inet", socktype = "stream" }, function(err, res)
         if err or not res or #res == 0 then
-            self.log:error("Failed to resolve '" .. host .. "': " .. (err or "no address"))
+            local msg = "Failed to resolve '" .. host .. "': " .. (err or "no address")
+            self.log:error(msg)
+            if self.on_output then
+                vim.schedule(function()
+                    self.on_output(msg .. "\n", true) -- add this line
+                end)
+            end
             self:_terminate(1)
             return
         end
@@ -74,17 +80,20 @@ function Tcp:_connect_with_resolution()
     end)
 end
 
--- Actually perform the TCP connection
 function Tcp:_do_connect(target_host)
     self.log:info("Connecting to " .. target_host .. ":" .. self.port)
-
     self.socket:connect(target_host, self.port, function(err)
         if err then
-            self.log:error("Connection failed: " .. err)
+            local msg = "Connection failed to " .. target_host .. ":" .. self.port .. ": " .. err
+            self.log:error(msg)
+            if self.on_output then
+                vim.schedule(function()
+                    self.on_output(msg .. "\n", true) -- this is the only new line
+                end)
+            end
             self:_terminate(1)
             return
         end
-
         self.log:info("Connected successfully")
         self:_start_reading()
     end)

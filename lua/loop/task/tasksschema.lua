@@ -52,33 +52,13 @@ return [[
             "items": { "type": "string", "minLength": 1 },
             "description": "Optional list of dependent task names"
           },
-          "debug_type": {
-            "type": [ "string", "null" ],
-            "enum": [ "local", "remote", null ],
-            "default": "local",
-            "description": "Only relevant for type = 'debug'"
-          },
-          "debug_adapter": {
+          "debugger": {
             "type": [ "string", "null" ],
             "description": "Required for type = 'debug'. Name of the debug adapter."
           },
-          "run_in_terminal": {
-            "type": "boolean",
-            "default": false,
-            "description": "Only for type = 'debug'"
-          },
-          "stop_on_entry": {
-            "type": "boolean",
-            "default": false,
-            "description": "Only for type = 'debug'"
-          },
-          "debugger_host": {
-            "type": [ "string", "null" ],
-            "description": "Only for debug_type = 'remote'"
-          },
-          "debugger_port": {
-            "type": [ "number", "null" ],
-            "description": "Only for debug_type = 'remote'"
+          "debugger_args": {
+            "type": "object",
+            "additionalProperties": true,
           }
         },
         "required": [ "name", "type" ],

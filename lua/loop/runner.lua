@@ -122,44 +122,6 @@ local function _make_output_parser(task)
 end
 
 ---@param task loop.Task
----@return loop.dap.session.Args.DAP|nil
----@return string|nil
-local function _get_dap_config(task)
-    local dbg_type = task.debug_type or "local"
-    if dbg_type ~= "local" and dbg_type ~= "remote" then
-        return nil, "invalid debug_type: " .. tostring(dbg_type)
-    end
-    if  dbg_type == "local" and not task.debug_adapter then
-        return nil, "Debug adapter name missing in task config (local mode)"
-    end
-    if  dbg_type == "remote" and (not task.debugger_host or not task.debugger_port) then
-        return nil, "Debug host/port missing in task config (remote mode)"
-    end
-    local debugger = config.current.debuggers[task.debug_adapter]
-    if dbg_type == "local" then
-        if  not debugger then
-            return nil, "Invalid debugger name: " .. tostring(task.debug_adapter) .. "'"
-        end 
-        if not debugger.command or debugger.command == "" then
-            return nil, "Missing debugger command for " .. tostring(task.debug_adapter) .. "'"
-        end 
-    end
-    ---@type loop.dap.session.Args.DAP
-    local dap = {
-        name = task.debug_adapter,
-        type = task.debug_type,
-        host = task.debugger_host,
-        port = task.debugger_port,
-        cmd = debugger and debugger.command or nil,
-        cwd = debugger and debugger.cwd or nil,
-        env = debugger and debugger.env or nil,
-        init_commands = debugger and debugger.init_commands or nil,
-        configure_post_launch = debugger and debugger.configure_post_launch or nil,
-    }
-    return dap, nil
-end
-
----@param task loop.Task
 ---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
 ---@param exit_handler fun(code : number)
 local function _create_vimcmd_job(task, output_handler, exit_handler)
@@ -201,22 +163,46 @@ end
 ---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
 ---@param exit_handler fun(code : number)
 local function _create_debug_job(task, output_handler, exit_handler)
-    ---@type loop.dap.session.Args.DAP|nil,string|nil
-    local dap, dap_error = _get_dap_config(task)
-    if not dap then
-        return nil, dap_error or "Invalid debugger config"
+    -- Validate task
+    if not task or type(task) ~= "table" then
+        return nil, "task is required and must be a table"
+    end
+    if task.type ~= "debug" then
+        return nil, "task.type must be 'debug'"
+    end
+    if not task.debugger or task.debugger == "" then
+        return nil, "task.debugger is required for debug tasks"
     end
 
+    ---@type loop.Config.Debugger
+    local dbg_config = require("loop.config").current.debuggers[task.debugger]
+    if not dbg_config then
+        return nil, ("no debugger config found for '%s'"):format(task.debugger)
+    end
+
+    -- Resolve request_args using functions if needed
+    local resolved_args = vim.tbl_deep_extend("force", {}, dbg_config.request_args or {})
+    for k, v in pairs(resolved_args) do
+        if type(v) == "function" then
+            local ok, result = pcall(v, task)
+            if not ok then
+                return nil, ("failed to resolve debugger_args.%s: %s"):format(k, result)
+            end
+            resolved_args[k] = result
+        end
+    end
+
+    -- Build DebugJob start args
     ---@type loop.DebugJob.StartArgs
     local args = {
         name = task.name,
-        dap = dap,
-        cmd = task.command,
-        cwd = task.cwd,
-        env = task.env,
-        run_in_terminal = task.run_in_terminal or false,
-        stop_on_entry = task.stop_on_entry or false,
-        output_handler = output_handler,
+        debug_args = {
+            dap = dbg_config.dap,
+            request = dbg_config.request,
+            launch_args = (dbg_config.request == "launch") and resolved_args or nil,
+            attach_args = (dbg_config.request == "attach") and resolved_args or nil,
+            terminate_debuggee = dbg_config.terminate_debuggee,
+        },
         on_exit_handler = exit_handler,
     }
     local job = DebugJob:new()
@@ -236,7 +222,7 @@ local function _start_one_task(task, task_exit_handler)
             return nil, "Invalid or empty command"
         end
     end
-    
+
     local output_parser = _make_output_parser(task)
 
     ---@param lines string[]

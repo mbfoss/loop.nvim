@@ -7,6 +7,7 @@ return {
         quickfix_matcher = "luacheck",
         depends_on = {},
     },
+
     {
         name = "Build ${FILENAME}",
         type = "tool",
@@ -15,6 +16,7 @@ return {
         quickfix_matcher = "gcc",
         depends_on = {},
     },
+
     {
         name = "Run ${FILENAME}",
         type = "app",
@@ -22,15 +24,59 @@ return {
         cwd = "${PROJDIR}",
         depends_on = { "Build ${FILENAME}" },
     },
+
     {
-        name = "Debug ${FILENAME}",
+        name = "Debug ${FILENAME} (lldb)",
         type = "debug",
-        debug_type = "local",
-        debug_adapter = "dap_exe",
-        run_in_terminal = false,
-        stop_on_entry = true,
         command = "${FILEROOT}.out",
         cwd = "${PROJDIR}",
+        debugger = "lldb",
+        debugger_args = {
+            stopOnEntry = true,
+            environment = {},
+            sourceLanguages = { "cpp" },
+        },
         depends_on = { "Build ${FILENAME}" },
-    }
+    },
+
+    {
+        name = "Debug Node.js (js-debug)",
+        type = "debug",
+        command = nil,
+        cwd = "${PROJDIR}",
+        debugger = "js-debug",
+        debugger_args = {
+            request = "launch",
+            runtimeExecutable = "node",
+            program = "${PROJDIR}/main.js",
+            stopOnEntry = true,
+            attachSimplePort = 0,
+            __restart = true,
+            sourceMaps = true,
+        },
+    },
+
+    {
+        name = "Attach to Node --inspect",
+        type = "debug",
+        command = nil,
+        debugger = "js-debug",
+        debugger_args = {
+            request = "attach",
+            port = 9229,
+            restart = true,
+        },
+    },
+
+    {
+        name = "Debug Python",
+        type = "debug",
+        command = nil,
+        debugger = "debugpy",
+        debugger_args = {
+            program = "${file}",
+            stopOnEntry = true,
+            justMyCode = false,
+        },
+    },
 }

@@ -44,12 +44,7 @@ end
 
 ---@class loop.DebugJob.StartArgs
 ---@field name string
----@field dap loop.dap.session.Args.DAP
----@field run_in_terminal boolean
----@field stop_on_entry boolean
----@field cmd string[]|string|nil
----@field cwd string|nil
----@field env table<string,string>|nil
+---@field debug_args loop.dap.session.DebugArgs
 ---@field on_exit_handler fun(code : number)
 
 
@@ -64,34 +59,9 @@ function DebugJob:start(args)
     assert(args.on_exit_handler)
     self._on_exit_handler = args.on_exit_handler
 
-    local cmdparts        = strtools.cmd_to_string_array(args.cmd)
-    local target_program  = cmdparts[1]
-    local target_args     = { unpack(cmdparts, 2) }
+    self._task_page = window.add_debug_task_page(args.name)
 
-    ---@type loop.dap.proto.LaunchRequestArguments
-    local launch_args     = {
-        adapterID = args.dap.name,
-        columnsStartAt1 = true,
-        linesStartAt1 = true,
-        pathFormat = "path",
-        program = target_program,
-        args = target_args,
-        cwd = args.cwd,
-        env = args.env,
-        runInTerminal = args.run_in_terminal,
-        stopOnEntry = args.stop_on_entry,
-    }
-
-    ---@type loop.dap.session.DebugArgs
-    local debug_args      = {
-        dap = args.dap,
-        request = "launch",
-        launch_args = launch_args,
-    }
-
-    self._task_page       = window.add_debug_task_page(args.name)
-
-    self:add_new_session(args.name, debug_args)
+    self:add_new_session(args.name, args.debug_args)
 
     return true
 end
@@ -144,7 +114,6 @@ end
 
 function DebugJob:_session_exit_handler(session_id, code)
     vim.schedule(function()
-
         if self._current_session == self._sessions[session_id] then
             local _, next = next(self._sessions or {})
             self:_set_current_session(next) -- TODO: test this

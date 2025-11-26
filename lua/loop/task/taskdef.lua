@@ -8,9 +8,5 @@
 ---@field env table<string,string>? # optional environment variables
 ---@field quickfix_matcher string|nil
 ---@field depends_on string[]? # optional list of dependent task names
----@field debug_type "local"|"remote"|nil
----@field debug_adapter string|nil
----@field run_in_terminal boolean|nil
----@field stop_on_entry boolean|nil
----@field debugger_host string|nil
----@field debugger_port number|nil
+---@field debugger string|nil
+---@field debugger_args table<string,any>|nil

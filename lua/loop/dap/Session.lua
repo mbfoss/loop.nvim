@@ -30,7 +30,6 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field cmd string|string[]|nil
 ---@field env table<string,string>|nil
 ---@field cwd string|nil
----@field init_commands string[]|nil
 ---@field configure_post_launch boolean|nil
 
 ---@alias loop.session.TrackerEvent
@@ -61,7 +60,6 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@class loop.dap.Session
 ---@field new fun(self: loop.dap.Session) : loop.dap.Session
 ---@field _args loop.dap.session.Args
----@field _dap_init_commands string[]|nil
 ---@field _dap_configure_post_launch boolean|nil
 ---@field _capabilities table<string,string>
 ---@field _output_handler fun(msg_body:table)
@@ -96,7 +94,6 @@ function Session:start(args)
 
     self.log = require('loop.tools.Logger').create_logger("dap.session[" .. args.name .. ']')
 
-    self._dap_init_commands = dap.init_commands or {}
     self._dap_configure_post_launch = dap.configure_post_launch
 
     self._capabilities = {}
@@ -143,7 +140,7 @@ function Session:start(args)
     else
         if not dap.host or dap.host == "" or not dap.port then
             return false, "Missing remote DAP host name or port"
-        end        
+        end
         self._base_session = BaseSession:new(args.name, {
             dap_mode = "remote",
             dap_host = dap.host,
@@ -466,46 +463,10 @@ function Session:_on_waiting_initialized_state()
 end
 
 ---@param on_complete fun(success:boolean)
-function Session:_send_init_commands(on_complete)
-    local nb_commands = self._dap_init_commands and #self._dap_init_commands or 0
-    local nb_success = 0
-    local nb_failures = 0
-
-    if nb_commands == 0 then
-        on_complete(true)
-        return
-    end
-
-    for _, command in ipairs(self._dap_init_commands) do
-        self.log:debug("sending init command: " .. tostring(command))
-        self._base_session:request_custom({ command = command },
-            function(err, resp)
-                if err == nil and resp then
-                    nb_success = nb_success + 1
-                else
-                    nb_failures = nb_failures + 1
-                    self:_notify_about_log("error", { "init command error", tostring(command), err or "" })
-                end
-                if nb_success == nb_commands then
-                    on_complete(true)
-                elseif nb_failures > 0 and nb_success + nb_failures == nb_commands then
-                    on_complete(false)
-                end
-            end)
-    end
-end
-
----@param on_complete fun(success:boolean)
 function Session:_send_configuration(on_complete)
     self:_send_breakpoints(function(bpts_ok)
         if bpts_ok then
-            self:_send_init_commands(function(inicmds_ok)
-                if inicmds_ok then
-                    self:_send_configurationDone(on_complete)
-                else
-                    on_complete(false)
-                end
-            end)
+            self:_send_configurationDone(on_complete)
         else
             on_complete(false)
         end
