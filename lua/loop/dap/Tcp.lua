@@ -23,13 +23,79 @@ function Tcp:init(name, opts)
     self.port = opts.port
     self.on_output = opts.on_output
     self.on_exit = opts.on_exit
-
     self.exited = false
     self.killed = false
-
     self.socket = uv.new_tcp()
-    self:_connect()
+
+    -- Resolve host → IP if it's not already an IP address
+    self:_resolve_and_connect()
     return self
+end
+
+-- Internal: resolve host and connect
+function Tcp:_resolve_and_connect()
+    local host = self.host
+
+    -- Fast path: already an IP address (IPv4 or IPv6)
+    if uv.net.is_ip(host) then
+        self.ip = host
+        self:_connect()
+        return
+    end
+
+    -- Otherwise: resolve hostname
+    self.log:debug("Resolving host: " .. host)
+    uv.getaddrinfo(host, nil, { family = "inet" }, function(err, res)
+        if err or not res or #res == 0 then
+            self.log:error("Failed to resolve host '" .. host .. "': " .. (err or "no addresses"))
+            if self.on_exit then
+                vim.schedule(function()
+                    self.on_exit(1, 0)
+                end)
+            end
+            return
+        end
+
+        -- Use first IPv4 address (you can prefer IPv6 if you want)
+        local addr = res[1]
+        if addr.family == "inet6" then
+            for _, r in ipairs(res) do
+                if r.family == "inet" then
+                    addr = r
+                    break
+                end
+            end
+        end
+
+        self.ip = addr.addr
+        self.log:info("Resolved " .. host .. " → " .. self.ip)
+
+        -- Now connect using resolved IP
+        vim.schedule(function()
+            if not self.killed then
+                self:_connect()
+            end
+        end)
+    end)
+end
+
+-- Optional: graceful shutdown
+function Tcp:kill()
+    self.killed = true
+    if self.socket then
+        self.socket:close()
+    end
+end
+
+function Tcp:_close()
+    if not self.exited then
+        self.exited = true
+        if self.on_exit then
+            vim.schedule(function()
+                self.on_exit(0, 0)
+            end)
+        end
+    end
 end
 
 -------------------------------------------------
@@ -108,10 +174,6 @@ function Tcp:close(timeout)
             end
         end)
     end
-end
-
-function Tcp:kill()
-    self:close()
 end
 
 -------------------------------------------------

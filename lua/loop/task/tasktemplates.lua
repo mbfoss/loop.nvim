@@ -25,7 +25,7 @@ return {
     {
         name = "Debug ${FILENAME}",
         type = "debug",
-        debug_debug = "local",
+        debug_type = "local",
         debug_adapter = "dap_exe",
         run_in_terminal = false,
         stop_on_entry = true,

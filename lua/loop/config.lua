@@ -30,6 +30,10 @@ M.defaut_config = {
             command = "python -m debugpy.adapter",
             configure_post_launch = true
         },
+        dapjs = {
+            command = "node /Users/Dev/Projects/js-debug/src/dapDebugServer.js",
+            --configure_post_launch = true
+        },
     }
 }
 

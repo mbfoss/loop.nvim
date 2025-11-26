@@ -402,6 +402,10 @@ function Session:_send_initialize(on_complete)
         linesStartAt1 = true,
         columnsStartAt1 = true,
         pathFormat = "path",
+        supportsStartDebuggingRequest = true,
+        supportsRunInTerminalRequest = true,
+        supportsArgsCanBeInterpretedByShell = false,
+        supportsANSIStyling = true
     }
     self._base_session:request_initialize(req_args, function(err, resp)
         if resp then

@@ -231,10 +231,12 @@ end
 ---@return loop.job.Job|nil, string|nil
 ---@param task_exit_handler fun(exit_code : number)
 local function _start_one_task(task, task_exit_handler)
-    if not task.command or #task.command == 0 then
-        return nil, "Invalid or empty command"
+    if task.type ~= "debug" then
+        if not task.command or #task.command == 0 then
+            return nil, "Invalid or empty command"
+        end
     end
-
+    
     local output_parser = _make_output_parser(task)
 
     ---@param lines string[]
