@@ -160,6 +160,21 @@ function Session:start(args)
         return false, "Failed to start debugger process"
     end
 
+    ---@type loop.dap.fsmdata.StateHandlers
+    local state_handlers = {
+        initializing = function(_, _) self:_on_initializing_state() end,
+        waiting_initialized = function(_, _) self:_on_waiting_initialized_state() end,
+        configuring1 = function(_, _) self:_on_configuring1_state() end,
+        launching = function(_, _) self:_on_launching_state() end,
+        configuring2 = function(_, _) self:_on_configuring2_state() end,
+        running = function(_, _) self:_on_running_state() end,
+        disconnecting = function(_, _) self:_on_disconnecting_state() end,
+        kill = function(_, _) self:_on_kill_state() end,
+        ended = function(_, _) self:_on_ended_state() end,
+    }
+    -- start the FSM
+    self._fsm = FSM:new(args.name, fsmdata.create_fsm_data(state_handlers))
+
     self._base_session:set_event_handler("module", function() end)
     self._base_session:set_event_handler("output", function(msg_body) self:_on_output_event(msg_body) end)
     self._base_session:set_event_handler("initialized", function(msg_body) self:_on_initialized_event(msg_body) end)
@@ -176,21 +191,13 @@ function Session:start(args)
         end
     )
 
+    self._base_session:set_reverse_request_handler("startDebugging",
+        function(req_args, on_success, on_failure)
+            assert(req_args)
+            self:_on_startDebugging_request(req_args, on_success, on_failure)
+        end
+    )
 
-    ---@type loop.dap.fsmdata.StateHandlers
-    local state_handlers = {
-        initializing = function(_, _) self:_on_initializing_state() end,
-        configuring1 = function(_, _) self:_on_configuring1_state() end,
-        launching = function(_, _) self:_on_launching_state() end,
-        configuring2 = function(_, _) self:_on_configuring2_state() end,
-        running = function(_, _) self:_on_running_state() end,
-        disconnecting = function(_, _) self:_on_disconnecting_state() end,
-        kill = function(_, _) self:_on_kill_state() end,
-        ended = function(_, _) self:_on_ended_state() end,
-    }
-
-    -- start the FSM
-    self._fsm = FSM:new(args.name, fsmdata.create_fsm_data(state_handlers))
     vim.schedule(function()
         self._fsm:start()
     end)
@@ -297,6 +304,13 @@ function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
     self:_notify_tracker("runInTerminal_request", data)
 end
 
+---@type fun(sef:loop.dap.Session, req_args, on_success:fun(resp_body:table), on_failure:fun(reason:string))
+function Session:_on_startDebugging_request(req_args, on_success, on_failure)
+    --TODO not implemented yet
+    self.log:warn("startDebugging reverse request received but subsessions not supported")
+    on_failure("Subsession debugging not supported by this client")
+end
+
 ---@param event loop.dap.proto.OutputEvent|nil
 function Session:_on_output_event(event)
     self:_notify_tracker("output", event)
@@ -394,8 +408,6 @@ function Session:_send_initialize(on_complete)
                 if is_lldb and vim.fn.has("mac") == 1 then
                     self.log:info("macos lldb")
                     self._dap_configure_post_launch = true
-                    -- workaround for macos lldb (intialized not sent)
-                    self._fsm:trigger(fsmdata.trigger.initialized)
                 end
             end
             on_complete(true)
@@ -408,43 +420,47 @@ end
 
 ---@param on_complete fun(success:boolean)
 function Session:_send_attach(on_complete)
-    if not self._args.debug_args.target then
-        self._base_session:request_attach({
-            adapterID = self._args.debug_args.dap.name,
-            host = self._args.debug_args.dap.host,
-            port = self._args.debug_args.dap.port,
-            columnsStartAt1 = true,
-            linesStartAt1 = true,
-            pathFormat = "path",
-        }, function(err)
-            if err then
-                self:_notify_about_log("error", { "attach request error", tostring(err) })
-            end
-            on_complete(err == nil)
-        end)
+    if self._args.debug_args.target then
+        -- direct target, no attach
+        on_complete(true)
         return
     end
-    return
+    self._base_session:request_attach({
+        adapterID = self._args.debug_args.dap.name,
+        host = self._args.debug_args.dap.host,
+        port = self._args.debug_args.dap.port,
+        columnsStartAt1 = true,
+        linesStartAt1 = true,
+        pathFormat = "path",
+    }, function(err)
+        if err then
+            self:_notify_about_log("error", { "attach request error", tostring(err) })
+        end
+        on_complete(err == nil)
+    end)
 end
 
 function Session:_on_initializing_state()
     local on_complete = function(success)
-        if not success then
-            self._fsm:trigger(fsmdata.trigger.initialize_resp_err)
-        end
+        self._fsm:trigger(success and
+            fsmdata.trigger.initialize_resp_ok or
+            fsmdata.trigger.initialize_resp_err)
     end
 
     self:_send_initialize(function(success)
-        if success and self._args.debug_args.dap.type == "remote" then
-            if self._args.debug_args.target then
-            --self:_send_launch(on_complete)
-            else
-                self:_send_attach(on_complete) --TODO: check if this is sent at the right moment
-            end
-        else
-            on_complete(success)
-        end
+        on_complete(success)
     end)
+end
+
+function Session:_on_waiting_initialized_state()
+    self:_notify_about_state()
+    -- workaround for macos lldb (intialized not sent)
+    local is_lldb = self._capabilities.__lldb ~= nil
+    if is_lldb and vim.fn.has("mac") == 1 then
+        self.log:info("macos lldb")
+        self._dap_configure_post_launch = true
+        self._fsm:trigger(fsmdata.trigger.initialized)
+    end
 end
 
 ---@param on_complete fun(success:boolean)
@@ -470,7 +486,7 @@ function Session:_send_init_commands(on_complete)
                 end
                 if nb_success == nb_commands then
                     on_complete(true)
-                elseif nb_failures > 0. and nb_success + nb_failures == nb_commands then
+                elseif nb_failures > 0 and nb_success + nb_failures == nb_commands then
                     on_complete(false)
                 end
             end)
@@ -496,14 +512,21 @@ end
 
 function Session:_on_configuring1_state()
     local on_complete = function(success)
-        self._fsm:trigger(success and fsmdata.trigger.configure1_success or fsmdata.trigger.configure1_error)
+        self._fsm:trigger(success and
+            fsmdata.trigger.configure1_success or
+            fsmdata.trigger.configure1_error)
     end
-
-    if self._dap_configure_post_launch == true then
-        on_complete(true)
-    else
+    self:_send_attach(function(attach_ok)
+        if not attach_ok then
+            on_complete(false)
+            return
+        end
+        if self._dap_configure_post_launch == true then
+            on_complete(true)
+            return
+        end
         self:_send_configuration(on_complete)
-    end
+    end)
 end
 
 function Session:_on_configuring2_state()
@@ -655,7 +678,6 @@ function Session:_on_kill_state()
 end
 
 function Session:_on_ended_state()
-    self._fsm:trigger(fsmdata.trigger.killed)
 end
 
 ---@return loop.dap.proto.Thread[]|nil
@@ -678,7 +700,6 @@ end
 ---@param args loop.dap.proto.StackTraceArguments
 ---@param callback fun(err: string|nil, body: loop.dap.proto.StackTraceResponse|nil)|nil
 function Session:request_stackTrace(args, callback)
-    self._base_session:request_stackTrace(args, callback)
     self._base_session:request_stackTrace(args, callback)
 end
 
