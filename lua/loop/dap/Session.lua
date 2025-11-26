@@ -151,7 +151,7 @@ function Session:start(args)
     end
 
     if not self._base_session:running() then
-        return false, "Failed to start debugger process"
+        return false, "debug adapter initialization error"
     end
 
     ---@type loop.dap.fsmdata.StateHandlers
@@ -298,7 +298,7 @@ function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
     self:_notify_tracker("runInTerminal_request", data)
 end
 
----@type fun(sef:loop.dap.Session, req_args, on_success:fun(resp_body:table), on_failure:fun(reason:string))
+---@type fun(sef:loop.dap.Session, req_args, on_success:fun(resp_body:any), on_failure:fun(reason:string))
 function Session:_on_startDebugging_request(req_args, on_success, on_failure)
     self._subsession_id = self._subsession_id + 1
     local name = self:name() .. '/' .. tostring(self._subsession_id)
@@ -579,6 +579,14 @@ function Session:_on_launching_state()
     if target.request ~= "launch" then
         self._fsm:trigger(fsmdata.trigger.launch_resp_ok)
         return
+    end
+
+    vim.notify(vim.inspect(target.launch_args))
+    if not target.launch_args or next(target.launch_args) == nil then
+        -- node-js subsession have empty launch request
+        -- launch should not be sent
+        self._fsm:trigger(fsmdata.trigger.launch_resp_ok)
+        return        
     end
 
     assert(target.launch_args)

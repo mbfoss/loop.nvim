@@ -36,145 +36,122 @@ end
 
 ---@type loop.Config
 M.defaut_config = {
-  debug = {
-    sign_priority = 12,
-    stack_levels_limit = 100,
-    auto_switch_page = true,
-  },
+    debug = {
+        sign_priority = 12,
+        stack_levels_limit = 100,
+        auto_switch_page = true,
+    },
 
-  debuggers = {
-    -- ──────────────────────────────────────────────────────────────
-    -- LLDB (C/C++/Rust/ObjC) – best experience
-    -- ──────────────────────────────────────────────────────────────
-    lldb = {
-      dap = {
-        name = "lldb",
-        type = "local",
-        cmd = { "lldb-dap" },  -- or full path if needed
-      },
-      request = "launch",
-      request_args = { 
-        program = get_task_program,
-        args = get_task_args,
-        cwd = get_task_cwd,
-        stopOnEntry = false,
-        env = function(task) return task.env end,
-        sourceLanguages = { "cpp", "c", "rust", "objc" },
-        initCommands = {
-          "settings set target.input-path /dev/null",
-          "settings set target.output-path /dev/null",
+    debuggers = {
+        -- ──────────────────────────────────────────────────────────────
+        -- LLDB (C/C++/Rust/ObjC) – best experience
+        -- ──────────────────────────────────────────────────────────────
+        lldb = {
+            dap = {
+                name = "lldb",
+                type = "local",
+                cmd = { "lldb-dap" }, -- or full path if needed
+            },
+            request = "launch",
+            request_args = {
+                request = "launch",
+                type = "pwa-node",
+                program = get_task_program,
+                args = get_task_args,
+                cwd = get_task_cwd,
+                stopOnEntry = false,
+                env = function(task) return task.env end,
+                sourceLanguages = { "cpp", "c", "rust", "objc" },
+                initCommands = {
+                    "settings set target.input-path /dev/null",
+                    "settings set target.output-path /dev/null",
+                },
+            },
+            terminate_debuggee = true,
         },
-      },
-      terminate_debuggee = true,
-    },
 
-    -- ──────────────────────────────────────────────────────────────
-    -- js-debug (Node.js, Bun, Deno, Chrome) – full subsession magic
-    -- ──────────────────────────────────────────────────────────────
-    ["js-debug-local"] = {
-      dap = {
-        name = "js-debug",
-        type = "local",
-        cmd = { "node", "/Users/Dev/Projects/js-debug/src/dapDebugServer.js" },
-        cwd = "/Users/Dev/Projects/js-debug/src/"
-      },
-      request = "launch",
-      request_args = {
-        runtimeExecutable = "node",
-        --program = function(task) return task.command or "" end,
-        cwd = get_task_cwd,
-        stopOnEntry = true,
-        sourceMaps = true,
-        resolveSourceMapLocations = true,
-        outFiles = { "${workspaceFolder}/**/*.js" },
-        skipFiles = { "<node_internals>/**" },
-        attachSimplePort = 0,        -- critical for startDebugging + subsessions
-        __restart = true,           -- enables full multi-session support
-      },
-      terminate_debuggee = true,
-    },
+        ["js-debug"] = {
+            dap = {
+                name = "js-debug",
+                type = "remote",
+                host = "::1",
+                port = 8123
+            },
+            request = "launch",
+            request_args = {
+                type = "pwa-node",
+                request = "launch",
+                runtimeExecutable = "node",
+                --program = function(task) return task.command or "" end,
+                cwd = get_task_cwd,
+                stopOnEntry = true,
+                sourceMaps = true,
+                --resolveSourceMapLocations = true,
+                --outFiles = { "${workspaceFolder}/**/*.js" },
+                --skipFiles = { "<node_internals>/**" },
+                --attachSimplePort = 0,        -- critical for startDebugging + subsessions
+            },
+            terminate_debuggee = true,
+        },
 
-    ["js-debug"] = {
-      dap = {
-        name = "js-debug",
-        type = "remote",
-        host = "::1",
-        port = 8123
-      },
-      request = "launch",
-      request_args = {
-        runtimeExecutable = "node",
-        --program = function(task) return task.command or "" end,
-        cwd = get_task_cwd,
-        stopOnEntry = true,
-        sourceMaps = true,
-        resolveSourceMapLocations = true,
-        outFiles = { "${workspaceFolder}/**/*.js" },
-        skipFiles = { "<node_internals>/**" },
-        attachSimplePort = 0,        -- critical for startDebugging + subsessions
-        __restart = true,           -- enables full multi-session support
-      },
-      terminate_debuggee = true,
-    },
+        -- ──────────────────────────────────────────────────────────────
+        -- debugpy (Python) – rock solid
+        -- ──────────────────────────────────────────────────────────────
+        debugpy = {
+            dap = {
+                name = "debugpy",
+                type = "local",
+                cmd = { "python3", "-m", "debugpy.adapter" },
+            },
+            request = "launch",
+            request_args = {
+                program = function(task) return task.command or "${file}" end,
+                cwd = get_task_cwd,
+                stopOnEntry = true,
+                justMyCode = false,
+                console = "integratedTerminal",
+                env = function(task) return task.env end,
+            },
+            terminate_debuggee = true,
+        },
 
-    -- ──────────────────────────────────────────────────────────────
-    -- debugpy (Python) – rock solid
-    -- ──────────────────────────────────────────────────────────────
-    debugpy = {
-      dap = {
-        name = "debugpy",
-        type = "local",
-        cmd = { "python3", "-m", "debugpy.adapter" },
-      },
-      request = "launch",
-      request_args = {
-        program = function(task) return task.command or "${file}" end,
-        cwd = get_task_cwd,
-        stopOnEntry = true,
-        justMyCode = false,
-        console = "integratedTerminal",
-        env = function(task) return task.env end,
-      },
-      terminate_debuggee = true,
-    },
+        -- ──────────────────────────────────────────────────────────────
+        -- netcoredbg (.NET Core / .NET 5+)
+        -- ──────────────────────────────────────────────────────────────
+        netcoredbg = {
+            dap = {
+                name = "netcoredbg",
+                type = "local",
+                cmd = { "netcoredbg", "--interpreter=vscode" },
+            },
+            request = "launch",
+            request_args = {
+                program = get_task_program,
+                args = get_task_args,
+                cwd = get_task_cwd,
+                stopOnEntry = true,
+                env = function(task) return task.env end,
+            },
+            terminate_debuggee = true,
+        },
 
-    -- ──────────────────────────────────────────────────────────────
-    -- netcoredbg (.NET Core / .NET 5+)
-    -- ──────────────────────────────────────────────────────────────
-    netcoredbg = {
-      dap = {
-        name = "netcoredbg",
-        type = "local",
-        cmd = { "netcoredbg", "--interpreter=vscode" },
-      },
-      request = "launch",
-      request_args = {
-        program = get_task_program,
-        args = get_task_args,
-        cwd = get_task_cwd,
-        stopOnEntry = true,
-        env = function(task) return task.env end,
-      },
-      terminate_debuggee = true,
+        -- ──────────────────────────────────────────────────────────────
+        -- bashdb (Bash scripts)
+        -- ──────────────────────────────────────────────────────────────
+        bashdb = {
+            dap = {
+                name = "bashdb",
+                type = "local",
+                cmd = { "bashdb", "--adapter" },
+            },
+            request = "launch",
+            request_args = {
+                program = get_task_program,
+                cwd = get_task_cwd,
+                stopOnEntry = true,
+            },
+        },
     },
-
-    -- ──────────────────────────────────────────────────────────────
-    -- bashdb (Bash scripts)
-    -- ──────────────────────────────────────────────────────────────
-    bashdb = {
-      dap = {
-        name = "bashdb",
-        type = "local",
-        cmd = { "bashdb", "--adapter" },
-      },
-      request = "launch",
-      request_args = {
-        program = get_task_program,
-        cwd = get_task_cwd,
-        stopOnEntry = true,
-      },
-    },
-  },
 }
 
 M.current = nil

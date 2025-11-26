@@ -51,7 +51,6 @@ return {
             program = "${PROJDIR}/main.js",
             stopOnEntry = true,
             attachSimplePort = 0,
-            __restart = true,
             sourceMaps = true,
         },
     },
