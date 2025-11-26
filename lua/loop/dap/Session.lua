@@ -23,10 +23,13 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field removed boolean|nil
 
 ---@class loop.dap.session.Args.DAP
+---@field type "local"|"remote"
+---@field host string|nil
+---@field port number|nil
 ---@field name string
 ---@field cmd string|string[]
 ---@field env table<string,string>|nil
----@field cwd string
+---@field cwd string|nil
 ---@field init_commands string[]|nil
 ---@field configure_post_launch boolean|nil
 
@@ -48,19 +51,22 @@ local fsmdata = require('loop.dap.fsmdata')
 ---|"threads_continued"
 ---|"breakpoints"
 ---|"debuggee_exit"
+---|"subsession_request"
 ---@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
+
+---@class loop.dap.session.DebugArgs
+---@field dap loop.dap.session.Args.DAP
+---@field target loop.dap.session.Args.Target
 
 ---@class loop.dap.session.Args
 ---@field name string
----@field dap loop.dap.session.Args.DAP
----@field target loop.dap.session.Args.Target
+---@field debug_args loop.dap.session.DebugArgs|nil
 ---@field tracker loop.session.Tracker
 ---@field exit_handler fun(code:number)
 
 ---@class loop.dap.Session
 ---@field new fun(self: loop.dap.Session) : loop.dap.Session
----@field _name string
----@field _target loop.dap.session.Args.Target
+---@field _args loop.dap.session.Args
 ---@field _dap_init_commands string[]|nil
 ---@field _dap_configure_post_launch boolean|nil
 ---@field _capabilities table<string,string>
@@ -71,12 +77,14 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field _breakpoints_by_dap_id table<number,loop.dap.session.Breakpoint>
 ---@field _stopped_threads loop.dap.proto.Thread[]|nil
 ---@field _stopped_thread_id number|nil
+---@field _connectedDebugPySockets table<string,boolean>
 local Session = class()
 
 function Session:init()
     self._started = false
     self._breakpoints = {}
     self._breakpoints_by_dap_id = {}
+    self._connectedDebugPySockets = {}
 end
 
 ---@param args loop.dap.session.Args
@@ -84,22 +92,21 @@ end
 function Session:start(args)
     assert(not self._started)
     self._started = true
+    self._args = args
 
-    local name = args.name
-    local dap = args.dap
-    local target = args.target
+    assert(args.name, "session name require")
+    assert(args.debug_args)
+    assert(args.debug_args.dap)
 
-    assert(name, "session name require")
-    assert(dap.cmd, "dap command required")
-    assert(target.cmd, "target command required")
+    local dap = args.debug_args.dap
 
-    self.log = require('loop.tools.Logger').create_logger("dap.session[" .. name .. ']')
+    assert(dap.type == "local" and dap.cmd or dap.host, "missing dap config")
 
-    self._name = name
-    self._dap_name = dap.name
-    self._target = target
-    self._dap_init_commands = dap.init_commands
+    self.log = require('loop.tools.Logger').create_logger("dap.session[" .. args.name .. ']')
+
+    self._dap_init_commands = dap.init_commands or {}
     self._dap_configure_post_launch = dap.configure_post_launch
+
     self._capabilities = {}
     self._process_ended = false
     self._tracker = args.tracker
@@ -119,30 +126,40 @@ function Session:start(args)
         end
     end
 
-    local cmd_and_args = strtools.cmd_to_string_array(dap.cmd)
-    if #cmd_and_args == 0 then
-        return false, "Missing DAP process command"
+    if dap.cmd then
+        local cmd_and_args = strtools.cmd_to_string_array(dap.cmd)
+        if #cmd_and_args == 0 then
+            return false, "Missing DAP process command"
+        end
+        local dap_cmd = vim.fn.exepath(cmd_and_args[1])
+        if dap_cmd == "" then
+            return false, "Debugger command is not executable: " .. tostring(cmd_and_args[1])
+        end
+
+        local dap_args = { unpack(cmd_and_args, 2) }
+
+        assert(dap_cmd ~= "")
+        self._base_session = BaseSession:new(args.name, {
+            dap_mode = "local",
+            dap_cmd = dap_cmd,   -- dap process
+            dap_args = dap_args, -- dap args
+            dap_env = dap.env,
+            dap_cwd = dap.cwd,
+            on_stderr = stderr_handler,
+            on_exit = exit_handler,
+        })
+    else
+        self._base_session = BaseSession:new(args.name, {
+            dap_mode = "remote",
+            dap_host = dap.host,
+            dap_port = dap.port,
+            on_stderr = stderr_handler,
+            on_exit = exit_handler,
+        })
     end
-
-    local dap_cmd = vim.fn.exepath(cmd_and_args[1])
-    if dap_cmd == "" then
-        return false, "Debugger command is not executable: " .. tostring(cmd_and_args[1])
-    end
-
-    local dap_args = { unpack(cmd_and_args, 2) }
-
-    assert(dap_cmd ~= "")
-    self._base_session = BaseSession:new(name, {
-        dap_cmd = dap_cmd,   -- dap process
-        dap_args = dap_args, -- dap args
-        dap_env = dap.env,
-        dap_cwd = dap.cwd,
-        on_stderr = stderr_handler,
-        on_exit = exit_handler,
-    })
 
     if not self._base_session:running() then
-        return false, "Failed to start debuger process: " .. tostring(cmd_and_args[1])
+        return false, "Failed to start debugger process"
     end
 
     self._base_session:set_event_handler("module", function() end)
@@ -153,6 +170,8 @@ function Session:start(args)
     self._base_session:set_event_handler("breakpoint", function(msg_body) self:_on_breakpoint_event(msg_body) end)
     self._base_session:set_event_handler("exited", function(msg_body) self:_on_exited_event(msg_body) end)
     self._base_session:set_event_handler("terminated", function(msg_body) self:_on_terminated_event(msg_body) end)
+    -- non standard
+    self._base_session:set_event_handler("debugpySockets", function(msg_body) self:_on_debugpy_event(msg_body) end)
 
     self._base_session:set_reverse_request_handler("runInTerminal",
         function(req_args, on_success, on_failure)
@@ -174,7 +193,7 @@ function Session:start(args)
     }
 
     -- start the FSM
-    self._fsm = FSM:new(name, fsmdata.create_fsm_data(state_handlers))
+    self._fsm = FSM:new(args.name, fsmdata.create_fsm_data(state_handlers))
     vim.schedule(function()
         self._fsm:start()
     end)
@@ -188,7 +207,7 @@ end
 
 ---@return string
 function Session:name()
-    return self._name or "(Unnamed session)"
+    return self._args.name or "(Unnamed session)"
 end
 
 ---@param breakpoints loop.dap.session.Breakpoints
@@ -359,10 +378,34 @@ function Session:_on_terminated_event(event)
     end
 end
 
+function Session:_on_debugpy_event(event)
+    if event and event.sockets and vim.islist(event.sockets) then
+        for _, socket in ipairs(event.sockets) do
+            if type(socket.host) == "string" and type(socket.port) == "number" then
+                local key = socket.host .. ":" .. tostring(socket.port)
+                if not self._connectedDebugPySockets[key] then
+                    self._connectedDebugPySockets[key] = true
+                    ---@type loop.dap.session.Args
+                    local args = {
+                        name = self:name() .. '/subsession',
+                        remote_args = {
+                            host = socket.host,
+                            port = socket.port,
+                        },
+                        tracker = function(...) end,
+                        exit_handler = function() end,
+                    }
+                    self:_notify_tracker("subsession_request", args)
+                end
+            end
+        end
+    end
+end
+
 ---@param on_complete fun(success:boolean)
 function Session:_send_initialize(on_complete)
     local req_args = {
-        adapterID = self._dap_name or "unknown",
+        adapterID = self._args.debug_args.dap.name or "unknown",
         linesStartAt1 = true,
         columnsStartAt1 = true,
         pathFormat = "path",
@@ -540,7 +583,13 @@ function Session:_send_configurationDone(on_complete)
 end
 
 function Session:_on_launching_state()
-    local target          = self._target
+    if not self._args.debug_args.target then
+        self._fsm:trigger(fsmdata.trigger.launch_resp_ok)
+        return
+    end
+
+    local target          = self._args.debug_args.target
+
     local cmdparts        = strtools.cmd_to_string_array(target.cmd)
     local target_program  = cmdparts[1]
     local target_args     = { unpack(cmdparts, 2) }
@@ -555,14 +604,14 @@ function Session:_on_launching_state()
 
     self.log:info('launching: ' .. vim.inspect(target))
     self._base_session:request_launch({
-            adapterID = self._dap_name,
+            adapterID = self._args.debug_args.dap.name,
             columnsStartAt1 = true,
             linesStartAt1 = true,
             pathFormat = "path",
             program = target_program,
             args = target_args,
-            cwd = target.cwd,
-            env = target.env,
+            cwd = target and target.cwd or nil,
+            env = target and target.env or nil,
             runInTerminal = run_in_terminal,
             stopOnEntry = stop_on_entry,
         },
@@ -576,10 +625,15 @@ function Session:_on_running_state()
 end
 
 function Session:_on_disconnecting_state()
+    local terminate_debuggee = false
+    if self._args.debug_args.target then
+        terminate_debuggee = self._args.debug_args.target.terminate_on_disconnect or false
+    end
+
     self._stopped_threads = {}
     self:_notify_about_state()
     self._base_session:request_disconnect({
-        terminateDebuggee = self._target.terminate_on_disconnect
+        terminateDebuggee = terminate_debuggee
     }, function(err, body)
         self._fsm:trigger(err == nil and fsmdata.trigger.disconnect_resp_ok or fsmdata.trigger.disconnect_resp_err)
     end)

@@ -125,28 +125,37 @@ end
 ---@return loop.dap.session.Args.DAP|nil
 ---@return string|nil
 local function _get_dap_config(task)
-    if not task.debug then
+    local dbg = task.debug
+    if not dbg then
         return nil, "Debugger section missing in task config"
     end
-    if not task.debug.adapter then
-        return nil, "Debug adapter name missing in task config"
+    if dbg.type == "local" and not dbg.adapter then
+        return nil, "Debug adapter name missing in task config (local mode)"
     end
-    local cfg = config.current.debuggers[task.debug.adapter]
-    if not cfg then
-        return nil, "Invalid debugger name: " .. tostring(task.debug.adapter) .. "'"
+    if dbg.type == "remote" and (not dbg.host or not dbg.port) then
+        return nil, "Debug host/port missing in task config (remote mode)"
     end
-    local cmd = strtools.cmd_to_string_array(cfg.command)
-    if #cmd == 0 or vim.fn.executable(cmd[1]) == 0 then
-        return nil, "Debugger command is not executable: '" .. tostring(cmd[1]) .. "'"
+    local cfg = config.current.debuggers[dbg.adapter]
+    if dbg.type == "local" then
+        if not cfg then
+            return nil, "Invalid debugger name: " .. tostring(dbg.adapter) .. "'"
+        end
+        local cmd = strtools.cmd_to_string_array(cfg.command)
+        if #cmd == 0 or vim.fn.executable(cmd[1]) == 0 then
+            return nil, "Debugger command is not executable: '" .. tostring(cmd[1]) .. "'"
+        end
     end
     ---@type loop.dap.session.Args.DAP
     local dap = {
-        name = task.debug.adapter,
-        cmd = cfg.command,
-        cwd = cfg.cwd,
-        env = cfg.env,
-        init_commands = cfg.init_commands,
-        configure_post_launch = cfg.configure_post_launch,
+        name = (dbg.type == "local" and dbg.adapter or "remote"),
+        type = dbg.type,
+        host = dbg.host,
+        port = dbg.port,
+        cmd = cfg and cfg.command or nil,
+        cwd = cfg and cfg.cwd or nil,
+        env = cfg and cfg.env or nil,
+        init_commands = cfg and cfg.init_commands or nil,
+        configure_post_launch = cfg and cfg.configure_post_launch or nil,
     }
     return dap, nil
 end

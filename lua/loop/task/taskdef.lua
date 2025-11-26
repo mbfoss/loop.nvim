@@ -1,9 +1,12 @@
 ---@alias loop.TaskType "vimcmd"|"tool"|"app"|"debug"
 
 ---@class loop.task.DebugConfig
+---@field type "local"|"remote"
 ---@field adapter string
 ---@field run_in_terminal boolean
 ---@field stop_on_entry boolean
+---@field host string
+---@field port number
 
 ---@class loop.Task
 ---@field name string # non-empty task name (supports ${VAR} templates)

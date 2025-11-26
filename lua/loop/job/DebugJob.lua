@@ -58,59 +58,19 @@ function DebugJob:start(args)
     end
 
     assert(args.on_exit_handler)
-
-    local cmd_parts = strtools.cmd_to_string_array(args.target.cmd)
-    local name = vim.fn.fnamemodify(cmd_parts[1] or "", ":t")
-
-    if not cmd_parts[1] or cmd_parts[1] == "" then
-        return false, "Debug target missing"
-    end
-
-    local session_id = self._last_session_id + 1
-    self._last_session_id = session_id
-
-    local function session_exit_handler(code)
-        -- this runs in the fast event context, so use schedule
-        vim.schedule(function()
-            self:_on_session_exit(session_id, Session)
-        end)
-        vim.schedule(function()
-            if next(self._sessions) == nil then
-                ---no more sessions
-                args.on_exit_handler(code)
-            end
-            if self._task_page then
-                self._task_page:add_lines({ "Session " ..
-                tostring(session_id) .. " debugger exited (code " .. tostring(code) .. ")" })
-            end
-        end)
-    end
-
-    ---@param session loop.dap.Session
-    ---@param event loop.session.TrackerEvent
-    ---@param event_data any
-    local tracker = function(session, event, event_data)
-        self:_on_session_event(session_id, session, event, event_data)
-    end
+    self._on_exit_handler = args.on_exit_handler
 
     ---@type loop.dap.session.Args
     local session_args = {
-        name = name,
-        dap = args.debugger,
-        target = args.target,
-        tracker = tracker,
-        exit_handler = session_exit_handler
+        name = args.name,
+        debug_args = {
+            dap = args.debugger,
+            target = args.target,
+        },
+        tracker = function(...) end,
+        exit_handler = function() end,
     }
-
-    local session = Session:new()
-    local started, start_err = session:start(session_args)
-    if not started then
-        return false, "Failed to start debug session, " .. start_err
-    end
-
-    self._sessions[session_id] = session
-
-    session:set_breakpoints(breakpoints.get_breakpoints())
+    local session_id = self:add_new_session(session_args)
 
     self._task_page = window.add_debug_task_page(args.name)
 
@@ -120,6 +80,55 @@ function DebugJob:start(args)
     self:_refresh_debug_sessions_page()
 
     return true
+end
+
+---@param session_args loop.dap.session.Args
+---@param parent_sess_id number|nil
+function DebugJob:add_new_session(session_args, parent_sess_id)
+    local session_id = self._last_session_id + 1
+    self._last_session_id = session_id
+
+
+    ---@param session loop.dap.Session
+    ---@param event loop.session.TrackerEvent
+    ---@param event_data any
+    local tracker             = function(session, event, event_data)
+        self:_on_session_event(session_id, session, event, event_data)
+    end
+
+    session_args.tracker      = tracker
+    session_args.exit_handler = function(code)
+        self:_session_exit_handler(session_id, code)
+    end
+
+    -- start new session
+    local session             = Session:new()
+    session:set_breakpoints(breakpoints.get_breakpoints())
+
+    local started, start_err = session:start(session_args)
+    if not started then
+        return false, "Failed to start debug session, " .. start_err
+    end
+
+    self._sessions[session_id] = session
+    return session_id
+end
+
+function DebugJob:_session_exit_handler(session_id, code)
+    -- this runs in the fast event context, so use schedule
+    vim.schedule(function()
+        self:_on_session_exit(session_id, Session)
+    end)
+    vim.schedule(function()
+        if next(self._sessions) == nil then
+            ---no more sessions
+            self._on_exit_handler(code)
+        end
+        if self._task_page then
+            self._task_page:add_lines({ "Session " ..
+            tostring(session_id) .. " debugger exited (code " .. tostring(code) .. ")" })
+        end
+    end)
 end
 
 function DebugJob:_refresh_debug_sessions_page()
@@ -228,6 +237,12 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
     end
     if event == "debuggee_exit" then
         self:_on_session_debuggee_exit(sess_id, session)
+        return
+    end
+    if event == "subsession_request" then
+        ---@type loop.dap.session.Args
+        local args = event_data
+        self:_on_subsession_request(sess_id, session, args)
         return
     end
     error("unhandled dap session event: " .. event)
@@ -414,7 +429,7 @@ function DebugJob:_on_session_debuggee_exit(sess_id, session)
     self._sessions[sess_id] = nil
 
     if self._current_session == session then
-        local _,next = next(self._sessions or {})
+        local _, next = next(self._sessions or {})
         self:_set_current_session(next) -- TODO: test this
     end
 
@@ -426,11 +441,19 @@ end
 
 ---@param sess_id number
 ---@param session loop.dap.Session
+---@param newsession_args loop.dap.session.Args
+function DebugJob:_on_subsession_request(sess_id, session, newsession_args)
+    --TODO: manage subsession
+    --self:add_new_session(newsession_args, sess_id)
+end
+
+---@param sess_id number
+---@param session loop.dap.Session
 function DebugJob:_on_session_exit(sess_id, session)
     self:_on_session_debuggee_exit(sess_id, session)
 end
 
----@param session loop.dap.Session
+---@param session loop.dap.Session|nil
 function DebugJob:_set_current_session(session)
     if session == self._current_session then
         return

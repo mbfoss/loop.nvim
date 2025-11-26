@@ -8,10 +8,13 @@ local Channel = require("loop.dap.Channel")
 local class = require('loop.tools.class')
 
 ---@class loop.dap.BaseSession.Opts
----@field dap_cmd string
+---@field dap_mode "local"|"remote"
+---@field dap_cmd string|nil
 ---@field dap_args string[]|nil
 ---@field dap_env table<string,string>|nil
----@field dap_cwd string
+---@field dap_cwd string|nil
+---@field dap_host string|nil
+---@field dap_port number|nil
 ---@field on_stderr fun(text: string)
 ---@field on_exit fun(code: number, signal: number)
 
@@ -36,11 +39,15 @@ function BaseSession:init(name, opts)
     self.event_handlers = {}
     self.reverse_request_handlers = {}
 
+    ---@type loop.dap.Channel.Opts
     local channel_opts = {
+        dap_mode   = opts.dap_mode,
         dap_cmd    = opts.dap_cmd,
         dap_args   = opts.dap_args,
         dap_env    = opts.dap_env,
         dap_cwd    = opts.dap_cwd,
+        dap_host   = opts.dap_host,
+        dap_port   = opts.dap_port,
         on_message = vim.schedule_wrap(
         -- schedule to avoid processing in the fast event context
             function(msg)

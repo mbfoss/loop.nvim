@@ -12,7 +12,6 @@ local class = require('loop.tools.class')
 
 ---@class loop.dap.Process
 ---@field new fun(self: loop.dap.Process, name : string, opts : loop.dap.Process.Opts) : loop.dap.Process
-
 local Process = class()
 
 ---@param name string

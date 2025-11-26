@@ -1,11 +1,26 @@
 local json = (vim and vim.json) or require('dkjson')
 local strtools = require("loop.tools.strtools")
 local Process = require("loop.dap.Process")
+local Tcp = require("loop.dap.Tcp")
 
 local class = require('loop.tools.class')
 
+---@class loop.dap.Channel.Opts
+---@field dap_mode "local"|"remote"|nil
+---@field dap_cmd string|nil
+---@field dap_args string[]|nil
+---@field dap_env table<string,string>|nil
+---@field dap_cwd string|nil
+---@field dap_host string|nil
+---@field dap_port number|nil
+---@field on_message fun(msg:string)
+---@field on_stderr fun(text: string)
+---@field on_exit fun(code: number, signal: number)
+
+
 ---@class loop.dap.Channel
----@field new fun(self: loop.dap.Channel, name:string, opts:table): loop.dap.Channel
+---@field new fun(self: loop.dap.Channel, name:string, opts:loop.dap.Channel.Opts): loop.dap.Channel
+---@field transport loop.dap.Process|loop.dap.Tcp
 local Channel = class()
 
 ---@diagnostic disable-next-line: undefined-field
@@ -24,23 +39,33 @@ local function log_msg_content(line)
     end
 end
 
+---@param opts loop.dap.Channel.Opts
 function Channel:init(name, opts)
     self.on_message = opts.on_message -- function(msg: table) called for non-response messages
     self.on_stderr = opts.on_stderr
     assert(type(self.on_message) == "function")
     assert(type(self.on_stderr) == "function")
-    self.process = self:_create_process(name, opts)
+    if opts.dap_mode == nil or opts.dap_mode == "local" then
+        assert(type(opts.dap_cmd) == "string")
+        self.transport = self:_create_process(name, opts)
+    else
+        assert(type(opts.dap_host) == "string")
+        assert(type(opts.dap_port) == "number")
+        self.transport = self:_create_tcp(name, opts)
+    end
     return self
 end
 
 function Channel:running()
-    return self.process:running()
+    return self.transport:running()
 end
 
 function Channel:kill()
-    self.process:kill()
+    self.transport:kill()
 end
 
+---@param name string
+---@param opts loop.dap.Channel.Opts
 function Channel:_create_process(name, opts)
     -- used by the uv async thread
     local buffer = {}
@@ -67,6 +92,32 @@ function Channel:_create_process(name, opts)
     })
 end
 
+---@param name string
+---@param opts loop.dap.Channel.Opts
+function Channel:_create_tcp(name, opts)
+    -- used by the uv async thread
+    local buffer = {}
+    buffer.data = ""
+
+    -- Create a TCP Channel
+    return Tcp:new(name, {
+        host = opts.dap_host,
+        port = opts.dap_port,
+        on_output = function(data, is_stderr)
+            if not is_stderr then
+                self:_on_data(buffer, data)
+            elseif self.on_stderr then
+                self.on_stderr(tostring(data))
+            end
+        end,
+        on_exit = function()
+            if opts.on_exit then
+                opts.on_exit(0, 0)
+            end
+        end
+    })
+end
+
 function Channel:send_message(msg)
     assert(msg)
     if msg_log_enabled then
@@ -78,7 +129,7 @@ function Channel:send_message(msg)
     local header = "Content-Length: " .. #body .. "\r\n\r\n"
     local packet = header .. body
 
-    self.process:write(packet)
+    self.transport:write(packet)
 end
 
 function Channel:_on_data(buffer, data)
