@@ -395,7 +395,6 @@ end
 ---@param on_complete fun(success:boolean)
 function Session:_send_initialize(on_complete)
     local req_args = {
-        adapterID = self._args.debug_args.dap.name or "unknown",
         linesStartAt1 = true,
         columnsStartAt1 = true,
         pathFormat = "path",

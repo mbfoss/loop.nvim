@@ -1,5 +1,6 @@
 return [[
 
+
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Loop Task Configuration",
@@ -58,7 +59,7 @@ return [[
           },
           "debugger_args": {
             "type": "object",
-            "additionalProperties": true,
+            "additionalProperties": true
           }
         },
         "required": [ "name", "type" ],

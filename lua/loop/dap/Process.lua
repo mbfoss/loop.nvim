@@ -19,6 +19,7 @@ local Process = class()
 function Process:init(name, opts)
     assert(type(opts.cmd) == "string", "cmd is required")
 
+    self.log = require('loop.tools.Logger').create_logger("dap.process[" .. name .. "]")
     self.cmd = opts.cmd
     self.args = opts.args or {}
     self.cwd = opts.cwd or vim.fn.getcwd()
@@ -54,33 +55,33 @@ function Process:_spawn()
         stdio = { self.stdin, self.stdout, self.stderr },
     }
 
-    local handle, pid = uv.spawn(self.cmd, opts, function(code, signal)
+    self.log:debug("starting process: " ..
+        tostring(self.cmd) .. ", opts: " .. vim.inspect(opts))
+
+    local handle, pid = uv.spawn(self.cmd, opts, vim.schedule_wrap(function(code, signal)
+        if self.exited then return end
         self.exited = true
 
-        -- Stop readers BEFORE closing pipes
-        if self.stdout and not self.stdout:is_closing() then
+        -- Stop reading immediately
+        if self.stdout and self.stdout:is_active() then
             self.stdout:read_stop()
         end
-        if self.stderr and not self.stderr:is_closing() then
+        if self.stderr and self.stderr:is_active() then
             self.stderr:read_stop()
         end
 
-        local exit_err = nil
-        -- RUN on_exit callback BEFORE cleanup
+        -- Always run on_exit, even during shutdown
         if self.on_exit then
             local ok, err = pcall(self.on_exit, code, signal)
             if not ok then
-                exit_err = err -- store for after cleanup
+                -- Log error but don't crash
+                print("Process on_exit error:", err)
             end
         end
 
-        -- Safe to close all handles now
+        -- Always close everything — this MUST run
         self:_close_all()
-
-        if exit_err then
-            error(exit_err)
-        end
-    end)
+    end))
 
     if not handle then
         return
@@ -139,31 +140,23 @@ function Process:running()
     return self.handle ~= nil
 end
 
--------------------------------------------------
--- Graceful kill: term → wait → kill
--------------------------------------------------
 function Process:kill(timeout)
-    if self.exited or self.killed then
-        return
+  if self.exited or self.killed then return end
+  self.killed = true
+
+  if self.handle and not self.handle:is_closing() then
+    self.handle:kill("sigterm")
+  end
+
+  local timer = uv.new_timer()
+  timer:start(timeout or 800, 0, vim.schedule_wrap(function()
+    timer:close()
+    if not self.exited and self.handle and not self.handle:is_closing() then
+      self.handle:kill("sigkill")
+      -- Force cleanup even if callback never fires
+      self:_close_all()
     end
-
-    self.killed = true
-
-    -- 1. Try SIGTERM first
-    if self.handle and not self.handle:is_closing() then
-        self.handle:kill("sigterm")
-    end
-
-    -- 2. Wait for graceful exit
-    local timer = uv.new_timer()
-    timer:start(timeout or 500, 0, function()
-        timer:stop()
-        timer:close()
-        -- If still alive, SIGKILL it
-        if not self.exited and self.handle and not self.handle:is_closing() then
-            self.handle:kill("sigkill")
-        end
-    end)
+  end))
 end
 
 -------------------------------------------------

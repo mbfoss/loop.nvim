@@ -192,6 +192,14 @@ local function _create_debug_job(task, output_handler, exit_handler)
         end
     end
 
+    if dbg_config.dap.type ~= "local" and dbg_config.dap.type ~= "remote" then
+        return nil, ("invalid dat type '%s'"):format(dbg_config.dap.type)
+    end    
+
+    if dbg_config.request ~= "launch" and dbg_config.request ~= "attach" then
+        return nil, ("invalid request type '%s'"):format(task.dbg_config.request)
+    end
+ 
     -- Build DebugJob start args
     ---@type loop.DebugJob.StartArgs
     local args = {

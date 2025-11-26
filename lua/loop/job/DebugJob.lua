@@ -61,14 +61,13 @@ function DebugJob:start(args)
 
     self._task_page = window.add_debug_task_page(args.name)
 
-    self:add_new_session(args.name, args.debug_args)
-
-    return true
+    return self:add_new_session(args.name, args.debug_args)
 end
 
 ---@param name string
 ---@param debug_args loop.dap.session.DebugArgs
 ---@param parent_sess_id number|nil
+---@return boolean,string|nil
 function DebugJob:add_new_session(name, debug_args, parent_sess_id)
     local session_id      = self._last_session_id + 1
     self._last_session_id = session_id
@@ -104,12 +103,16 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
 
     self._sessions[session_id] = session
 
+    if not self._current_session then
+        self._current_session = session
+    end
+
     self._task_page:add_lines({ "New debug session started: " ..
     tostring(session_id) .. ' (' .. tostring(name) .. ')' })
 
     self:_refresh_debug_sessions_page()
 
-    return session_id
+    return true,nil
 end
 
 function DebugJob:_session_exit_handler(session_id, code)
@@ -452,7 +455,11 @@ function DebugJob:_on_subsession_request(sess_id, session, request)
         attach_args = dapreq_type == "attach" and dapreq_args or nil,
     }
 
-    self:add_new_session(request.name, child_debug_args)
+    local ok, err = self:add_new_session(request.name, child_debug_args)
+    if not ok then
+        return request.on_failure("failed to startup child session, " .. tostring(err))
+    end
+    request.on_success({})
 end
 
 ---@param session loop.dap.Session|nil

@@ -57,7 +57,7 @@ M.defaut_config = {
         program = get_task_program,
         args = get_task_args,
         cwd = get_task_cwd,
-        stopOnEntry = true,
+        stopOnEntry = false,
         env = function(task) return task.env end,
         sourceLanguages = { "cpp", "c", "rust", "objc" },
         initCommands = {
@@ -71,16 +71,40 @@ M.defaut_config = {
     -- ──────────────────────────────────────────────────────────────
     -- js-debug (Node.js, Bun, Deno, Chrome) – full subsession magic
     -- ──────────────────────────────────────────────────────────────
-    ["js-debug"] = {
+    ["js-debug-local"] = {
       dap = {
         name = "js-debug",
         type = "local",
-        cmd = { "node", "dapDebugServer.js" },
+        cmd = { "node", "/Users/Dev/Projects/js-debug/src/dapDebugServer.js" },
+        cwd = "/Users/Dev/Projects/js-debug/src/"
       },
       request = "launch",
       request_args = {
         runtimeExecutable = "node",
-        program = function(task) return task.command or "" end,
+        --program = function(task) return task.command or "" end,
+        cwd = get_task_cwd,
+        stopOnEntry = true,
+        sourceMaps = true,
+        resolveSourceMapLocations = true,
+        outFiles = { "${workspaceFolder}/**/*.js" },
+        skipFiles = { "<node_internals>/**" },
+        attachSimplePort = 0,        -- critical for startDebugging + subsessions
+        __restart = true,           -- enables full multi-session support
+      },
+      terminate_debuggee = true,
+    },
+
+    ["js-debug"] = {
+      dap = {
+        name = "js-debug",
+        type = "remote",
+        host = "::1",
+        port = 8123
+      },
+      request = "launch",
+      request_args = {
+        runtimeExecutable = "node",
+        --program = function(task) return task.command or "" end,
         cwd = get_task_cwd,
         stopOnEntry = true,
         sourceMaps = true,

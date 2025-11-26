@@ -25,6 +25,8 @@ function Tcp:init(name, opts)
 
     self.exited = false
     self.killed = false
+
+    self.log:debug("Ceating tcp socket")
     ---@diagnostic disable-next-line: undefined-field
     self.socket = uv.new_tcp()
 
