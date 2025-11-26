@@ -48,7 +48,7 @@ end
 ---@field dap loop.dap.session.Args.DAP
 ---@field run_in_terminal boolean
 ---@field stop_on_entry boolean
----@field command string[]|string|nil
+---@field cmd string[]|string|nil
 ---@field cwd string|nil
 ---@field env table<string,string>|nil
 ---@field on_exit_handler fun(code : number)
@@ -65,7 +65,7 @@ function DebugJob:start(args)
     assert(args.on_exit_handler)
     self._on_exit_handler = args.on_exit_handler
 
-    local cmdparts        = strtools.cmd_to_string_array(args.command)
+    local cmdparts        = strtools.cmd_to_string_array(args.cmd)
     local target_program  = cmdparts[1]
     local target_args     = { unpack(cmdparts, 2) }
 
@@ -90,7 +90,7 @@ function DebugJob:start(args)
         launch_args = launch_args,
     }
 
-    self._task_page       = window.add_debug_task_page(args.name)
+    self._task_page = window.add_debug_task_page(args.name)
 
     self:add_new_session(args.name, debug_args)
 

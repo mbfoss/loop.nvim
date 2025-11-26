@@ -136,8 +136,13 @@ local function _get_dap_config(task)
         return nil, "Debug host/port missing in task config (remote mode)"
     end
     local debugger = config.current.debuggers[task.debug_adapter]
-    if  not debugger and dbg_type == "local" then
-        return nil, "Invalid debugger name: " .. tostring(task.debug_adapter) .. "'"
+    if dbg_type == "local" then
+        if  not debugger then
+            return nil, "Invalid debugger name: " .. tostring(task.debug_adapter) .. "'"
+        end 
+        if not debugger.command or debugger.command == "" then
+            return nil, "Missing debugger command for " .. tostring(task.debug_adapter) .. "'"
+        end 
     end
     ---@type loop.dap.session.Args.DAP
     local dap = {

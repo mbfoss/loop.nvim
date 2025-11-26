@@ -94,8 +94,6 @@ function Session:start(args)
 
     local dap = args.debug_args.dap
 
-    assert(dap.type == "local" and dap.cmd or dap.host, "missing dap config")
-
     self.log = require('loop.tools.Logger').create_logger("dap.session[" .. args.name .. ']')
 
     self._dap_init_commands = dap.init_commands or {}
@@ -120,7 +118,7 @@ function Session:start(args)
         end
     end
 
-    if dap.cmd then
+    if dap.type ~= "remote" then
         local cmd_and_args = strtools.cmd_to_string_array(dap.cmd)
         if #cmd_and_args == 0 then
             return false, "Missing DAP process command"
@@ -143,6 +141,9 @@ function Session:start(args)
             on_exit = exit_handler,
         })
     else
+        if not dap.host or dap.host == "" or not dap.port then
+            return false, "Missing remote DAP host name or port"
+        end        
         self._base_session = BaseSession:new(args.name, {
             dap_mode = "remote",
             dap_host = dap.host,
