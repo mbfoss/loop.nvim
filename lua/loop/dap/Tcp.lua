@@ -1,212 +1,163 @@
--- Tcp.lua
-local uv = require('luv')
+-- loop/dap/Tcp.lua
+local uv = vim.loop
 local class = require('loop.tools.class')
 
 ---@class loop.dap.Tcp.Opts
 ---@field host string
----@field port number
----@field on_output fun(data:string, is_stderr:boolean|nil)
----@field on_exit fun()
+---@field port integer
+---@field on_output fun(data:string, is_stderr?:boolean)
+---@field on_exit fun(code?:integer, signal?:integer)
 
 ---@class loop.dap.Tcp
----@field new fun(self: loop.dap.Tcp, name:string, opts:loop.dap.Tcp.Opts): loop.dap.Tcp
+---@field new fun(self: loop.dap.Tcp, name : string, opts : loop.dap.Tcp.Opts) : loop.dap.Tcp
 local Tcp = class()
 
----@param name string
----@param opts loop.dap.Tcp.Opts
 function Tcp:init(name, opts)
-    assert(type(opts.host) == "string", "host required")
-    assert(type(opts.port) == "number", "port required")
+    assert(type(opts.host) == "string" and opts.host ~= "", "host required")
+    assert(type(opts.port) == "number" and opts.port > 0 and opts.port < 65536, "valid port required")
 
-    self.log = require('loop.tools.Logger').create_logger("dap.tcp[" .. name .. ']')
-
+    self.log = require('loop.tools.Logger').create_logger("dap.tcp[" .. name .. "]")
     self.name = name
     self.host = opts.host
     self.port = opts.port
     self.on_output = opts.on_output
     self.on_exit = opts.on_exit
+
     self.exited = false
     self.killed = false
+    ---@diagnostic disable-next-line: undefined-field
     self.socket = uv.new_tcp()
 
-    -- Resolve host → IP if it's not already an IP address
-    self:_resolve_and_connect()
+    self:_connect_with_resolution()
     return self
 end
 
--- Internal: resolve host if needed, then connect
-function Tcp:_resolve_and_connect()
-  local host = self.host
+-- Main entry: resolve if needed, then connect
+function Tcp:_connect_with_resolution()
+    local host = self.host
 
-  -- Fast path: already looks like an IP address (IPv4 or IPv6)
-  if host:match("^%d+%.%d+%.%d+%.%d+$") -- IPv4
-      or host:match("^%x*:") -- IPv6 (has colon)
-      or host == "localhost" then
-    self.ip = host
-    self:_connect()
-    return
-  end
+    -- Fast path: localhost or literal IP
+    if host == "127.0.0.1"
+        or host == "::1"
+        or host:match("^%d+%.%d+%.%d+%.%d+$")
+        or host:match("^%x*:%x*:%x*") then
+        self.log:debug("Using fast path for host: " .. host)
+        self:_do_connect(host)
+        return
+    end
 
-  -- Async DNS lookup
-  self.log:debug("Resolving host: " .. host)
-  uv.getaddrinfo(host, nil, { family = "inet" }, function(err, res)
-    if err or not res or #res == 0 then
-      self.log:error("DNS resolution failed for '" .. host .. "': " .. (err or "no address"))
-      if self.on_exit then
+    -- Async resolve
+    self.log:debug("Resolving hostname: " .. host)
+    ---@diagnostic disable-next-line: undefined-field
+    uv.getaddrinfo(host, nil, { family = "inet", socktype = "stream" }, function(err, res)
+        if err or not res or #res == 0 then
+            self.log:error("Failed to resolve '" .. host .. "': " .. (err or "no address"))
+            self:_terminate(1)
+            return
+        end
+
+        -- Pick first IPv4, fallback to IPv6
+        local addr = res[1].addr
+        for _, r in ipairs(res) do
+            if r.family == "inet" then
+                addr = r.addr
+                break
+            end
+        end
+
+        self.log:info("Resolved " .. host .. " → " .. addr)
         vim.schedule(function()
-          self.on_exit()
+            if not self.killed then
+                self:_do_connect(addr)
+            end
         end)
-      end
-      return
-    end
-
-    -- Prefer IPv4
-    local addr = res[1]
-    for _, r in ipairs(res) do
-      if r.family == "inet" then
-        addr = r
-        break
-      end
-    end
-
-    self.ip = addr.addr
-    self.log:info("Resolved " .. host .. " → " .. self.ip)
-
-    vim.schedule(function()
-      if not self.killed then
-        self:_connect()
-      end
     end)
-  end)
 end
 
--- Optional: graceful shutdown
-function Tcp:kill()
-    self.killed = true
-    if self.socket then
-        self.socket:close()
-    end
-end
+-- Actually perform the TCP connection
+function Tcp:_do_connect(target_host)
+    self.log:info("Connecting to " .. target_host .. ":" .. self.port)
 
-function Tcp:_close()
-    if not self.exited then
-        self.exited = true
-        if self.on_exit then
-            vim.schedule(function()
-                self.on_exit()
-            end)
-        end
-    end
-end
-
--------------------------------------------------
--- Connect + read loop
--------------------------------------------------
-function Tcp:_connect()
-    self.socket:connect(self.host, self.port, function(err)
+    self.socket:connect(target_host, self.port, function(err)
         if err then
-            self:_fail_and_close("connect error: " .. tostring(err))
+            self.log:error("Connection failed: " .. err)
+            self:_terminate(1)
             return
         end
-        self:_start_read()
+
+        self.log:info("Connected successfully")
+        self:_start_reading()
     end)
 end
 
-function Tcp:_start_read()
-    self.socket:read_start(function(err, data)
+function Tcp:_start_reading()
+    self.socket:read_start(function(err, chunk)
         if err then
-            self:_fail_and_close("read error: " .. tostring(err))
+            self.log:error("Read error: " .. err)
+            self:_terminate(1)
             return
         end
-        if data and self.on_output then
-            -- is_stderr = false (TCP has no stderr)
-            self.on_output(data, false)
+
+        if not chunk then
+            self.log:info("Connection closed by peer")
+            self:_terminate(0)
+            return
         end
-        if not data then
-            -- EOF
-            self:_finish()
+
+        if self.on_output then
+            self.on_output(chunk, false)
         end
     end)
 end
 
--------------------------------------------------
--- Writing
--------------------------------------------------
+-- Public: write data
 function Tcp:write(data)
-    if self.exited then
-        return false, "socket closed"
-    end
-    if not self.socket or self.socket:is_closing() then
-        return false, "socket closing"
+    if self.exited or self.killed or not self.socket or self.socket:is_closing() then
+        return false, "closed"
     end
     self.socket:write(data)
     return true
 end
 
+-- Public: check if alive
 function Tcp:running()
-    return self.socket and not self.socket:is_closing()
+    return self.socket and self.socket:is_active() and not self.socket:is_closing()
 end
 
--------------------------------------------------
--- Graceful close + forced kill
--------------------------------------------------
-function Tcp:close(timeout)
-    if self.exited or self.killed then
-        return
-    end
+function Tcp:kill()
+    Tcp:close()
+end
 
+-- Public: graceful close
+function Tcp:close()
+    if self.killed or self.exited then return end
     self.killed = true
 
     if self.socket and not self.socket:is_closing() then
-        -- graceful shutdown
         self.socket:shutdown(function()
-            self:_finish()
+            self.socket:close()
+            self:_terminate(0)
         end)
-    end
-
-    -- optional forced close if needed
-    if timeout then
-        local timer = uv.new_timer()
-        timer:start(timeout or 500, 0, function()
-            timer:stop()
-            timer:close()
-            if not self.exited and self.socket and not self.socket:is_closing() then
-                self:_force_close()
-            end
-        end)
+    else
+        self:_terminate(0)
     end
 end
 
--------------------------------------------------
--- Helpers
--------------------------------------------------
-function Tcp:_finish()
+-- Internal: final cleanup
+function Tcp:_terminate(code, signal)
     if self.exited then return end
     self.exited = true
-    self:_force_close()
-    if self.on_exit then
-        pcall(self.on_exit)
-    end
-end
 
-function Tcp:_fail_and_close(msg)
-    if not self.exited then
-        self.exited = true
-        if self.on_output then
-            self.on_output(msg .. "\n", true)
-        end
-        self:_force_close()
-        if self.on_exit then
-            pcall(self.on_exit)
-        end
-    end
-end
-
-function Tcp:_force_close()
     if self.socket and not self.socket:is_closing() then
         self.socket:close()
     end
     self.socket = nil
+
+    if self.on_exit then
+        vim.schedule(function()
+            self.on_exit(code or 0, signal or 0)
+        end)
+    end
 end
 
 return Tcp
