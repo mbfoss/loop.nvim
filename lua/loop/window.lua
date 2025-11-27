@@ -280,10 +280,13 @@ end
 
 local function protect_split_window_buffer(buf)
     if not Page.is_page(buf) then
+        local name =
+            uitools.is_regular_buffer(buf)
+            and vim.api.nvim_buf_get_name(buf) or nil
         vim.schedule(function()
             _setup_tabs()
-            if vim.api.nvim_buf_is_valid(buf) then
-                uitools.smart_open_buffer(buf)
+            if name then
+                uitools.smart_open_file(name, nil, nil)
             end
         end)
     end
@@ -463,7 +466,7 @@ function M.get_debugsessions_page()
     local created = false
     if #_tabs.debug_sessions.pages == 0 then
         local page = DebugSessionsPage:new()
-        page:add_keymaps(get_page_keymap())    
+        page:add_keymaps(get_page_keymap())
         _add_tab_page(_tabs.debug_sessions, page)
         created = true
     end
@@ -502,7 +505,7 @@ function M.add_stacktrace_page(name)
     assert(type(name) == "string")
     -- create page
     local page = StackTracePage:new()
-    page:add_keymaps(get_page_keymap())    
+    page:add_keymaps(get_page_keymap())
     _add_tab_page(_tabs.stacktrace, page)
     return page
 end
@@ -530,7 +533,7 @@ function M.setup(_)
     setup_done = true
 
     _tabs.events.pages[1] = OutputPage:new("Messages")
-    _tabs.events.pages[1]:add_keymaps(get_page_keymap())   
+    _tabs.events.pages[1]:add_keymaps(get_page_keymap())
 
     do
         vim.api.nvim_set_hl(0, "LoopPluginInactiveTab", { link = "WinBar" })

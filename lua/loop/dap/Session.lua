@@ -65,7 +65,7 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field _output_handler fun(msg_body:table)
 ---@field _on_exit fun(code:number)
 ---@field _tracker loop.session.Tracker
----@field _breakpoints loop.dap.session.Breakpoints
+---@field _breakpoints_by_usr_id table<number,loop.dap.session.Breakpoint>
 ---@field _breakpoints_by_dap_id table<number,loop.dap.session.Breakpoint>
 ---@field _stopped_threads loop.dap.proto.Thread[]|nil
 ---@field _stopped_thread_id number|nil
@@ -74,7 +74,7 @@ local Session = class()
 
 function Session:init()
     self._started = false
-    self._breakpoints = {}
+    self._breakpoints_by_usr_id = {}
     self._breakpoints_by_dap_id = {}
     self._subsession_id = 0
 end
@@ -208,10 +208,28 @@ function Session:name()
     return self._args.name or "(Unnamed session)"
 end
 
----@param breakpoints loop.dap.session.Breakpoints
-function Session:set_breakpoints(breakpoints)
-    self._breakpoints = breakpoints
+---@param bpts loop.dap.session.Breakpoint[]
+function Session:add_breakpoints(bpts)
+    for _, b in ipairs(bpts) do
+        assert(not self._breakpoints_by_usr_id[b.id])
+        self._breakpoints_by_usr_id[b.id] = b
+    end
 end
+
+---@param ids number[]
+function Session:remove_breakpoints(ids)
+    local to_delete = {}
+    for _, id in ipairs(ids) do
+        to_delete[id] = true
+        self._breakpoints_by_usr_id[id] = nil
+    end
+    for dapid, bp in pairs(self._breakpoints_by_dap_id) do
+        if to_delete[bp.id] then
+            self._breakpoints_by_dap_id[dapid] = nil
+        end
+    end
+end
+
 
 ---@param event loop.session.TrackerEvent
 ---@param data any
@@ -367,17 +385,18 @@ end
 function Session:_on_breakpoint_event(event)
     assert(event and event.breakpoint)
     local breakpoint = self._breakpoints_by_dap_id[event.breakpoint.id]
-    if not breakpoint then return end
-
+    if not breakpoint then
+        return
+    end
+    breakpoint.verified = event.breakpoint.verified
     local removed = event.reason == "removed"
     ---@type loop.dap.session.notify.BreakpointsEvent
     local data = { breakpoints = { breakpoint }, removed = removed }
     self:_notify_tracker("breakpoints", data)
-end
-
----@return loop.dap.session.Breakpoints
-function Session:get_breakpoints()
-    return self._breakpoints
+    if removed then
+        self._breakpoints_by_dap_id[event.breakpoint.id] = nil
+        self._breakpoints_by_usr_id[breakpoint.id] = nil
+    end
 end
 
 ---@param event loop.dap.proto.ExitedEvent|nil
@@ -507,7 +526,7 @@ end
 function Session:_send_breakpoints(on_complete)
     ---@type table<string, loop.dap.session.Breakpoints>
     local breakpoints_by_source = {}
-    for _, bp in ipairs(self._breakpoints) do
+    for _, bp in pairs(self._breakpoints_by_usr_id) do
         if bp.file and bp.source_breakpoint then
             breakpoints_by_source[bp.file] = breakpoints_by_source[bp.file] or {}
             table.insert(breakpoints_by_source[bp.file], bp)
@@ -586,7 +605,7 @@ function Session:_on_launching_state()
         -- node-js subsession have empty launch request
         -- launch should not be sent
         self._fsm:trigger(fsmdata.trigger.launch_resp_ok)
-        return        
+        return
     end
 
     assert(target.launch_args)
