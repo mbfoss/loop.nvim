@@ -18,9 +18,13 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field level nil|"warn"|"error"
 ---@field lines string[]
 
----@class loop.dap.session.notify.BreakpointsEvent
----@field breakpoints loop.dap.session.Breakpoints
+
+---@class loop.dap.session.notify.BreakpointState
+---@field id number
+---@field verified boolean
 ---@field removed boolean|nil
+
+---@alias loop.dap.session.notify.BreakpointsEvent loop.dap.session.notify.BreakpointState[]
 
 ---@class loop.dap.session.Args.DAP
 ---@field type "local"|"remote"
@@ -230,6 +234,12 @@ function Session:remove_breakpoints(ids)
     end
 end
 
+---@param id number
+---@return boolean|nil
+function Session:get_breakpoint_state(id)
+    local bp = self._breakpoints_by_usr_id[id]
+    return bp and bp.verified or nil
+end
 
 ---@param event loop.session.TrackerEvent
 ---@param data any
@@ -391,7 +401,7 @@ function Session:_on_breakpoint_event(event)
     breakpoint.verified = event.breakpoint.verified
     local removed = event.reason == "removed"
     ---@type loop.dap.session.notify.BreakpointsEvent
-    local data = { breakpoints = { breakpoint }, removed = removed }
+    local data = { { id = breakpoint.id, verified = breakpoint.verified, removed = removed } }
     self:_notify_tracker("breakpoints", data)
     if removed then
         self._breakpoints_by_dap_id[event.breakpoint.id] = nil
@@ -565,7 +575,12 @@ function Session:_send_breakpoints(on_complete)
                         end
                     end
                     ---@type loop.dap.session.notify.BreakpointsEvent
-                    local data = { breakpoints = vim.deepcopy(source_breakpoints) }
+                    local data = {}
+                    for _, b in ipairs(source_breakpoints) do
+                        ---@type loop.dap.session.notify.BreakpointState
+                        state = { id = b.id, verified = b.verified }
+                        table.insert(data, state)
+                    end
                     self:_notify_tracker("breakpoints", data)
                 end
 
