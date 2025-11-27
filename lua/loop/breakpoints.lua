@@ -201,7 +201,7 @@ function M.load_breakpoints(proj_config_dir)
 
     _clear_breakpoints()
 
-    ---@type loop.dap.session.Breakpoints
+    ---@type table<number,loop.dap.session.Breakpoint>
     local breakpoints = data
     for id, bp in pairs(breakpoints) do
         if bp and bp.file and bp.source_breakpoint then
@@ -228,7 +228,6 @@ function M.save_breakpoints(proj_config_dir)
         return false, "Invalid argument"
     end
     -- we don't need to save verified
-    ---@type loop.dap.session.Breakpoints    
     local breakpoints = vim.deepcopy(_breakpoints)
     for _, b in pairs(breakpoints) do
         b.verified = nil
@@ -247,9 +246,13 @@ function M.have_breakpoints()
     return next(_breakpoints) ~= nil
 end
 
----@return loop.dap.session.Breakpoints
+---@return number[]
+function M.get_ids()
+    return vim.tbl_keys(_breakpoints)
+end
+
+---@return table<number,loop.dap.session.Breakpoint>
 function M.get_breakpoints()
-    ---@type loop.dap.session.Breakpoints
     local arr = {}
     for id, bp in pairs(_breakpoints) do
         assert(id == bp.id)

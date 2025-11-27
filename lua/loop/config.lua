@@ -55,7 +55,7 @@ M.defaut_config = {
             request = "launch",
             request_args = {
                 request = "launch",
-                type = "pwa-node",
+                type = "lldb",
                 program = get_task_program,
                 args = get_task_args,
                 cwd = get_task_cwd,
@@ -63,8 +63,8 @@ M.defaut_config = {
                 env = function(task) return task.env end,
                 sourceLanguages = { "cpp", "c", "rust", "objc" },
                 initCommands = {
-                    "settings set target.input-path /dev/null",
-                    "settings set target.output-path /dev/null",
+                --    "settings set target.input-path /dev/null",
+                --    "settings set target.output-path /dev/null",
                 },
             },
             terminate_debuggee = true,
@@ -82,7 +82,7 @@ M.defaut_config = {
                 type = "pwa-node",
                 request = "launch",
                 runtimeExecutable = "node",
-                --program = function(task) return task.command or "" end,
+                program = function(task) return task.command or nil end,
                 cwd = get_task_cwd,
                 stopOnEntry = true,
                 sourceMaps = true,

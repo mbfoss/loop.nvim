@@ -94,7 +94,7 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
 
     -- start new session
     local session      = Session:new()
-    session:set_breakpoints(breakpoints.get_breakpoints())
+    session:add_breakpoints(breakpoints.get_breakpoints())
 
     local started, start_err = session:start(session_args)
     if not started then
@@ -112,17 +112,18 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
 
     self:_refresh_debug_sessions_page()
 
-    return true,nil
+    return true, nil
 end
 
 function DebugJob:_session_exit_handler(session_id, code)
     vim.schedule(function()
         if self._current_session == self._sessions[session_id] then
-            local _, next = next(self._sessions or {})
-            self:_set_current_session(next) -- TODO: test this
+            self._sessions[session_id] = nil
+            local _, next = next(self._sessions)
+            self:_set_current_session(next)
+        else
+            self._sessions[session_id] = nil
         end
-
-        self._sessions[session_id] = nil
 
         local page = self._stacktrace_pages[session_id]
         if page then
@@ -423,8 +424,8 @@ end
 ---@param event loop.dap.session.notify.BreakpointsEvent
 function DebugJob:_on_session_breakpoints_event(sess_id, session, event)
     if session == self._current_session then
-        for _, evtbp in ipairs(event.breakpoints) do
-            breakpoints.update_verified_status(evtbp.id, evtbp.verified)
+        for _, state in ipairs(event) do
+            self:update_breakpoint_status(state.id)
         end
     end
 end
@@ -469,17 +470,23 @@ function DebugJob:_set_current_session(session)
     end
 
     signs.remove_signs("currentframe")
-    breakpoints.reset_verified_status()
 
     self._current_session = session
     self:_refresh_debug_sessions_page()
 
-    if self._current_session then
-        local bpts = self._current_session:get_breakpoints()
-        for _, bp in ipairs(bpts) do
-            breakpoints.update_verified_status(bp.id, bp.verified)
-        end
+    local ids = breakpoints.get_ids()
+    for _, id in ipairs(ids) do
+        self:update_breakpoint_status(id)
     end
+end
+
+function DebugJob:update_breakpoint_status(id)
+    local verified = next(self._sessions) == nil
+    for _, session in pairs(self._sessions) do
+        local state = session:get_breakpoint_state(id)
+        verified = verified or (state or false)
+    end
+    breakpoints.update_verified_status(id, verified)
 end
 
 return DebugJob

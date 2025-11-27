@@ -12,8 +12,6 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field file string
 ---@field source_breakpoint loop.dap.proto.SourceBreakpoint
 
----@alias loop.dap.session.Breakpoints loop.dap.session.Breakpoint[]
-
 ---@class loop.dap.session.notify.LogData
 ---@field level nil|"warn"|"error"
 ---@field lines string[]
@@ -534,7 +532,7 @@ end
 
 ---@param on_complete fun(success:boolean)
 function Session:_send_breakpoints(on_complete)
-    ---@type table<string, loop.dap.session.Breakpoints>
+    ---@type table<string,loop.dap.session.Breakpoint[]>
     local breakpoints_by_source = {}
     for _, bp in pairs(self._breakpoints_by_usr_id) do
         if bp.file and bp.source_breakpoint then
