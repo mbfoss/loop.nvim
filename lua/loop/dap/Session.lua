@@ -203,6 +203,8 @@ function Session:start(args)
     self._base_session:set_event_handler("exited", function(msg_body) self:_on_exited_event(msg_body) end)
     self._base_session:set_event_handler("terminated", function(msg_body) self:_on_terminated_event(msg_body) end)
     self._base_session:set_event_handler("debugpySockets", function(msg_body) self:_on_debugpySockets_event(msg_body) end)
+    self._base_session:set_event_handler("debugpyWaitingForServer",
+        function(msg_body) self:_on_debugpy_waiting_for_server(msg_body) end)
 
     self._base_session:set_reverse_request_handler("runInTerminal",
         function(req_args, on_success, on_failure)
@@ -213,6 +215,12 @@ function Session:start(args)
     self._base_session:set_reverse_request_handler("startDebugging",
         function(req_args, on_success, on_failure)
             self:_on_startDebugging_request(req_args, on_success, on_failure)
+        end
+    )
+
+    self._base_session:set_reverse_request_handler("pydevdAuthorize",
+        function(req_args, on_success, on_failure)
+            self:_on_pydevdAuthorize_request(req_args, on_success, on_failure)
         end
     )
 
@@ -419,6 +427,18 @@ function Session:_on_startDebugging_request(req_args, on_success, on_failure)
     self:_notify_tracker("subsession_request", data)
 end
 
+---@type fun(sef:loop.dap.Session, req_args: any, on_success:fun(resp_body:any), on_failure:fun(reason:string))
+function Session:_on_pydevdAuthorize_request(req_args, on_success, on_failure)
+    -- debugpy sends this reverse request on every connection to the final server
+    -- It expects a simple success response — no auth token needed in practice
+    -- Reference: https://github.com/microsoft/debugpy/issues/768
+    self._log:debug("Received pydevdAuthorize reverse request: " .. vim.inspect(req_args))
+    -- The official response is just {} — empty body
+    -- Some clients send { accessToken = nil }, but empty works everywhere
+    on_success({})
+    -- DO NOT call on_failure() — that would disconnect!
+end
+
 ---@param event loop.dap.proto.OutputEvent|nil
 function Session:_on_output_event(event)
     self:_notify_tracker("output", event)
@@ -498,19 +518,28 @@ end
 function Session:_on_debugpySockets_event(event)
     local socket = event.sockets[1] -- there is always exactly one
     if not socket then return end
-    local new_host = socket.host or "127.0.0.1"
-    local new_port = socket.port
+    self:_request_debugpy_subsession(socket.host, socket.port)
+end
 
+-- Add this function anywhere in the Session class
+function Session:_on_debugpy_waiting_for_server(event)
+    if not event or not event.port then return end
+    self:_request_debugpy_subsession(event.host, event.port)
+end
+
+---@param host string
+---@param port number
+function Session:_request_debugpy_subsession(host, port)
+    host = host or "127.0.0.1"
     do
         self._hanlded_debugpysockets = self._hanlded_debugpysockets or {}
-        local key = tostring(new_host) .. ':' .. tostring(new_port)
+        local key = tostring(host) .. ':' .. tostring(port)
         if self._hanlded_debugpysockets[key] then
             -- this avoid infinite recursion due to quicks with the python dap
             return
         end
         self._hanlded_debugpysockets[key] = true
     end
-
     self._subsession_id = self._subsession_id + 1
     local name = self:name() .. '/' .. tostring(self._subsession_id)
     ---@type loop.dap.session.notify.SubsessionRequest
@@ -519,8 +548,8 @@ function Session:_on_debugpySockets_event(event)
         debug_args = {
             dap = {
                 type = "remote",
-                host = new_host,
-                port = new_port,
+                host = host,
+                port = port,
                 name = "Python (debugpy)",
                 no_initialized_event = true,
                 configure_post_launch = true,
