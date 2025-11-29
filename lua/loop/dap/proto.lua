@@ -254,6 +254,10 @@
 ---@field env table<string,string>|nil
 ---@field timeout integer|nil
 
+---@class loop.dap.proto.StartDebuggingRequestArguments
+---@field request "launch"|"attach"
+---@field configuration table<string,any>
+
 --====================================================================--
 -- Capabilities (COMPLETE)
 --====================================================================--

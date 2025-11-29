@@ -47,7 +47,7 @@ M.defaut_config = {
 
     debuggers = {
         -- ──────────────────────────────────────────────────────────────
-        -- LLDB (C/C++/Rust/ObjC) – best experience
+        -- LLDB (C/C++/Rust/ObjC) 
         -- ──────────────────────────────────────────────────────────────
         lldb = {
             dap = {
@@ -66,8 +66,8 @@ M.defaut_config = {
                 env = function(task) return task.env end,
                 sourceLanguages = { "cpp", "c", "rust", "objc" },
                 initCommands = {
-                --    "settings set target.input-path /dev/null",
-                --    "settings set target.output-path /dev/null",
+                    --    "settings set target.input-path /dev/null",
+                    --    "settings set target.output-path /dev/null",
                 },
             },
             terminate_debuggee = true,
@@ -96,13 +96,14 @@ M.defaut_config = {
         },
 
         -- ──────────────────────────────────────────────────────────────
-        -- debugpy (Python) – rock solid
+        -- debugpy (Python) 
         -- ──────────────────────────────────────────────────────────────
         debugpy = {
             dap = {
                 name = "debugpy",
                 type = "local",
                 cmd = { "python3", "-m", "debugpy.adapter" },
+                
             },
             request = "launch",
             default_request_args = {

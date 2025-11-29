@@ -209,13 +209,12 @@ local function _create_debug_job(task, output_handler, exit_handler)
         debug_args = {
             dap = dbg_config.dap,
             request = dbg_config.request,
-            launch_args = (dbg_config.request == "launch") and resolved_args or nil,
-            attach_args = (dbg_config.request == "attach") and resolved_args or nil,
+            request_args = resolved_args,
             terminate_debuggee = dbg_config.terminate_debuggee,
         },
         on_exit_handler = exit_handler,
     }
-    local job = DebugJob:new()
+    local job = DebugJob:new(task.name)
     local ok, err = job:start(args)
     if not ok then
         return nil, err

@@ -1,3 +1,5 @@
+
+---@class loop.tools.Logger
 local Logger = {}
 Logger.__index = Logger
 

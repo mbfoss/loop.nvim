@@ -12,7 +12,7 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"|"terminate"
 
 ---@class loop.job.DebugJob : loop.job.Job
----@field new fun(self: loop.job.DebugJob) : loop.job.DebugJob
+---@field new fun(self: loop.job.DebugJob, name:string) : loop.job.DebugJob
 ---@field _sessions table<number,loop.dap.Session>
 ---@field _last_session_id number
 ---@field _task_page loop.pages.OutputPage
@@ -22,7 +22,9 @@ local breakpoints = require('loop.dap.breakpoints')
 local DebugJob    = class(Job)
 
 ---Initializes the DebugJob instance.
-function DebugJob:init()
+---@param name string
+function DebugJob:init(name)
+    self._log = require('loop.tools.Logger').create_logger("DebugJob[" .. tostring(name) .. "]")
     ---@type table<number,loop.dap.Session>
     self._sessions = {}
     self._last_session_id = 0
@@ -85,14 +87,13 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
 
     ---@type loop.dap.session.Args
     local session_args = {
-        name = name,
         debug_args = debug_args,
         tracker = tracker,
         exit_handler = exit_handler,
     }
 
     -- start new session
-    local session = Session:new()
+    local session = Session:new(name)
 
     local started, start_err = session:start(session_args)
     if not started then
@@ -200,10 +201,10 @@ end
 ---@param event loop.session.TrackerEvent
 ---@param event_data any
 function DebugJob:_on_session_event(sess_id, session, event, event_data)
-    if event == "log" then
-        ---@type loop.dap.session.notify.LogData
-        local log = event_data
-        self._task_page:add_lines(vim.list_extend({ "Session " .. sess_id .. " " .. log.level }, log.lines))
+    if event == "trace" then
+        ---@type loop.dap.session.notify.Trace
+        local trace = event_data
+        self._task_page:add_lines({"Session " .. sess_id .. ": " .. (trace.text or "")}, trace.level)
         return
     end
     if event == "state" then
@@ -439,27 +440,14 @@ end
 ---@param session loop.dap.Session
 ---@param request loop.dap.session.notify.SubsessionRequest
 function DebugJob:_on_subsession_request(sess_id, session, request)
-    local dapreq_type = request.dap_request.request -- "launch" or "attach"
-    local dapreq_args = request.dap_request.configuration or {}
 
-    if dapreq_type ~= "launch" and dapreq_type ~= "attach" then
-        return request.on_failure("Unsupported request type: " .. tostring(dapreq_type))
-    end
+    self._log:debug("Starting subsession via startDebugging: " .. vim.inspect(request))
 
-    self._task_page:add_lines({ "Starting subsession via startDebugging: " .. dapreq_type })
-
-    ---@type loop.dap.session.DebugArgs
-    local child_debug_args = {
-        dap         = request.dap_config,
-        request     = dapreq_type,
-        launch_args = dapreq_type == "launch" and dapreq_args or nil,
-        attach_args = dapreq_type == "attach" and dapreq_args or nil,
-    }
-
-    local ok, err = self:add_new_session(request.name, child_debug_args)
+    local ok, err = self:add_new_session(request.name, request.debug_args)
     if not ok then
         return request.on_failure("failed to startup child session, " .. tostring(err))
     end
+    
     request.on_success({})
 end
 

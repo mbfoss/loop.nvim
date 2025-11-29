@@ -1,5 +1,6 @@
 local class = require('loop.tools.class')
 local strtools = require('loop.tools.strtools')
+local daptools = require('loop.dap.daptools')
 
 local BaseSession = require("loop.dap.BaseSession")
 local FSM = require("loop.tools.FSM")
@@ -18,9 +19,9 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field by_dap_id table<number, loop.dap.session.SourceBPData>
 ---@field pending_files table<string,boolean>
 
----@class loop.dap.session.notify.LogData
+---@class loop.dap.session.notify.Trace
 ---@field level nil|"warn"|"error"
----@field lines string[]
+---@field text string
 
 
 ---@class loop.dap.session.notify.BreakpointState
@@ -39,9 +40,10 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field env table<string,string>|nil
 ---@field cwd string|nil
 ---@field configure_post_launch boolean|nil
+---@field no_initialized_event boolean|nil
 
 ---@alias loop.session.TrackerEvent
----|"log"
+---|"trace"
 ---|"state"
 ---|"output"
 ---|"runInTerminal_request"
@@ -54,19 +56,25 @@ local breakpoints = require('loop.dap.breakpoints')
 
 ---@class loop.dap.session.DebugArgs
 ---@field dap          loop.dap.session.Args.DAP
----@field request      "launch" | "attach"          -- mandatory
----@field launch_args  loop.dap.proto.LaunchRequestArguments | nil                   -- used only for launch
----@field attach_args  loop.dap.proto.AttachRequestArguments | nil                   -- used only for attach
+---@field request      "launch" | "attach"
+---@field request_args  loop.dap.proto.AttachRequestArguments|loop.dap.proto.LaunchRequestArguments|nil
 ---@field terminate_debuggee boolean|nil
 
 ---@class loop.dap.session.Args
----@field name string
 ---@field debug_args loop.dap.session.DebugArgs|nil
 ---@field tracker loop.session.Tracker
 ---@field exit_handler fun(code:number)
 
+---@class loop.dap.session.notify.SubsessionRequest
+---@field name string
+---@field debug_args loop.dap.session.DebugArgs
+---@field on_success fun(resp_body:any)
+---@field on_failure fun(reason:string)
+
 ---@class loop.dap.Session
----@field new fun(self: loop.dap.Session) : loop.dap.Session
+---@field new fun(self: loop.dap.Session, name:string) : loop.dap.Session
+---@field _name string
+---@field _log loop.tools.Logger
 ---@field _args loop.dap.session.Args
 ---@field _dap_configure_post_launch boolean|nil
 ---@field _capabilities table<string,string>
@@ -79,9 +87,16 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field _stopped_thread_id number|nil
 ---@field _subsession_id number
 ---@field _breakpoints_tracker_id number
+---@field _hanlded_debugpysockets table<string,boolean>
 local Session = class()
 
-function Session:init()
+---@param name string
+function Session:init(name)
+    assert(name, "session name require")
+
+    self._name = name
+    self._log = require('loop.tools.Logger').create_logger("dap.session[" .. tostring(name) .. "]")
+
     self._started = false
     self._subsession_id = 0
 
@@ -97,13 +112,12 @@ function Session:start(args)
     self._started = true
     self._args = args
 
-    assert(args.name, "session name require")
     assert(args.debug_args)
     assert(args.debug_args.dap)
 
-    local dap = args.debug_args.dap
+    self._log:debug("Starting - args: " .. vim.inspect(args))
 
-    self.log = require('loop.tools.Logger').create_logger("dap.session[" .. args.name .. ']')
+    local dap = args.debug_args.dap
 
     self._dap_configure_post_launch = dap.configure_post_launch
 
@@ -113,7 +127,7 @@ function Session:start(args)
     self._on_exit = args.exit_handler
 
     local stderr_handler = function(text)
-        self:_notify_about_log("error", { "dap process error", text })
+        self:_trace_notification("Debugger: " .. tostring(text))
     end
 
     local exit_handler = function(code, signal)
@@ -139,7 +153,7 @@ function Session:start(args)
         local dap_args = { unpack(cmd_and_args, 2) }
 
         assert(dap_cmd ~= "")
-        self._base_session = BaseSession:new(args.name, {
+        self._base_session = BaseSession:new(self._name, {
             dap_mode = "local",
             dap_cmd = dap_cmd,   -- dap process
             dap_args = dap_args, -- dap args
@@ -152,7 +166,7 @@ function Session:start(args)
         if not dap.host or dap.host == "" or not dap.port then
             return false, "Missing remote DAP host name or port"
         end
-        self._base_session = BaseSession:new(args.name, {
+        self._base_session = BaseSession:new(self._name, {
             dap_mode = "remote",
             dap_host = dap.host,
             dap_port = dap.port,
@@ -178,7 +192,7 @@ function Session:start(args)
         ended = function(_, _) self:_on_ended_state() end,
     }
     -- start the FSM
-    self._fsm = FSM:new(args.name, fsmdata.create_fsm_data(state_handlers))
+    self._fsm = FSM:new(self._name, fsmdata.create_fsm_data(state_handlers))
 
     self._base_session:set_event_handler("module", function() end)
     self._base_session:set_event_handler("output", function(msg_body) self:_on_output_event(msg_body) end)
@@ -188,17 +202,16 @@ function Session:start(args)
     self._base_session:set_event_handler("breakpoint", function(msg_body) self:_on_breakpoint_event(msg_body) end)
     self._base_session:set_event_handler("exited", function(msg_body) self:_on_exited_event(msg_body) end)
     self._base_session:set_event_handler("terminated", function(msg_body) self:_on_terminated_event(msg_body) end)
+    self._base_session:set_event_handler("debugpySockets", function(msg_body) self:_on_debugpySockets_event(msg_body) end)
 
     self._base_session:set_reverse_request_handler("runInTerminal",
         function(req_args, on_success, on_failure)
-            assert(req_args)
             self:_on_runInTerminal_request(req_args, on_success, on_failure)
         end
     )
 
     self._base_session:set_reverse_request_handler("startDebugging",
         function(req_args, on_success, on_failure)
-            assert(req_args)
             self:_on_startDebugging_request(req_args, on_success, on_failure)
         end
     )
@@ -216,7 +229,7 @@ end
 
 ---@return string
 function Session:name()
-    return self._args.name or "(Unnamed session)"
+    return self._name
 end
 
 function Session:_start_tracking_breakpoints()
@@ -288,7 +301,7 @@ function Session:_remove_all_breakpoints(bpts)
     data.by_dap_id = {}
     if self._can_send_breakpoints then
         self:_send_pending_breakpoints(function(success) end)
-    end    
+    end
 end
 
 ---@param id number
@@ -311,12 +324,12 @@ function Session:_notify_about_state()
     self:_notify_tracker("state", data)
 end
 
+---@param text string
 ---@param level nil|"warn"|"error"
----@param lines string[]
-function Session:_notify_about_log(level, lines)
-    ---@type loop.dap.session.notify.LogData
-    local data = { level = level, lines = lines }
-    self:_notify_tracker("log", data)
+function Session:_trace_notification(text, level)
+    ---@type loop.dap.session.notify.Trace
+    local data = { text = text, level = level }
+    self:_notify_tracker("trace", data)
 end
 
 ---@return string
@@ -329,7 +342,7 @@ function Session:debug_continue()
     self._base_session:request_continue({ threadId = 0, singleThread = false },
         function(err, resp)
             if err or not resp then
-                self:_notify_about_log("error", { "continue error", tostring(err) })
+                self:_trace_notification("continue error: " .. tostring(err), "error")
                 return
             end
             self._stopped_thread_id = nil
@@ -343,7 +356,7 @@ end
 function Session:debug_stepIn()
     self._base_session:request_stepIn({ threadId = self._stopped_thread_id, singleThread = false }, function(err)
         if err then
-            self:_notify_about_log("error", { "stepIn error", tostring(err) })
+            self:_trace_notification("stepIn error: " .. tostring(err), "error")
         end
     end)
 end
@@ -351,7 +364,7 @@ end
 function Session:debug_stepOut()
     self._base_session:request_stepOut({ threadId = self._stopped_thread_id, singleThread = false }, function(err)
         if err then
-            self:_notify_about_log("error", { "stepOut error", tostring(err) })
+            self:_trace_notification("stepOut error: " .. tostring(err), "error")
         end
     end)
 end
@@ -359,7 +372,7 @@ end
 function Session:debug_stepOver()
     self._base_session:request_next({ threadId = self._stopped_thread_id, granularity = "line" }, function(err)
         if err then
-            self:_notify_about_log("error", { "stepOver error", tostring(err) })
+            self:_trace_notification("stepOver error: " .. tostring(err), "error")
         end
     end)
 end
@@ -368,8 +381,12 @@ function Session:debug_terminate()
     self._fsm:trigger(fsmdata.trigger.disconnect)
 end
 
----@type fun(sef:loop.dap.Session, req_args:table, on_success:fun(resp_body:table), on_failure:fun(reason:string))
+---@type fun(sef:loop.dap.Session, req_args:any, on_success:fun(resp_body:table), on_failure:fun(reason:string))
 function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
+    if not req_args then
+        on_failure('missing request args')
+        return
+    end
     ---@class loop.dap.session.notify.RunInTerminalReq
     local data = {
         ---@type loop.dap.proto.RunInTerminalRequestArguments
@@ -380,15 +397,22 @@ function Session:_on_runInTerminal_request(req_args, on_success, on_failure)
     self:_notify_tracker("runInTerminal_request", data)
 end
 
----@type fun(sef:loop.dap.Session, req_args, on_success:fun(resp_body:any), on_failure:fun(reason:string))
+---@type fun(sef:loop.dap.Session, req_args: loop.dap.proto.StartDebuggingRequestArguments|nil, on_success:fun(resp_body:any), on_failure:fun(reason:string))
 function Session:_on_startDebugging_request(req_args, on_success, on_failure)
+    if not req_args then
+        on_failure('missing request args')
+        return
+    end
     self._subsession_id = self._subsession_id + 1
     local name = self:name() .. '/' .. tostring(self._subsession_id)
-    ---@class loop.dap.session.notify.SubsessionRequest
+    ---@type loop.dap.session.notify.SubsessionRequest
     local data = {
         name = name,
-        dap_config = vim.deepcopy(self._args.debug_args.dap),
-        dap_request = req_args,
+        debug_args = {
+            dap = vim.deepcopy(self._args.debug_args.dap),
+            request = req_args.request,
+            request_args = req_args.configuration
+        },
         on_success = on_success,
         on_failure = on_failure
     }
@@ -408,7 +432,7 @@ end
 function Session:_on_stopped_event(event)
     local cur_state = self._fsm:curr_state()
     if cur_state == "disconnecting" or cur_state == "kill" or cur_state == "ended" then
-        self:_notify_about_log("error", { "unexpected stopped event" })
+        self._log:error("unexpected stopped event")
         return
     end
     assert(event)
@@ -419,7 +443,7 @@ function Session:_on_stopped_event(event)
     else
         self._base_session:request_threads(function(err, resp)
             if err or not resp then
-                self:_notify_about_log("error", { "Threads query error: " .. tostring(err) })
+                self._log:error("Threads query error: " .. tostring(err))
             elseif resp.threads and type(resp.threads) == "table" and #resp.threads > 0 then
                 self._stopped_threads = resp.threads
                 self:_notify_tracker("threads_paused", { thread_id = event.threadId })
@@ -431,7 +455,7 @@ end
 ---@param event loop.dap.proto.ContinuedEvent|nil
 function Session:_on_continued_event(event)
     if self._fsm:curr_state() ~= "running" then
-        self:_notify_about_log("error", { "unexpected continued event" })
+        self._log:error("unexpected continued event")
         return
     end
     self._stopped_thread_id = nil
@@ -471,6 +495,45 @@ function Session:_on_terminated_event(event)
     end
 end
 
+function Session:_on_debugpySockets_event(event)
+    local socket = event.sockets[1] -- there is always exactly one
+    if not socket then return end
+    local new_host = socket.host or "127.0.0.1"
+    local new_port = socket.port
+
+    do
+        self._hanlded_debugpysockets = self._hanlded_debugpysockets or {}
+        local key = tostring(new_host) .. ':' .. tostring(new_port)
+        if self._hanlded_debugpysockets[key] then
+            -- this avoid infinite recursion due to quicks with the python dap
+            return
+        end
+        self._hanlded_debugpysockets[key] = true
+    end
+
+    self._subsession_id = self._subsession_id + 1
+    local name = self:name() .. '/' .. tostring(self._subsession_id)
+    ---@type loop.dap.session.notify.SubsessionRequest
+    local data = {
+        name = name,
+        debug_args = {
+            dap = {
+                type = "remote",
+                host = new_host,
+                port = new_port,
+                name = "Python (debugpy)",
+                no_initialized_event = true,
+                configure_post_launch = true,
+            },
+            request = "attach",
+            request_args = self._args.debug_args.request_args
+        },
+        on_success = function() end,
+        on_failure = function() end,
+    }
+    self:_notify_tracker("subsession_request", data)
+end
+
 ---@return boolean
 function Session:_detect_macos_lldb()
     if self._capabilities.__lldb and vim.fn.has("mac") == 1 then
@@ -496,13 +559,15 @@ function Session:_send_initialize(on_complete)
             if not self._dap_configure_post_launch then
                 -- heureustic
                 if self:_detect_macos_lldb() then
-                    self.log:info("Enabling macOS LLDB workarounds")
-                    self._dap_configure_post_launch = true
+                    self._log:info("Enabling macOS LLDB workarounds")
+                    self._dap_configure_post_launch = true --TODO: use self._args.debug_args.dap.configure_post_launch
+                    self._args.debug_args.dap.configure_post_launch = true
+                    self._args.debug_args.dap.no_initialized_event = true
                 end
             end
             on_complete(true)
         else
-            self:_notify_about_log("error", { "initialize request error", tostring(err) })
+            self._log:error("initialize request error" .. tostring(err))
             on_complete(false)
         end
     end)
@@ -518,9 +583,12 @@ function Session:_send_attach(on_complete)
         return
     end
 
-    assert(target.attach_args)
-    self.log:info('attaching: ' .. vim.inspect(target.attach_args))
-    self._base_session:request_attach(target.attach_args, function(err) on_complete(err == nil) end)
+    assert(target.request_args)
+    self._log:info('attaching: ' .. vim.inspect(target.request_args))
+    ---@type loop.dap.proto.AttachRequestArguments
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    local attach_args = target.request_args
+    self._base_session:request_attach(attach_args, function(err) on_complete(err == nil) end)
 end
 
 function Session:_on_initializing_state()
@@ -539,7 +607,8 @@ end
 
 function Session:_on_waiting_initialized_state()
     self:_notify_about_state()
-    if  self:_detect_macos_lldb() then
+    if self._args.debug_args.dap.no_initialized_event then
+        self._log:debug("implicit initialized event")
         self._fsm:trigger(fsmdata.trigger.initialized)
     end
 end
@@ -590,7 +659,7 @@ end
 ---@param on_complete fun(success:boolean)
 function Session:_send_pending_breakpoints(on_complete)
     if not self._can_send_breakpoints then
-        self.log:debug('cannot send breakpoints')
+        self._log:debug('cannot send breakpoints')
         on_complete(false)
         return
     end
@@ -629,7 +698,7 @@ function Session:_send_pending_breakpoints(on_complete)
             end
         end
 
-        self.log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(dap_breakpoints))
+        self._log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(dap_breakpoints))
         self._base_session:request_setBreakpoints({
                 source = {
                     name = vim.fn.fnamemodify(file, ":t"),
@@ -658,7 +727,7 @@ function Session:_send_pending_breakpoints(on_complete)
                 nb_replies = nb_replies + 1
                 if err ~= nil or not resp then
                     nb_failures = nb_failures + 1
-                    self:_notify_about_log("error", { "failed to set breakpoints", err or "" })
+                    self._log:error("failed to set breakpoints")
                 end
                 if nb_replies == nb_sources then
                     on_complete(nb_failures == 0)
@@ -683,9 +752,12 @@ function Session:_on_launching_state()
         return
     end
 
-    assert(target.launch_args)
-    self.log:info('launching: ' .. vim.inspect(target))
-    self._base_session:request_launch(target.launch_args,
+    self._log:info('launching: ' .. vim.inspect(target.request_args))
+    ---@type loop.dap.proto.LaunchRequestArguments
+    ---@diagnostic disable-next-line: assign-type-mismatch
+    local launch_args = target.request_args
+
+    self._base_session:request_launch(launch_args,
         function(err)
             self._fsm:trigger(err == nil and fsmdata.trigger.launch_resp_ok or fsmdata.trigger.launch_resp_error)
         end)
