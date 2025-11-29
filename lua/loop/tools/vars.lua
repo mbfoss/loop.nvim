@@ -175,7 +175,7 @@ function M.expand_strings(tbl)
 	assert(type(tbl) == 'table')
 	local unresolved = {}
 	local ok = _expand_strings(tbl, {}, unresolved)
-    local explanation = nil
+    local explanation
     for _,v in ipairs(unresolved) do
         if vars_requiring_active_file[v] then
             explanation = "No active file"

@@ -10,7 +10,7 @@ local strtools = require('loop.tools.strtools')
 ---@class loop.Config.Debugger
 ---@field dap          loop.dap.session.Args.DAP
 ---@field request      "launch" | "attach"
----@field request_args  table<string,any>
+---@field default_request_args  table<string,any>
 ---@field terminate_debuggee boolean|nil
 
 ---@class loop.Config
@@ -53,7 +53,7 @@ M.defaut_config = {
                 cmd = { "lldb-dap" }, -- or full path if needed
             },
             request = "launch",
-            request_args = {
+            default_request_args = {
                 request = "launch",
                 type = "lldb",
                 program = get_task_program,
@@ -78,7 +78,7 @@ M.defaut_config = {
                 port = 8123
             },
             request = "launch",
-            request_args = {
+            default_request_args = {
                 type = "pwa-node",
                 request = "launch",
                 runtimeExecutable = "node",
@@ -86,10 +86,7 @@ M.defaut_config = {
                 cwd = get_task_cwd,
                 stopOnEntry = true,
                 sourceMaps = true,
-                --resolveSourceMapLocations = true,
-                --outFiles = { "${workspaceFolder}/**/*.js" },
-                --skipFiles = { "<node_internals>/**" },
-                --attachSimplePort = 0,        -- critical for startDebugging + subsessions
+                outputCapture = "std",
             },
             terminate_debuggee = true,
         },
@@ -104,7 +101,7 @@ M.defaut_config = {
                 cmd = { "python3", "-m", "debugpy.adapter" },
             },
             request = "launch",
-            request_args = {
+            default_request_args = {
                 program = function(task) return task.command or "${file}" end,
                 cwd = get_task_cwd,
                 stopOnEntry = true,
@@ -125,7 +122,7 @@ M.defaut_config = {
                 cmd = { "netcoredbg", "--interpreter=vscode" },
             },
             request = "launch",
-            request_args = {
+            default_request_args = {
                 program = get_task_program,
                 args = get_task_args,
                 cwd = get_task_cwd,
@@ -145,7 +142,7 @@ M.defaut_config = {
                 cmd = { "bashdb", "--adapter" },
             },
             request = "launch",
-            request_args = {
+            default_request_args = {
                 program = get_task_program,
                 cwd = get_task_cwd,
                 stopOnEntry = true,

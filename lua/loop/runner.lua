@@ -181,7 +181,7 @@ local function _create_debug_job(task, output_handler, exit_handler)
     end
 
     -- Resolve request_args using functions if needed
-    local resolved_args = vim.tbl_deep_extend("force", {}, dbg_config.request_args or {})
+    local resolved_args = vim.tbl_deep_extend("force", {}, dbg_config.default_request_args or {})
     for k, v in pairs(resolved_args) do
         if type(v) == "function" then
             local ok, result = pcall(v, task)
