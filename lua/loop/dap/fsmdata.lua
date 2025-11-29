@@ -7,10 +7,6 @@ M.trigger =
     initialize_resp_ok = "initialize_resp_ok",
     initialize_resp_err = "initialize_resp_err",
     initialized = "initialized",
-    configure1_success = "configure1_success",
-    configure1_error = "configure1_error",
-    configure2_success = "configure2_success",
-    configure2_error = "configure2_error",
     launch_resp_ok = "launch_resp_ok",
     launch_resp_error = "launch_resp_error",
     disconnect = "disconnect",
@@ -23,10 +19,7 @@ M.trigger =
 
 ---@class loop.dap.fsmdata.StateHandlers
 ---@field initializing loop.dap.fsmdata.StateHandler
----@field waiting_initialized loop.dap.fsmdata.StateHandler
----@field configuring1 loop.dap.fsmdata.StateHandler
----@field launching loop.dap.fsmdata.StateHandler
----@field configuring2 loop.dap.fsmdata.StateHandler
+---@field starting loop.dap.fsmdata.StateHandler
 ---@field running loop.dap.fsmdata.StateHandler
 ---@field disconnecting loop.dap.fsmdata.StateHandler
 ---@field kill loop.dap.fsmdata.StateHandler
@@ -42,42 +35,19 @@ function M.create_fsm_data(handlers)
             initializing = {
                 state_handler = handlers.initializing,
                 triggers = {
-                    [M.trigger.initialize_resp_ok] = "waiting_initialized",
+                    [M.trigger.initialize_resp_ok] = "starting",
                     [M.trigger.initialize_resp_err] = "disconnecting",
                     [M.trigger.disconnect] = 'disconnecting',
                 }
             },
-            waiting_initialized = {
-                state_handler = handlers.waiting_initialized,
-                triggers = {
-                    [M.trigger.initialized] = "configuring1",
-                    [M.trigger.disconnect] = 'disconnecting',
-                }
-            },
-            configuring1 = {
-                state_handler = handlers.configuring1,
+            starting = {
+                state_handler = handlers.starting,
                 triggers = {
                     [M.trigger.disconnect] = "disconnecting",
-                    [M.trigger.configure1_success] = "launching",
-                    [M.trigger.configure1_error] = "disconnecting",
-                }
-            },
-            launching = {
-                state_handler = handlers.launching,
-                triggers = {
-                    [M.trigger.disconnect] = "disconnecting",
-                    [M.trigger.launch_resp_ok] = "configuring2",
+                    [M.trigger.launch_resp_ok] = "running",
                     [M.trigger.launch_resp_error] = "disconnecting",
                 }
             },
-            configuring2 = {
-                state_handler = handlers.configuring2,
-                triggers = {
-                    [M.trigger.disconnect] = "disconnecting",
-                    [M.trigger.configure2_success] = "running",
-                    [M.trigger.configure2_error] = "disconnecting",
-                }
-            },            
             running = {
                 state_handler = handlers.running,
                 triggers = {

@@ -293,7 +293,7 @@ function M.add_tracker(callbacks)
         for id, bp in pairs(_by_id) do
             callbacks.on_added(bp)
             local verified = _verified[id]
-            if verified then
+            if verified and callbacks.on_status_update then
                 callbacks.on_status_update(bp, verified)
             end
         end

@@ -315,7 +315,7 @@
 ---@class loop.dap.proto.InitializeRequestArguments
 ---@field clientID string|nil
 ---@field clientName string|nil
----@field adapterID string|nil
+---@field adapterID string
 ---@field locale string|nil
 ---@field linesStartAt1 boolean
 ---@field columnsStartAt1 boolean

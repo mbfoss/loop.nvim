@@ -47,10 +47,11 @@ M.defaut_config = {
 
     debuggers = {
         -- ──────────────────────────────────────────────────────────────
-        -- LLDB (C/C++/Rust/ObjC) 
+        -- LLDB (C/C++/Rust/ObjC)
         -- ──────────────────────────────────────────────────────────────
         lldb = {
             dap = {
+                adapter_id = "lldb",
                 name = "lldb",
                 type = "local",
                 cmd = { "lldb-dap" }, -- or full path if needed
@@ -75,11 +76,12 @@ M.defaut_config = {
 
         ["js-debug"] = {
             dap = {
+                adapter_id = "js-debug",
                 name = "js-debug",
                 type = "remote",
                 host = "::1",
                 port = 8123,
-                cwd = os.getenv("HOME")
+                cwd = os.getenv("HOME"),
             },
             request = "launch",
             default_request_args = {
@@ -96,14 +98,14 @@ M.defaut_config = {
         },
 
         -- ──────────────────────────────────────────────────────────────
-        -- debugpy (Python) 
+        -- debugpy (Python)
         -- ──────────────────────────────────────────────────────────────
         debugpy = {
             dap = {
+                adapter_id = "debugpy",
                 name = "debugpy",
                 type = "local",
                 cmd = { "python3", "-m", "debugpy.adapter" },
-                
             },
             request = "launch",
             default_request_args = {
@@ -122,6 +124,7 @@ M.defaut_config = {
         -- ──────────────────────────────────────────────────────────────
         netcoredbg = {
             dap = {
+                adapter_id = "netcoredbg",
                 name = "netcoredbg",
                 type = "local",
                 cmd = { "netcoredbg", "--interpreter=vscode" },
@@ -142,6 +145,7 @@ M.defaut_config = {
         -- ──────────────────────────────────────────────────────────────
         bashdb = {
             dap = {
+                adapter_id = "bashdb",
                 name = "bashdb",
                 type = "local",
                 cmd = { "bashdb", "--adapter" },
