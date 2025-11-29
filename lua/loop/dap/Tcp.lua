@@ -9,6 +9,7 @@ local class = require('loop.tools.class')
 ---@field on_exit fun(code?:integer, signal?:integer)
 
 ---@class loop.dap.Tcp
+---@field new fun(self: loop.dap.Tcp, name:string, opts:loop.dap.Tcp.Opts): loop.dap.Tcp
 local Tcp = class()
 
 function Tcp:init(name, opts)
@@ -27,6 +28,7 @@ function Tcp:init(name, opts)
   self.write_queue = {}  -- Queue for writes before connection
 
   self.log:debug("Creating tcp socket")
+---@diagnostic disable-next-line: undefined-field
   self.socket = uv.new_tcp()
   self:_connect_with_resolution()
   return self
@@ -48,6 +50,7 @@ function Tcp:_connect_with_resolution()
 
   -- Async resolve
   self.log:debug("Resolving hostname: " .. host)
+---@diagnostic disable-next-line: undefined-field
   uv.getaddrinfo(host, nil, { family = "inet", socktype = "stream" }, function(err, res)
     if err or not res or #res == 0 then
       local msg = "Failed to resolve '" .. host .. "': " .. (err or "no address")

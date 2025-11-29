@@ -49,6 +49,20 @@ local function find_regular_window()
     return new_win
 end
 
+---@return string|nil,number|nil
+function M.get_current_file_and_line()
+    local buf = vim.api.nvim_get_current_buf()
+    if not M.is_regular_buffer(buf) then
+        return
+    end
+    local file = vim.fn.expand("%:p")
+    if file == "" then
+        return
+    end
+    local lnum = vim.api.nvim_win_get_cursor(0)[1]
+    return file,lnum
+end
+
 ---@param winid integer
 ---@param line? integer 1‑based line number (nil = just open)
 ---@param col? integer 1‑based line number (nil = just open)

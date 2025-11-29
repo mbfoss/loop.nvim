@@ -5,12 +5,18 @@ local BaseSession = require("loop.dap.BaseSession")
 local FSM = require("loop.tools.FSM")
 
 local fsmdata = require('loop.dap.fsmdata')
+local breakpoints = require('loop.dap.breakpoints')
 
----@class loop.dap.session.Breakpoint
----@field id number
+---@class loop.dap.session.SourceBPData
+---@field user_data loop.dap.SourceBreakpoint
 ---@field verified boolean
----@field file string
----@field source_breakpoint loop.dap.proto.SourceBreakpoint
+---@field dap_id number|nil
+
+---@class loop.dap.session.SourceBreakpointsData
+---@field by_location table<string, table<number, loop.dap.session.SourceBPData>>
+---@field by_usr_id table<number, loop.dap.session.SourceBPData>
+---@field by_dap_id table<number, loop.dap.session.SourceBPData>
+---@field pending_files table<string,boolean>
 
 ---@class loop.dap.session.notify.LogData
 ---@field level nil|"warn"|"error"
@@ -67,18 +73,21 @@ local fsmdata = require('loop.dap.fsmdata')
 ---@field _output_handler fun(msg_body:table)
 ---@field _on_exit fun(code:number)
 ---@field _tracker loop.session.Tracker
----@field _breakpoints_by_usr_id table<number,loop.dap.session.Breakpoint>
----@field _breakpoints_by_dap_id table<number,loop.dap.session.Breakpoint>
+---@field _can_sent_breakpoints boolean
+---@field _source_breakpoints loop.dap.session.SourceBreakpointsData
 ---@field _stopped_threads loop.dap.proto.Thread[]|nil
 ---@field _stopped_thread_id number|nil
 ---@field _subsession_id number
+---@field _breakpoints_tracker_id number
 local Session = class()
 
 function Session:init()
     self._started = false
-    self._breakpoints_by_usr_id = {}
-    self._breakpoints_by_dap_id = {}
     self._subsession_id = 0
+
+    self._can_sent_breakpoints = false
+    self._source_breakpoints = { by_location = {}, by_usr_id = {}, by_dap_id = {}, pending_files = {} }
+    self._breakpoints_tracker_id = 0
 end
 
 ---@param args loop.dap.session.Args
@@ -210,32 +219,85 @@ function Session:name()
     return self._args.name or "(Unnamed session)"
 end
 
----@param bpts loop.dap.session.Breakpoint[]
-function Session:add_breakpoints(bpts)
-    for _, b in ipairs(bpts) do
-        assert(not self._breakpoints_by_usr_id[b.id])
-        self._breakpoints_by_usr_id[b.id] = b
+function Session:_start_tracking_breakpoints()
+    
+    assert(not self._can_sent_breakpoints) 
+
+    if self._breakpoints_tracker_id ~= 0 then
+        return
+    end
+    breakpoints.add_tracker({
+        on_added = function (bp)
+            self:_set_source_breakpoint(bp)            
+        end,
+        on_removed = function (bp)
+            self:_remove_breakpoint(bp.id)
+        end,
+         on_all_removed = function ()
+            self:_remove_all_breakpoints()
+         end
+    })
+end
+
+function Session:stop_tracking_breakpoints()
+    if self._breakpoints_tracker_id ~= 0 then
+        local removed = breakpoints.remove_tracker(self._breakpoints_tracker_id)
+        assert(removed)
+        self._breakpoints_tracker_id = 0
     end
 end
 
----@param ids number[]
-function Session:remove_breakpoints(ids)
-    local to_delete = {}
-    for _, id in ipairs(ids) do
-        to_delete[id] = true
-        self._breakpoints_by_usr_id[id] = nil
+---@param breakpoint loop.dap.SourceBreakpoint
+function Session:_set_source_breakpoint(breakpoint)
+    local data = self._source_breakpoints
+    ---@type loop.dap.session.SourceBPData
+    local pbdata = { user_data = breakpoint, verified = false, dap_id = nil }
+    data.by_usr_id[breakpoint.id] = pbdata
+    data.by_location[breakpoint.file] = data.by_location[breakpoint.file] or {}
+    data.by_location[breakpoint.file][breakpoint.line] = pbdata
+    data.pending_files[breakpoint.file] = true
+    if self._can_sent_breakpoints then
+        self:_send_pending_breakpoints(function(success) end)
     end
-    for dapid, bp in pairs(self._breakpoints_by_dap_id) do
-        if to_delete[bp.id] then
-            self._breakpoints_by_dap_id[dapid] = nil
+end
+
+---@param id number
+function Session:_remove_breakpoint(id)
+    local data = self._source_breakpoints
+    local bp = data.by_usr_id[id]
+    if bp then
+        data.by_usr_id[id] = nil
+        if bp.dap_id then
+            data.by_dap_id[bp.dap_id] = nil
         end
+        if data.by_location[bp.user_data.file] then
+            local byline = data.by_location[bp.user_data.file]
+            byline[bp.user_data.line] = nil
+            if next(byline) == nil then
+                data.by_location[bp.user_data.file] = nil
+            end
+        end
+        data.pending_files[bp.user_data.file] = true
     end
+    if self._can_sent_breakpoints then
+        self:_send_pending_breakpoints(function(success) end)
+    end
+end
+
+function Session:_remove_all_breakpoints()
+    local data = self._source_breakpoints
+    for file,_ in pairs(data.by_location) do 
+        data.pending_files[file] = true
+    end
+    data.by_location = {}
+    data.by_usr_id = {}
+    data.by_dap_id = {}
 end
 
 ---@param id number
 ---@return boolean|nil
 function Session:get_breakpoint_state(id)
-    local bp = self._breakpoints_by_usr_id[id]
+    local bp = self._source_breakpoints.by_usr_id[id]
     return bp and bp.verified or nil
 end
 
@@ -392,18 +454,18 @@ end
 ---@param event loop.dap.proto.BreakpointEvent|nil
 function Session:_on_breakpoint_event(event)
     assert(event and event.breakpoint)
-    local breakpoint = self._breakpoints_by_dap_id[event.breakpoint.id]
-    if not breakpoint then
-        return
-    end
-    breakpoint.verified = event.breakpoint.verified
-    local removed = event.reason == "removed"
-    ---@type loop.dap.session.notify.BreakpointsEvent
-    local data = { { id = breakpoint.id, verified = breakpoint.verified, removed = removed } }
-    self:_notify_tracker("breakpoints", data)
-    if removed then
-        self._breakpoints_by_dap_id[event.breakpoint.id] = nil
-        self._breakpoints_by_usr_id[breakpoint.id] = nil
+    local dapid = event.breakpoint.id
+    if not dapid then return end
+    local bp = self._source_breakpoints.by_dap_id[dapid]
+    if bp then
+        bp.verified = event.breakpoint.verified
+        local removed = event.reason == "removed"
+        ---@type loop.dap.session.notify.BreakpointsEvent
+        local data = { { id = bp.user_data.id, verified = bp.verified, removed = removed } }
+        self:_notify_tracker("breakpoints", data)
+        if removed then
+            self._source_breakpoints.by_dap_id[dapid] = nil
+        end
     end
 end
 
@@ -466,6 +528,8 @@ function Session:_send_attach(on_complete)
 end
 
 function Session:_on_initializing_state()
+    self:_start_tracking_breakpoints() -- must be done before _can_sent_breakpoints = true
+
     local on_complete = function(success)
         self._fsm:trigger(success and
             fsmdata.trigger.initialize_resp_ok or
@@ -490,7 +554,8 @@ end
 
 ---@param on_complete fun(success:boolean)
 function Session:_send_configuration(on_complete)
-    self:_send_breakpoints(function(bpts_ok)
+    self._can_sent_breakpoints = true
+    self:_send_pending_breakpoints(function(bpts_ok)
         if bpts_ok then
             self:_send_configurationDone(on_complete)
         else
@@ -531,17 +596,15 @@ function Session:_on_configuring2_state()
 end
 
 ---@param on_complete fun(success:boolean)
-function Session:_send_breakpoints(on_complete)
-    ---@type table<string,loop.dap.session.Breakpoint[]>
-    local breakpoints_by_source = {}
-    for _, bp in pairs(self._breakpoints_by_usr_id) do
-        if bp.file and bp.source_breakpoint then
-            breakpoints_by_source[bp.file] = breakpoints_by_source[bp.file] or {}
-            table.insert(breakpoints_by_source[bp.file], bp)
-        end
+function Session:_send_pending_breakpoints(on_complete)
+    
+    if not self._can_sent_breakpoints then
+        self.log:debug('cannot send breakpoints')
+        on_complete(false)
+        return
     end
 
-    local nb_sources = vim.tbl_count(breakpoints_by_source)
+    local nb_sources = vim.tbl_count(self._source_breakpoints.pending_files)
     local nb_success = 0
     local nb_failures = 0
 
@@ -550,12 +613,31 @@ function Session:_send_breakpoints(on_complete)
         return
     end
 
-    for file, source_breakpoints in pairs(breakpoints_by_source) do
+    for file, _ in pairs(self._source_breakpoints.pending_files) do
+        self._source_breakpoints.pending_files[file] = nil
+
         ---@type loop.dap.proto.SourceBreakpoint[]
         local dap_breakpoints = {}
-        for _, bpts in ipairs(source_breakpoints) do
-            table.insert(dap_breakpoints, bpts.source_breakpoint)
+         ---@type loop.dap.session.SourceBPData[]
+        local originals = {}
+        do
+            local lines = self._source_breakpoints.by_location[file]
+            if lines then
+                for line, bp in pairs(lines) do
+                    ---@type loop.dap.proto.SourceBreakpoint
+                    local dapbp = {
+                        line = bp.user_data.line,
+                        column = bp.user_data.column,
+                        condition = bp.user_data.condition,
+                        hitCondition = bp.user_data.hitCondition,
+                        logMessage = bp.user_data.logMessage
+                    }
+                    table.insert(dap_breakpoints, dapbp)
+                    table.insert(originals, bp)
+                end
+            end
         end
+
         self.log:debug('sending breakpoints for file: ' .. file .. ": " .. vim.inspect(dap_breakpoints))
         self._base_session:request_setBreakpoints({
                 source = {
@@ -567,16 +649,17 @@ function Session:_send_breakpoints(on_complete)
             function(err, resp)
                 if resp then
                     for idx, bp in ipairs(resp.breakpoints) do
-                        if bp.id then --TODO: handle the case with no id
-                            self._breakpoints_by_dap_id[bp.id] = source_breakpoints[idx]
-                            source_breakpoints[idx].verified = bp.verified
-                        end
+                        assert(bp.id)
+                        local original = originals[idx]
+                        original.verified = bp.verified
+                        original.dap_id = bp.id
+                        self._source_breakpoints.by_dap_id[bp.id] = original
                     end
                     ---@type loop.dap.session.notify.BreakpointsEvent
                     local data = {}
-                    for _, b in ipairs(source_breakpoints) do
+                    for _, bp in ipairs(originals) do
                         ---@type loop.dap.session.notify.BreakpointState
-                        state = { id = b.id, verified = b.verified }
+                        state = { id = bp.user_data.id, verified = bp.verified }
                         table.insert(data, state)
                     end
                     self:_notify_tracker("breakpoints", data)
@@ -613,7 +696,7 @@ function Session:_on_launching_state()
         return
     end
 
-    vim.notify(vim.inspect(target.launch_args))
+    --vim.notify(vim.inspect(target.launch_args))
     if not target.launch_args or next(target.launch_args) == nil then
         -- node-js subsession have empty launch request
         -- launch should not be sent
@@ -636,6 +719,7 @@ end
 function Session:_on_disconnecting_state()
     local terminate_debuggee = self._args.debug_args.terminate_debuggee
 
+    self._can_sent_breakpoints = false
     self._stopped_threads = {}
     self:_notify_about_state()
     self._base_session:request_disconnect({
@@ -646,12 +730,16 @@ function Session:_on_disconnecting_state()
 end
 
 function Session:_on_kill_state()
+    self._can_sent_breakpoints = false
+    self:stop_tracking_breakpoints()
     self._stopped_threads = {}
     self:_notify_about_state()
     self._base_session:kill()
 end
 
 function Session:_on_ended_state()
+    self._can_sent_breakpoints = false
+    self:stop_tracking_breakpoints()
 end
 
 ---@return loop.dap.proto.Thread[]|nil

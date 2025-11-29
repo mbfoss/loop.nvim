@@ -5,7 +5,9 @@ local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
 local uitools = require('loop.tools.uitools')
 local vartools = require('loop.tools.vars')
-local breakpoints = require('loop.breakpoints')
+local breakpoints = require('loop.dap.breakpoints')
+local breakpoints_ui = require('loop.breakpoints_ui')
+local signs = require('loop.signs')
 local extensions = require('loop.ext.extensions')
 
 local _setup_done = false
@@ -228,7 +230,10 @@ function M.breakpoints_command(command)
     end
     command = command and command:match("^%s*(.-)%s*$") or ""
     if command == "" or command == "toggle" then
-        breakpoints.toggle_breakpoint()
+        local file, line = uitools.get_current_file_and_line()
+        if file and line then
+            breakpoints.toggle_breakpoint(file, line)
+        end
     elseif command == "clear_file" then
         local bufnr = vim.api.nvim_get_current_buf()
         if vim.api.nvim_buf_is_valid(bufnr) then
@@ -292,8 +297,8 @@ function M.setup(config)
     assert(not _setup_done, "Setup alreay done")
     _setup_done = true
 
-    require('loop.signs').setup()
-    breakpoints.setup()
+    signs.setup()
+    breakpoints_ui.setup()
 
     window.setup({})
 

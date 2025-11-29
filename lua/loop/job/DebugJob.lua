@@ -1,14 +1,13 @@
 local class       = require('loop.tools.class')
 local config      = require('loop.config')
 local Job         = require('loop.job.Job')
-local strtools    = require('loop.tools.strtools')
 local Session     = require('loop.dap.Session')
 local TermProc    = require('loop.tools.TermProc')
 local window      = require('loop.window')
-local breakpoints = require('loop.breakpoints')
 local selector    = require("loop.selector")
 local uitools     = require('loop.tools.uitools')
 local signs       = require('loop.signs')
+local breakpoints = require('loop.dap.breakpoints')
 
 ---@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"|"terminate"
 
@@ -93,8 +92,7 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
     }
 
     -- start new session
-    local session      = Session:new()
-    session:add_breakpoints(breakpoints.get_breakpoints())
+    local session = Session:new()
 
     local started, start_err = session:start(session_args)
     if not started then
@@ -138,6 +136,7 @@ function DebugJob:_session_exit_handler(session_id, code)
         if next(self._sessions) == nil then
             ---no more sessions
             self._on_exit_handler(code)
+            breakpoints.reset_verified_status()
         end
     end)
 end
