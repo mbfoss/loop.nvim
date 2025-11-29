@@ -187,7 +187,7 @@ function DebugJob:debug_command(command)
     elseif command == "step_out" then
         self._current_session:debug_stepOut()
     elseif command == "step_over" then
-        self._current_session:debug_stopOver()
+        self._current_session:debug_stepOver()
     elseif command == "terminate" then
         self._current_session:debug_terminate()
     else

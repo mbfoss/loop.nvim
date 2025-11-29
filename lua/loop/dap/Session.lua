@@ -73,7 +73,7 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field _output_handler fun(msg_body:table)
 ---@field _on_exit fun(code:number)
 ---@field _tracker loop.session.Tracker
----@field _can_sent_breakpoints boolean
+---@field _can_send_breakpoints boolean
 ---@field _source_breakpoints loop.dap.session.SourceBreakpointsData
 ---@field _stopped_threads loop.dap.proto.Thread[]|nil
 ---@field _stopped_thread_id number|nil
@@ -85,7 +85,7 @@ function Session:init()
     self._started = false
     self._subsession_id = 0
 
-    self._can_sent_breakpoints = false
+    self._can_send_breakpoints = false
     self._source_breakpoints = { by_location = {}, by_usr_id = {}, by_dap_id = {}, pending_files = {} }
     self._breakpoints_tracker_id = 0
 end
@@ -220,22 +220,15 @@ function Session:name()
 end
 
 function Session:_start_tracking_breakpoints()
-    
-    assert(not self._can_sent_breakpoints) 
+    assert(not self._can_send_breakpoints)
 
     if self._breakpoints_tracker_id ~= 0 then
         return
     end
-    breakpoints.add_tracker({
-        on_added = function (bp)
-            self:_set_source_breakpoint(bp)            
-        end,
-        on_removed = function (bp)
-            self:_remove_breakpoint(bp.id)
-        end,
-         on_all_removed = function ()
-            self:_remove_all_breakpoints()
-         end
+    self._breakpoints_tracker_id = breakpoints.add_tracker({
+        on_added = function(bp) self:_set_source_breakpoint(bp) end,
+        on_removed = function(bp) self:_remove_breakpoint(bp.id) end,
+        on_all_removed = function() self:_remove_all_breakpoints() end
     })
 end
 
@@ -256,7 +249,7 @@ function Session:_set_source_breakpoint(breakpoint)
     data.by_location[breakpoint.file] = data.by_location[breakpoint.file] or {}
     data.by_location[breakpoint.file][breakpoint.line] = pbdata
     data.pending_files[breakpoint.file] = true
-    if self._can_sent_breakpoints then
+    if self._can_send_breakpoints then
         self:_send_pending_breakpoints(function(success) end)
     end
 end
@@ -279,14 +272,14 @@ function Session:_remove_breakpoint(id)
         end
         data.pending_files[bp.user_data.file] = true
     end
-    if self._can_sent_breakpoints then
+    if self._can_send_breakpoints then
         self:_send_pending_breakpoints(function(success) end)
     end
 end
 
 function Session:_remove_all_breakpoints()
     local data = self._source_breakpoints
-    for file,_ in pairs(data.by_location) do 
+    for file, _ in pairs(data.by_location) do
         data.pending_files[file] = true
     end
     data.by_location = {}
@@ -362,7 +355,7 @@ function Session:debug_stepOut()
     end)
 end
 
-function Session:debug_stopOver()
+function Session:debug_stepOver()
     self._base_session:request_next({ threadId = self._stopped_thread_id, granularity = "line" }, function(err)
         if err then
             self:_notify_about_log("error", { "stepOver error", tostring(err) })
@@ -481,6 +474,14 @@ function Session:_on_terminated_event(event)
     end
 end
 
+---@return boolean
+function Session:_detect_macos_lldb()
+    if self._capabilities.__lldb and vim.fn.has("mac") == 1 then
+        return true
+    end
+    return false
+end
+
 ---@param on_complete fun(success:boolean)
 function Session:_send_initialize(on_complete)
     local req_args = {
@@ -497,10 +498,8 @@ function Session:_send_initialize(on_complete)
             self._capabilities = resp
             if not self._dap_configure_post_launch then
                 -- heureustic
-                ---@diagnostic disable-next-line: undefined-field
-                local is_lldb = resp.__lldb ~= nil
-                if is_lldb and vim.fn.has("mac") == 1 then
-                    self.log:info("macos lldb")
+                if self:_detect_macos_lldb() then
+                    self.log:info("Enabling macOS LLDB workarounds")
                     self._dap_configure_post_launch = true
                 end
             end
@@ -528,7 +527,7 @@ function Session:_send_attach(on_complete)
 end
 
 function Session:_on_initializing_state()
-    self:_start_tracking_breakpoints() -- must be done before _can_sent_breakpoints = true
+    self:_start_tracking_breakpoints() -- must be done before _can_send_breakpoints = true
 
     local on_complete = function(success)
         self._fsm:trigger(success and
@@ -543,18 +542,14 @@ end
 
 function Session:_on_waiting_initialized_state()
     self:_notify_about_state()
-    -- workaround for macos lldb (intialized not sent)
-    local is_lldb = self._capabilities.__lldb ~= nil
-    if is_lldb and vim.fn.has("mac") == 1 then
-        self.log:info("macos lldb")
-        self._dap_configure_post_launch = true
+    if  self:_detect_macos_lldb() then
         self._fsm:trigger(fsmdata.trigger.initialized)
     end
 end
 
 ---@param on_complete fun(success:boolean)
 function Session:_send_configuration(on_complete)
-    self._can_sent_breakpoints = true
+    self._can_send_breakpoints = true
     self:_send_pending_breakpoints(function(bpts_ok)
         if bpts_ok then
             self:_send_configurationDone(on_complete)
@@ -597,15 +592,14 @@ end
 
 ---@param on_complete fun(success:boolean)
 function Session:_send_pending_breakpoints(on_complete)
-    
-    if not self._can_sent_breakpoints then
+    if not self._can_send_breakpoints then
         self.log:debug('cannot send breakpoints')
         on_complete(false)
         return
     end
 
     local nb_sources = vim.tbl_count(self._source_breakpoints.pending_files)
-    local nb_success = 0
+    local nb_replies = 0
     local nb_failures = 0
 
     if nb_sources == 0 then
@@ -618,7 +612,7 @@ function Session:_send_pending_breakpoints(on_complete)
 
         ---@type loop.dap.proto.SourceBreakpoint[]
         local dap_breakpoints = {}
-         ---@type loop.dap.session.SourceBPData[]
+        ---@type loop.dap.session.SourceBPData[]
         local originals = {}
         do
             local lines = self._source_breakpoints.by_location[file]
@@ -659,22 +653,18 @@ function Session:_send_pending_breakpoints(on_complete)
                     local data = {}
                     for _, bp in ipairs(originals) do
                         ---@type loop.dap.session.notify.BreakpointState
-                        state = { id = bp.user_data.id, verified = bp.verified }
+                        local state = { id = bp.user_data.id, verified = bp.verified }
                         table.insert(data, state)
                     end
                     self:_notify_tracker("breakpoints", data)
                 end
-
-                if err == nil and resp then
-                    nb_success = nb_success + 1
-                else
+                nb_replies = nb_replies + 1
+                if err ~= nil or not resp then
                     nb_failures = nb_failures + 1
                     self:_notify_about_log("error", { "failed to set breakpoints", err or "" })
                 end
-                if nb_success == nb_sources then
-                    on_complete(true)
-                elseif nb_failures > 0 and nb_success + nb_failures == nb_sources then
-                    on_complete(false)
+                if nb_replies == nb_sources then
+                    on_complete(nb_failures == 0)
                 end
             end)
     end
@@ -719,8 +709,8 @@ end
 function Session:_on_disconnecting_state()
     local terminate_debuggee = self._args.debug_args.terminate_debuggee
 
-    self._can_sent_breakpoints = false
-    self._stopped_threads = {}
+    self._can_send_breakpoints = false
+    self._stopped_threads = nil
     self:_notify_about_state()
     self._base_session:request_disconnect({
         terminateDebuggee = terminate_debuggee
@@ -730,15 +720,15 @@ function Session:_on_disconnecting_state()
 end
 
 function Session:_on_kill_state()
-    self._can_sent_breakpoints = false
+    self._can_send_breakpoints = false
     self:stop_tracking_breakpoints()
-    self._stopped_threads = {}
+    self._stopped_threads = nil
     self:_notify_about_state()
     self._base_session:kill()
 end
 
 function Session:_on_ended_state()
-    self._can_sent_breakpoints = false
+    self._can_send_breakpoints = false
     self:stop_tracking_breakpoints()
 end
 
