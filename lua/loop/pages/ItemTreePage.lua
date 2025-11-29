@@ -44,6 +44,7 @@ function ItemTreePage:init(name)
     self._flat  = {}
     self._index = {}
 
+    --TODO: add tracker 
     self:add_keymap("<CR>", {
         callback = function() self:_on_select() end,
         desc = "Select node",
@@ -53,17 +54,6 @@ function ItemTreePage:init(name)
         callback = function() self:toggle_expand() end,
         desc = "Expand/collapse node",
     })
-end
-
---------------------------------------------------------------------------------
--- Public API
---------------------------------------------------------------------------------
-
----Set the selection callback.
----@param handler fun(cur: loop.pages.ItemTreePage.FlatEntry|nil)
-function ItemTreePage:set_select_handler(handler)
-    assert(not self._select_handler)
-    self._select_handler = handler
 end
 
 ---Set the tree’s list of root nodes.

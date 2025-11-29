@@ -57,6 +57,7 @@ function M.create_fsm_data(handlers)
             disconnecting = {
                 state_handler = handlers.disconnecting,
                 triggers = {
+                    [M.trigger.disconnect] = 'disconnecting', --required in some cases
                     [M.trigger.disconnect_resp_ok] = "ended",
                     [M.trigger.disconnect_resp_err] = "kill"
                 }

@@ -6,8 +6,6 @@ local window = require("loop.window")
 local uitools = require('loop.tools.uitools')
 local vartools = require('loop.tools.vars')
 local breakpoints = require('loop.dap.breakpoints')
-local breakpoints_ui = require('loop.breakpoints_ui')
-local signs = require('loop.signs')
 local extensions = require('loop.ext.extensions')
 
 local _setup_done = false
@@ -262,7 +260,7 @@ end
 ---@return string[]
 function M.debug_subcommands(args)
     if #args == 0 then
-        return { "continue", "step_in", "step_out", "step_over", "terminate" }
+        return { "continue", "step_in", "step_out", "step_over", "terminate", "terminate_all" }
     end
     return {}
 end
@@ -297,8 +295,8 @@ function M.setup(config)
     assert(not _setup_done, "Setup alreay done")
     _setup_done = true
 
-    signs.setup()
-    breakpoints_ui.setup()
+    require('loop.signs').setup()
+    require('loop.bpsigns').setup()
 
     window.setup({})
 

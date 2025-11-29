@@ -1,9 +1,8 @@
 local M = {}
 local Page = require('loop.pages.Page')
 local OutputPage = require('loop.pages.OutputPage')
-local StackTracePage = require('loop.pages.StackTracePage')
+local ItemListPage = require('loop.pages.ItemListPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
-local DebugSessionsPage = require('loop.pages.DebugSessionsPage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local selector = require("loop.selector")
@@ -370,8 +369,7 @@ function M.add_events(lines, level)
     end
 end
 
----@return loop.pages.BreakpointsPage
-function M.get_breakpoints_page()
+local function _ensure_breakpoints_page()
     assert(setup_done)
     local page = _tabs.breakpoints.pages[1]
     if not page then
@@ -379,9 +377,6 @@ function M.get_breakpoints_page()
         page:add_keymaps(get_page_keymap())
         _add_tab_page(_tabs.breakpoints, page)
     end
-    assert(getmetatable(page) == BreakpointsPage)
-    ---@diagnostic disable-next-line: return-type-mismatch
-    return page
 end
 
 function M.show_window()
@@ -459,13 +454,13 @@ function M.add_debug_task_page(name)
     return page
 end
 
----@return loop.pages.DebugSessionsPage
+---@return loop.pages.ItemListPage
 ---@return boolean created
 function M.get_debugsessions_page()
     assert(setup_done)
     local created = false
     if #_tabs.debug_sessions.pages == 0 then
-        local page = DebugSessionsPage:new()
+        local page = ItemListPage:new("Debug sessions")
         page:add_keymaps(get_page_keymap())
         _add_tab_page(_tabs.debug_sessions, page)
         created = true
@@ -499,12 +494,12 @@ function M.add_debug_output_page(name)
 end
 
 ---@param name string -- task name
----@return loop.pages.StackTracePage
+---@return loop.pages.ItemListPage
 function M.add_stacktrace_page(name)
     assert(setup_done)
     assert(type(name) == "string")
     -- create page
-    local page = StackTracePage:new()
+    local page = ItemListPage:new("Stack Trace")
     page:add_keymaps(get_page_keymap())
     _add_tab_page(_tabs.stacktrace, page)
     return page
@@ -534,6 +529,11 @@ function M.setup(_)
 
     _tabs.events.pages[1] = OutputPage:new("Messages")
     _tabs.events.pages[1]:add_keymaps(get_page_keymap())
+
+    -- ensure breakpoints page is shown if there are breakpoints
+    require('loop.dap.breakpoints').add_tracker({
+        on_added = function () _ensure_breakpoints_page() end
+    })
 
     do
         vim.api.nvim_set_hl(0, "LoopPluginInactiveTab", { link = "WinBar" })

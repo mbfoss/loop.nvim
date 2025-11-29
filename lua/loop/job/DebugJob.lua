@@ -9,7 +9,7 @@ local uitools     = require('loop.tools.uitools')
 local signs       = require('loop.signs')
 local breakpoints = require('loop.dap.breakpoints')
 
----@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"|"terminate"
+---@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"|"terminate"|"terminate_all"
 
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob, name:string) : loop.job.DebugJob
@@ -146,11 +146,11 @@ function DebugJob:_refresh_debug_sessions_page()
     local page, created = window:get_debugsessions_page()
     ---@type loop.pages.ItemListPage.Item[]
     if created then
-        page:set_select_handler(function(item)
+        page:add_tracker({on_selection = function(item)
             if item then
                 self:_set_current_session(self._sessions[item.id])
             end
-        end)
+        end})
     end
     local items = {}
     for id, session in pairs(self._sessions) do
@@ -191,6 +191,10 @@ function DebugJob:debug_command(command)
         self._current_session:debug_stepOver()
     elseif command == "terminate" then
         self._current_session:debug_terminate()
+    elseif command == "terminate_all" then
+        for _,s in pairs(self._sessions) do
+            s:debug_terminate()
+        end
     else
         self._task_page:add_lines({ 'loop.nvim: Invalid debug command: ' .. tostring(command) }, "error")
     end
@@ -220,7 +224,7 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
             self:add_debug_output(sess_id, session:name(), output.category, output.output)
         elseif output.category == "console" then
             self._task_page:add_lines({ "Session " .. tostring(sess_id) .. ": " .. tostring(output.output) })
-        else
+        elseif output.category ~= "telemetry" then
             self._task_page:add_lines({ "Session " ..
             tostring(sess_id) .. ": (" .. tostring(output.category) .. ") " .. tostring(output.output) })
         end
@@ -309,7 +313,8 @@ end
 ---@param page loop.pages.ItemListPage
 ---@param session loop.dap.Session
 ---@param thread_id number|nil
-function DebugJob:load_stack_trace(page, session, thread_id)
+---@param show_buffer boolean
+function DebugJob:load_stack_trace(page, session, thread_id, show_buffer)
     local threads = session:stopped_threads()
     if not thread_id then
         page:set_items({ { id = 0, text = string.format("%s paused threads", #threads) } })
@@ -355,6 +360,9 @@ function DebugJob:load_stack_trace(page, session, thread_id)
                 if frame.source and frame.source.path and frame.line then
                     signs.remove_signs("currentframe")
                     signs.place_file_sign(frame.source.path, frame.line, "currentframe", "currentframe")
+                    if show_buffer then
+                        uitools.smart_open_file(frame.source.path, frame.line, frame.column)
+                    end
                 end
             end
             page:set_items(items)
@@ -378,7 +386,7 @@ function DebugJob:select_n_load_stacktrace(page, session)
     end
     selector.select("Select a thread", choices, nil, function(thread_id)
         if thread_id and type(thread_id) == "number" then
-            self:load_stack_trace(page, session, thread_id)
+            self:load_stack_trace(page, session, thread_id, true)
         end
     end)
 end
@@ -394,7 +402,7 @@ function DebugJob:_on_session_threads_event(sess_id, session, event, thread_id)
     if not page then
         page = window.add_stacktrace_page(session:name())
         self._stacktrace_pages[sess_id] = page
-        page:set_select_handler(function(item)
+        page:add_tracker({on_selection = function(item)
             ---@type loop.pages.ItemListPage.Item
             if item then
                 if item.id == 0 then
@@ -407,11 +415,11 @@ function DebugJob:_on_session_threads_event(sess_id, session, event, thread_id)
                     end
                 end
             end
-        end)
+        end})
     end
     if event == "pause" then
         self:_set_current_session(session)
-        self:load_stack_trace(page, session, thread_id)
+        self:load_stack_trace(page, session, thread_id, true)
     elseif event == "continue" then
         signs.remove_signs("currentframe")
         page:set_items({ { id = 0, text = "No paused threads" } })

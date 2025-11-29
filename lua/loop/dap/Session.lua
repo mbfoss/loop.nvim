@@ -196,9 +196,6 @@ function Session:start(args)
     self._base_session:set_event_handler("exited", function(msg_body) self:_on_exited_event(msg_body) end)
     self._base_session:set_event_handler("terminated", function(msg_body) self:_on_terminated_event(msg_body) end)
 
-    --self._base_session:set_event_handler("debugpySockets", function(msg_body) self:_on_debugpySockets_event(msg_body) end)
-    --self._base_session:set_event_handler("debugpyWaitingForServer",
-    --  function(msg_body) self:_on_debugpy_waiting_for_server(msg_body) end)
 
     self._base_session:set_reverse_request_handler("runInTerminal",
         function(req_args, on_success, on_failure)
@@ -211,13 +208,7 @@ function Session:start(args)
             self:_on_startDebugging_request(req_args, on_success, on_failure)
         end
     )
-
-    self._base_session:set_reverse_request_handler("pydevdAuthorize",
-        function(req_args, on_success, on_failure)
-            self:_on_pydevdAuthorize_request(req_args, on_success, on_failure)
-        end
-    )
-
+    
     vim.schedule(function()
         self._fsm:start()
     end)
@@ -419,18 +410,6 @@ function Session:_on_startDebugging_request(req_args, on_success, on_failure)
         on_failure = on_failure
     }
     self:_notify_tracker("subsession_request", data)
-end
-
----@type fun(sef:loop.dap.Session, req_args: any, on_success:fun(resp_body:any), on_failure:fun(reason:string))
-function Session:_on_pydevdAuthorize_request(req_args, on_success, on_failure)
-    -- debugpy sends this reverse request on every connection to the final server
-    -- It expects a simple success response — no auth token needed in practice
-    -- Reference: https://github.com/microsoft/debugpy/issues/768
-    self._log:debug("Received pydevdAuthorize reverse request: " .. vim.inspect(req_args))
-    -- The official response is just {} — empty body
-    -- Some clients send { accessToken = nil }, but empty works everywhere
-    on_success({})
-    -- DO NOT call on_failure() — that would disconnect!
 end
 
 ---@param event loop.dap.proto.OutputEvent|nil

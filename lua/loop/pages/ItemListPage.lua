@@ -13,6 +13,12 @@ local uitools = require('loop.tools.uitools')
 ---@field data any
 ---@field highlights loop.pages.ItemListPage.highlight[]|nil
 
+---@class loop.pages.ItemListPage.TrackerCallbacks
+---@field on_selection fun(item:loop.pages.ItemListPage.Item|nil)
+
+
+local _last_tracker_id = 0
+
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 
 ---@class loop.pages.ItemListPage : loop.pages.Page
@@ -20,6 +26,7 @@ local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 ---@field _items loop.pages.ItemListPage.Item[]
 ---@field _index table<any,number>
 ---@field _select_handler fun(item:loop.pages.ItemListPage.Item|nil)
+---@field _trackers table<number,loop.pages.ItemListPage.TrackerCallbacks>
 local ItemListPage = class(Page)
 
 ---@param name string
@@ -27,22 +34,18 @@ function ItemListPage:init(name)
     Page.init(self, "list", name)
     self._items = {}
     self._index = {}
+    self._trackers = {}
 
     local select_handler = function()
-        if self._select_handler then
-            local cur = self:get_cur_item()
-            self._select_handler(cur)
+        for _,callacks in pairs(self._trackers) do
+            if callacks.on_selection then
+                callacks.on_selection(self:get_cur_item())
+            end
         end
     end
 
     self:add_keymap('<CR>', { callback = select_handler, desc = "Select item" })
     self:add_keymap('<2-LeftMouse>', { callback = select_handler, desc = "Select item" })
-end
-
----@param handler fun(item:loop.pages.ItemListPage.Item)
-function ItemListPage:set_select_handler(handler)
-    assert(not self._select_handler)
-    self._select_handler = handler
 end
 
 ---@param items loop.pages.ItemListPage.Item[]
@@ -77,7 +80,7 @@ function ItemListPage:set_item(item)
     self:_highlight(pos, pos)
 end
 
----@return loop.pages.ItemListPage.Item|nil  -- item id under cursor, or nil if buffer not active or no item
+---@return loop.pages.ItemListPage.Item|nil  -- item under cursor, or nil if buffer not active or no item
 function ItemListPage:get_cur_item()
     local current_buf = vim.api.nvim_get_current_buf()
     local page_buf = self:get_buf()
@@ -189,6 +192,23 @@ function ItemListPage:_refresh_buffer(buf)
     vim.bo[buf].modifiable = false
 
     self:_highlight(1, #self._items)
+end
+
+---@param callbacks loop.pages.ItemListPage.TrackerCallbacks>
+---@return number
+function ItemListPage:add_tracker(callbacks)
+    local tracker_id = _last_tracker_id + 1
+    _last_tracker_id = tracker_id
+    self._trackers[tracker_id] = callbacks
+    return tracker_id
+end
+
+---@param id number
+---@return boolean
+function ItemListPage:remove_tracker(id)
+    local removed = self._trackers[id] ~= nil
+    self._trackers[id] = nil
+    return removed
 end
 
 return ItemListPage
