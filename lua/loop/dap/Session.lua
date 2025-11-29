@@ -228,7 +228,7 @@ function Session:_start_tracking_breakpoints()
     self._breakpoints_tracker_id = breakpoints.add_tracker({
         on_added = function(bp) self:_set_source_breakpoint(bp) end,
         on_removed = function(bp) self:_remove_breakpoint(bp.id) end,
-        on_all_removed = function() self:_remove_all_breakpoints() end
+        on_all_removed = function(bpts) self:_remove_all_breakpoints(bpts) end
     })
 end
 
@@ -277,7 +277,8 @@ function Session:_remove_breakpoint(id)
     end
 end
 
-function Session:_remove_all_breakpoints()
+---@param bpts loop.dap.SourceBreakpoint[]
+function Session:_remove_all_breakpoints(bpts)
     local data = self._source_breakpoints
     for file, _ in pairs(data.by_location) do
         data.pending_files[file] = true
@@ -285,6 +286,9 @@ function Session:_remove_all_breakpoints()
     data.by_location = {}
     data.by_usr_id = {}
     data.by_dap_id = {}
+    if self._can_send_breakpoints then
+        self:_send_pending_breakpoints(function(success) end)
+    end    
 end
 
 ---@param id number
@@ -327,9 +331,6 @@ function Session:debug_continue()
             if err or not resp then
                 self:_notify_about_log("error", { "continue error", tostring(err) })
                 return
-            end
-            if resp.allThreadsContinued == false then
-                self:_notify_about_log("error", { "unsupported single thread continue" })
             end
             self._stopped_thread_id = nil
             if self._stopped_threads then
@@ -432,10 +433,6 @@ function Session:_on_continued_event(event)
     if self._fsm:curr_state() ~= "running" then
         self:_notify_about_log("error", { "unexpected continued event" })
         return
-    end
-    assert(event)
-    if event.allThreadsContinued == false then
-        self:_notify_about_log("error", { "unsupported single thread continue" })
     end
     self._stopped_thread_id = nil
     if self._stopped_threads then
@@ -682,14 +679,6 @@ function Session:_on_launching_state()
     assert(target)
 
     if target.request ~= "launch" then
-        self._fsm:trigger(fsmdata.trigger.launch_resp_ok)
-        return
-    end
-
-    --vim.notify(vim.inspect(target.launch_args))
-    if not target.launch_args or next(target.launch_args) == nil then
-        -- node-js subsession have empty launch request
-        -- launch should not be sent
         self._fsm:trigger(fsmdata.trigger.launch_resp_ok)
         return
     end

@@ -307,9 +307,14 @@ end
 
 ---@param page loop.pages.ItemListPage
 ---@param session loop.dap.Session
----@param thread_id number
+---@param thread_id number|nil
 function DebugJob:load_stack_trace(page, session, thread_id)
     local threads = session:stopped_threads()
+    if not thread_id then
+        page:set_items({ { id = 0, text = string.format("%s paused threads", #threads) } })
+        return
+    end
+
     page:set_items({ { id = 0, text = "Loading stack trace..." } })
     window.show_stacktrace()
     session:request_stackTrace({
@@ -405,11 +410,7 @@ function DebugJob:_on_session_threads_event(sess_id, session, event, thread_id)
     end
     if event == "pause" then
         self:_set_current_session(session)
-        if thread_id then
-            self:load_stack_trace(page, session, thread_id)
-        else
-            self:select_n_load_stacktrace(page, session)
-        end
+        self:load_stack_trace(page, session, thread_id)
     elseif event == "continue" then
         signs.remove_signs("currentframe")
         page:set_items({ { id = 0, text = "No paused threads" } })
@@ -439,7 +440,7 @@ end
 ---@param request loop.dap.session.notify.SubsessionRequest
 function DebugJob:_on_subsession_request(sess_id, session, request)
     local dapreq_type = request.dap_request.request -- "launch" or "attach"
-    local dapreq_args = request.dap_request.arguments or {}
+    local dapreq_args = request.dap_request.configuration or {}
 
     if dapreq_type ~= "launch" and dapreq_type ~= "attach" then
         return request.on_failure("Unsupported request type: " .. tostring(dapreq_type))

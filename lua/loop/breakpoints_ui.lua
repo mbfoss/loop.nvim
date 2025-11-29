@@ -26,19 +26,19 @@ local function _on_removed(bp)
     window.get_breakpoints_page():remove_item(bp.id)
 end
 
-local function _on_all_removed()
+---@param bpts loop.dap.SourceBreakpoint[]
+local function _on_all_removed(bpts)
     local files = {}
-    breakpoints.for_each(function (bp)
+    for _,bp in ipairs(bpts) do
         files[bp.file] = true        
-    end)
-
-    for _, file in pairs(files) do
+    end
+    for file,_ in pairs(files) do
         signs.remove_file_signs(file, "breakpoints")
     end
     window.get_breakpoints_page():set_items({})
 end
 
----@param id number
+---@param bp loop.dap.SourceBreakpoint
 ---@param verified boolean|nil
 local function _on_status_update(bp, verified)
     _update_breakpoint_ui(bp)

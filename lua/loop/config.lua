@@ -5,7 +5,7 @@ local strtools = require('loop.tools.strtools')
 
 ---@class loop.Config.Debug
 ---@field stack_levels_limit number
----@field sign_priority number
+---@field sign_priority table<string,number>
 
 ---@class loop.Config.Debugger
 ---@field dap          loop.dap.session.Args.DAP
@@ -37,9 +37,12 @@ end
 ---@type loop.Config
 M.defaut_config = {
     debug = {
-        sign_priority = 12,
         stack_levels_limit = 100,
         auto_switch_page = true,
+        sign_priority = {
+            breakpoints = 12,
+            currentframe = 13
+        },
     },
 
     debuggers = {
@@ -75,7 +78,8 @@ M.defaut_config = {
                 name = "js-debug",
                 type = "remote",
                 host = "::1",
-                port = 8123
+                port = 8123,
+                cwd = os.getenv("HOME")
             },
             request = "launch",
             default_request_args = {
@@ -84,9 +88,9 @@ M.defaut_config = {
                 runtimeExecutable = "node",
                 program = function(task) return task.command or nil end,
                 cwd = get_task_cwd,
-                stopOnEntry = true,
+                stopOnEntry = false,
                 sourceMaps = true,
-                outputCapture = "std",
+                --outputCapture = "std",
             },
             terminate_debuggee = true,
         },
@@ -104,7 +108,7 @@ M.defaut_config = {
             default_request_args = {
                 program = function(task) return task.command or "${file}" end,
                 cwd = get_task_cwd,
-                stopOnEntry = true,
+                stopOnEntry = false,
                 justMyCode = false,
                 console = "integratedTerminal",
                 env = function(task) return task.env end,
@@ -126,7 +130,7 @@ M.defaut_config = {
                 program = get_task_program,
                 args = get_task_args,
                 cwd = get_task_cwd,
-                stopOnEntry = true,
+                stopOnEntry = false,
                 env = function(task) return task.env end,
             },
             terminate_debuggee = true,
@@ -145,7 +149,7 @@ M.defaut_config = {
             default_request_args = {
                 program = get_task_program,
                 cwd = get_task_cwd,
-                stopOnEntry = true,
+                stopOnEntry = false,
             },
         },
     },

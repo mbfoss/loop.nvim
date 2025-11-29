@@ -15,7 +15,7 @@ local M = {}
 ---@class loop.dap.breakpoints.TrackerCallbacks
 ---@field on_added fun(bp:loop.dap.SourceBreakpoint)|nil
 ---@field on_removed fun(bp:loop.dap.SourceBreakpoint)|nil
----@field on_all_removed fun()|nil
+---@field on_all_removed fun(bpts:loop.dap.SourceBreakpoint[])|nil
 ---@field on_status_update fun(bp:loop.dap.SourceBreakpoint, verified:boolean|nil)|nil
 
 local _last_breakpoint_id = 1000
@@ -111,11 +111,13 @@ local function _clear_file_breakpoints(file)
 end
 
 local function _clear_breakpoints()
+    ---@type loop.dap.SourceBreakpoint[]
+    local removed = vim.tbl_values(_by_id)
     _by_id = {}
     _source_breakpoints = {}
     _need_saving = true
     for type, tracker in pairs(_trackers) do
-        if tracker.on_all_removed then tracker.on_all_removed() end
+        if tracker.on_all_removed then tracker.on_all_removed(removed) end
     end
 end
 

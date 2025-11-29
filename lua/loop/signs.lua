@@ -55,7 +55,7 @@ local function _place_sign(bufnr, line, group, name)
         _signs_id_prefix .. group,
         _signs_id_prefix .. name,
         bufnr,
-        { lnum = line, priority = config.current.debug.sign_priority or 12 }
+        { lnum = line, priority = config.current.debug.sign_priority[group] or 12 }
     )
 end
 
