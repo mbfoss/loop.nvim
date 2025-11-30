@@ -1,6 +1,6 @@
 local class = require('loop.tools.class')
 local Page = require('loop.pages.Page')
-local uitools = require('loop.tools.uitools')
+local Trackers = require("loop.tools.Trackers")
 
 ---@class loop.pages.ItemListPage.highlight
 ---@field group string
@@ -16,9 +16,6 @@ local uitools = require('loop.tools.uitools')
 ---@class loop.pages.ItemListPage.TrackerCallbacks
 ---@field on_selection fun(item:loop.pages.ItemListPage.Item|nil)
 
-
-local _last_tracker_id = 0
-
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 
 ---@class loop.pages.ItemListPage : loop.pages.Page
@@ -26,7 +23,7 @@ local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 ---@field _items loop.pages.ItemListPage.Item[]
 ---@field _index table<any,number>
 ---@field _select_handler fun(item:loop.pages.ItemListPage.Item|nil)
----@field _trackers table<number,loop.pages.ItemListPage.TrackerCallbacks>
+---@field _trackers loop.tools.Trackers<loop.pages.ItemListPage.TrackerCallbacks>
 local ItemListPage = class(Page)
 
 ---@param name string
@@ -34,18 +31,26 @@ function ItemListPage:init(name)
     Page.init(self, "list", name)
     self._items = {}
     self._index = {}
-    self._trackers = {}
+    self._trackers = Trackers:new()
 
     local select_handler = function()
-        for _,callacks in pairs(self._trackers) do
-            if callacks.on_selection then
-                callacks.on_selection(self:get_cur_item())
-            end
-        end
+        self._trackers:invoke("on_selection", self:get_cur_item())
     end
 
     self:add_keymap('<CR>', { callback = select_handler, desc = "Select item" })
     self:add_keymap('<2-LeftMouse>', { callback = select_handler, desc = "Select item" })
+end
+
+---@param callbacks loop.pages.ItemListPage.TrackerCallbacks>
+---@return number
+function ItemListPage:add_tracker(callbacks)
+    return self._trackers:add_tracker(callbacks)
+end
+
+---@param id number
+---@return boolean
+function ItemListPage:remove_tracker(id)
+    return self._trackers:remove_tracker(id)
 end
 
 ---@param items loop.pages.ItemListPage.Item[]
@@ -192,23 +197,6 @@ function ItemListPage:_refresh_buffer(buf)
     vim.bo[buf].modifiable = false
 
     self:_highlight(1, #self._items)
-end
-
----@param callbacks loop.pages.ItemListPage.TrackerCallbacks>
----@return number
-function ItemListPage:add_tracker(callbacks)
-    local tracker_id = _last_tracker_id + 1
-    _last_tracker_id = tracker_id
-    self._trackers[tracker_id] = callbacks
-    return tracker_id
-end
-
----@param id number
----@return boolean
-function ItemListPage:remove_tracker(id)
-    local removed = self._trackers[id] ~= nil
-    self._trackers[id] = nil
-    return removed
 end
 
 return ItemListPage

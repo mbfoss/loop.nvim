@@ -8,7 +8,6 @@ local TermJob = require('loop.job.TermJob')
 local DebugJob = require('loop.job.DebugJob')
 local VimCmdJob = require('loop.job.VimCmdJob')
 local window = require('loop.window')
-local config = require('loop.config')
 
 ---@class loop.runner.TaskChain
 ---@field tasks loop.Task[]
@@ -212,9 +211,12 @@ local function _create_debug_job(task, output_handler, exit_handler)
             request_args = resolved_args,
             terminate_debuggee = dbg_config.terminate_debuggee,
         },
-        on_exit_handler = exit_handler,
     }
+
     local job = DebugJob:new(task.name)
+    local tracker = window.add_debug_task(task.name)    
+    job:add_tracker(tracker)
+    job:add_tracker({ on_exit = exit_handler})
     local ok, err = job:start(args)
     if not ok then
         return nil, err

@@ -81,8 +81,7 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field _tracker loop.session.Tracker
 ---@field _can_send_breakpoints boolean
 ---@field _source_breakpoints loop.dap.session.SourceBreakpointsData
----@field _stopped_threads loop.dap.proto.Thread[]|nil
----@field _stopped_thread_id number|nil
+---@field _stopped_threads loop.dap.proto.Thread[]
 ---@field _subsession_id number
 ---@field _breakpoints_tracker_id number
 ---@field _hanlded_debugpysockets table<string,boolean>
@@ -96,6 +95,7 @@ function Session:init(name)
     self._log = require('loop.tools.Logger').create_logger("dap.session[" .. tostring(name) .. "]")
 
     self._started = false
+    self._stopped_threads = {}
     self._subsession_id = 0
 
     self._can_send_breakpoints = false
@@ -338,16 +338,14 @@ function Session:debug_continue()
                 self:_trace_notification("continue error: " .. tostring(err), "error")
                 return
             end
-            self._stopped_thread_id = nil
-            if self._stopped_threads then
-                self._stopped_threads = nil
-                self:_notify_tracker("threads_continued")
-            end
+            self._stopped_threads = {}
+            self:_notify_tracker("threads_continued")
         end)
 end
 
 function Session:debug_stepIn()
-    self._base_session:request_stepIn({ threadId = self._stopped_thread_id, singleThread = false }, function(err)
+    local thread_id = self._stopped_threads[1] and self._stopped_threads[1].id or 0
+    self._base_session:request_stepIn({ threadId = thread_id, singleThread = false }, function(err)
         if err then
             self:_trace_notification("stepIn error: " .. tostring(err), "error")
         end
@@ -355,7 +353,9 @@ function Session:debug_stepIn()
 end
 
 function Session:debug_stepOut()
-    self._base_session:request_stepOut({ threadId = self._stopped_thread_id, singleThread = false }, function(err)
+    local thread_id = self._stopped_threads[1] and self._stopped_threads[1].id or 0
+    thread_id = thread_id or 0
+    self._base_session:request_stepOut({ threadId = thread_id, singleThread = false }, function(err)
         if err then
             self:_trace_notification("stepOut error: " .. tostring(err), "error")
         end
@@ -363,7 +363,8 @@ function Session:debug_stepOut()
 end
 
 function Session:debug_stepOver()
-    self._base_session:request_next({ threadId = self._stopped_thread_id, granularity = "line" }, function(err)
+    local thread_id = self._stopped_threads[1] and self._stopped_threads[1].id or 0
+    self._base_session:request_next({ threadId = thread_id, granularity = "line" }, function(err)
         if err then
             self:_trace_notification("stepOver error: " .. tostring(err), "error")
         end
@@ -397,7 +398,7 @@ function Session:_on_startDebugging_request(req_args, on_success, on_failure)
         return
     end
     self._subsession_id = self._subsession_id + 1
-    local name = self:name() .. '/' .. tostring(self._subsession_id)
+    local name = self:name() .. ':' .. tostring(self._subsession_id)
     ---@type loop.dap.session.notify.SubsessionRequest
     local data = {
         name = name,
@@ -434,9 +435,8 @@ function Session:_on_stopped_event(event)
         return
     end
     assert(event)
-    self._stopped_thread_id = event.threadId
     if event.allThreadsStopped == false then
-        self._stopped_threads = { { id = event.threadId, name = "current" } }
+        self._stopped_threads = {{id = event.threadId, name = "<noname>"}}
         self:_notify_tracker("threads_paused", { thread_id = event.threadId })
     else
         self._base_session:request_threads(function(err, resp)
@@ -454,13 +454,8 @@ end
 function Session:_on_continued_event(event)
     if self._fsm:curr_state() ~= "running" then
         self._log:error("unexpected continued event")
-        return
     end
-    self._stopped_thread_id = nil
-    if self._stopped_threads then
-        self._stopped_threads = nil
-        self:_notify_tracker("threads_continued")
-    end
+    self._stopped_threads = {}
 end
 
 ---@param event loop.dap.proto.BreakpointEvent|nil
@@ -491,54 +486,6 @@ function Session:_on_terminated_event(event)
     if not event or event.restart ~= true then
         self._fsm:trigger(fsmdata.trigger.disconnect)
     end
-end
-
-function Session:_on_debugpySockets_event(event)
-    local socket = event.sockets[1] -- there is always exactly one
-    if not socket then return end
-    self:_request_debugpy_subsession(socket.host, socket.port, false)
-end
-
--- Add this function anywhere in the Session class
-function Session:_on_debugpy_waiting_for_server(event)
-    if not event or not event.port then return end
-    self:_request_debugpy_subsession(event.host, event.port, true)
-end
-
----@param host string
----@param port number
----@param serversession boolean
-function Session:_request_debugpy_subsession(host, port, serversession)
-    host = host or "127.0.0.1"
-    do
-        self._hanlded_debugpysockets = self._hanlded_debugpysockets or {}
-        local key = tostring(host) .. ':' .. tostring(port)
-        if self._hanlded_debugpysockets[key] then
-            -- this avoid infinite recursion due to quicks with the python dap
-            return
-        end
-        self._hanlded_debugpysockets[key] = true
-    end
-    self._subsession_id = self._subsession_id + 1
-    local name = self:name() .. '/' .. tostring(self._subsession_id)
-    ---@type loop.dap.session.notify.SubsessionRequest
-    local data = {
-        name = name,
-        debug_args = {
-            dap = {
-                adapter_id = "debugpy",
-                type = "remote",
-                host = host,
-                port = port,
-                name = "Python (debugpy)",
-            },
-            request = "launch",
-            request_args = self._args.debug_args.request_args
-        },
-        on_success = function() end,
-        on_failure = function() end,
-    }
-    self:_notify_tracker("subsession_request", data)
 end
 
 ---@param on_complete fun(success:boolean)
@@ -745,7 +692,6 @@ function Session:_on_disconnecting_state()
     local terminate_debuggee = self._args.debug_args.terminate_debuggee
 
     self._can_send_breakpoints = false
-    self._stopped_threads = nil
     self:_notify_about_state()
     self._base_session:request_disconnect({
         terminateDebuggee = terminate_debuggee
@@ -757,13 +703,13 @@ end
 function Session:_on_kill_state()
     self._can_send_breakpoints = false
     self:stop_tracking_breakpoints()
-    self._stopped_threads = nil
     self:_notify_about_state()
     self._base_session:kill()
 end
 
 function Session:_on_ended_state()
     self._can_send_breakpoints = false
+    self._stopped_threads = {}
     self:stop_tracking_breakpoints()
 end
 

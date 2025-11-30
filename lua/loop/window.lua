@@ -3,9 +3,11 @@ local Page = require('loop.pages.Page')
 local OutputPage = require('loop.pages.OutputPage')
 local ItemListPage = require('loop.pages.ItemListPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
+local StackTracePage = require('loop.pages.StackTracePage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local selector = require("loop.selector")
+local signs = require('loop.signs')
 
 ---@class loop.TabInfo
 ---@field index number
@@ -272,6 +274,7 @@ end
 ---@param tab loop.TabInfo
 ---@param page loop.pages.Page
 local function _add_tab_page(tab, page)
+    page:add_keymaps(get_page_keymap())
     table.insert(tab.pages, page)
     tab.active_page_idx = #tab.pages
     _setup_tabs()
@@ -374,7 +377,6 @@ local function _ensure_breakpoints_page()
     local page = _tabs.breakpoints.pages[1]
     if not page then
         page = BreakpointsPage:new()
-        page:add_keymaps(get_page_keymap())
         _add_tab_page(_tabs.breakpoints, page)
     end
 end
@@ -435,74 +437,85 @@ function M.add_term_task_page(name, bufnr)
     assert(vim.api.nvim_buf_is_valid(bufnr))
 
     local page = Page:new("term", name)
-    page:add_keymaps(get_page_keymap())
     page:assign_buf(bufnr)
-
     _add_tab_page(_tabs.tasks, page)
     _set_active_tab(_tabs.tasks.index, nil)
 end
 
----@param name string -- task name
----@return loop.pages.OutputPage
-function M.add_debug_task_page(name)
+---@param task_name string -- task name
+---@return loop.job.debugjob.Tracker
+function M.add_debug_task(task_name)
     assert(setup_done)
-    assert(type(name) == "string")
+    assert(type(task_name) == "string")
     -- create page
-    local page = OutputPage:new(name)
-    page:add_keymaps(get_page_keymap())
-    _add_tab_page(_tabs.tasks, page)
-    return page
-end
+    local task_page = OutputPage:new(task_name)
+    _add_tab_page(_tabs.tasks, task_page)
 
----@return loop.pages.ItemListPage
----@return boolean created
-function M.get_debugsessions_page()
-    assert(setup_done)
-    local created = false
-    if #_tabs.debug_sessions.pages == 0 then
-        local page = ItemListPage:new("Debug sessions")
-        page:add_keymaps(get_page_keymap())
-        _add_tab_page(_tabs.debug_sessions, page)
-        created = true
-    end
-    ---@diagnostic disable-next-line: return-type-mismatch
-    return _tabs.debug_sessions.pages[1], created
-end
+    local sesionspage = ItemListPage:new("Debug sessions")
+    _add_tab_page(_tabs.debug_sessions, sesionspage)
+    created = true
 
----@param name string -- task name
----@param bufnr number
-function M.add_debug_term_page(name, bufnr)
-    assert(setup_done)
-    assert(type(name) == "string")
-    -- create page
-    local page = Page:new("term", name)
-    page:add_keymaps(get_page_keymap())
-    page:assign_buf(bufnr)
-    _add_tab_page(_tabs.debug_output, page)
-end
+    local output_pages = {}
+    local stacktrace_pages = {}
 
----@param name string -- task name
----@return loop.pages.OutputPage
-function M.add_debug_output_page(name)
-    assert(setup_done)
-    assert(type(name) == "string")
-    -- create page
-    local page = OutputPage:new(name)
-    page:add_keymaps(get_page_keymap())
-    _add_tab_page(_tabs.debug_output, page)
-    return page
-end
-
----@param name string -- task name
----@return loop.pages.ItemListPage
-function M.add_stacktrace_page(name)
-    assert(setup_done)
-    assert(type(name) == "string")
-    -- create page
-    local page = ItemListPage:new("Stack Trace")
-    page:add_keymaps(get_page_keymap())
-    _add_tab_page(_tabs.stacktrace, page)
-    return page
+    ---@type loop.job.debugjob.Tracker
+    local tracker = {
+        on_trace = function(text, level)
+            task_page:add_lines({ text }, level)
+        end,
+        on_sess_added = function(id, name)
+            sesionspage:set_item({ id = id, text = name })
+        end,
+        on_sess_removed = function(id, name)
+            sesionspage:remove_item(id)
+        end,
+        on_output = function(sess_id, sess_name, category, output)
+            ---@type loop.pages.OutputPage|nil
+            ---@diagnostic disable-next-line: assign-type-mismatch
+            local page = output_pages[sess_id]
+            if not page then
+                page = OutputPage:new(sess_name)
+                _add_tab_page(_tabs.debug_output, page)
+                output_pages[sess_id] = page
+            end
+            local level = category == "stderr" and "error" or nil
+            page:add_lines({ output }, level)
+        end,
+        on_new_term = function(name, bufnr)
+            local page = Page:new("term", name)
+            page:assign_buf(bufnr)
+            _add_tab_page(_tabs.debug_output, page)
+        end,
+        on_thread_event = function(sess_id, sess_name, event, threads, thread_id, stackprovider)
+            -- handle current frame sign
+            if event == "pause" and thread_id then
+                stackprovider(thread_id, 1, function(err, data)
+                    local topframe = data and data.stackFrames[1] or nil
+                    if topframe and topframe.source and topframe.source.path then
+                        signs.place_file_sign(topframe.source.path, topframe.line, "currentframe", "currentframe")
+                        uitools.smart_open_file(topframe.source.path, topframe.line, topframe.column)
+                    end
+                end)
+            else
+                signs.remove_signs("currentframe")
+            end
+            -- handle stack trace page
+            ---@type loop.pages.StackTracePage|nil
+            ---@diagnostic disable-next-line: assign-type-mismatch
+            local page = stacktrace_pages[sess_id]
+            if not page then
+                page = StackTracePage:new(sess_name)
+                _add_tab_page(_tabs.stacktrace, page)
+                stacktrace_pages[sess_id] = page
+            end
+            if event == "pause" then
+                page:set_content(threads, thread_id, stackprovider)
+            else
+                page:clear_content()
+            end
+        end
+    }
+    return tracker
 end
 
 ---@param config_dir string
@@ -532,7 +545,7 @@ function M.setup(_)
 
     -- ensure breakpoints page is shown if there are breakpoints
     require('loop.dap.breakpoints').add_tracker({
-        on_added = function () _ensure_breakpoints_page() end
+        on_added = function() _ensure_breakpoints_page() end
     })
 
     do

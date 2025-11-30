@@ -1,6 +1,7 @@
-local json = require('loop.tools.json')
+local json     = require('loop.tools.json')
+local Trackers = require("loop.tools.Trackers")
 
-local M = {}
+local M        = {}
 
 ---@class loop.dap.SourceBreakpoint
 ---@field id number
@@ -29,9 +30,8 @@ local _by_id = {} -- breakpoints by unique id
 ---@type table<number,boolean>
 local _verified = {}
 
-local _last_tracker_id = 0
----@type table<number,loop.dap.breakpoints.TrackerCallbacks>
-local _trackers = {}
+---@type loop.tools.Trackers<loop.dap.breakpoints.TrackerCallbacks>
+local _trackers = Trackers:new()
 
 --- Tracks whether breakpoints need to be saved to disk.
 ---@type boolean
@@ -78,10 +78,7 @@ local function _remove_source_breakpoint(file, line)
     if bp then
         lines[line] = nil
         _by_id[id] = nil
-
-        for type, tracker in pairs(_trackers) do
-            if tracker.on_removed then tracker.on_removed(bp) end
-        end
+        _trackers:invoke("on_removed", bp)
     end
     return true
 end
@@ -102,11 +99,8 @@ local function _clear_file_breakpoints(file)
     end
 
     _source_breakpoints[file] = nil
-
-    for type, tracker in pairs(_trackers) do
-        for _, bp in pairs(removed) do
-            if tracker.on_removed then tracker.on_removed(bp) end
-        end
+    for _, bp in pairs(removed) do
+        _trackers:invoke("on_removed", bp)
     end
 end
 
@@ -116,9 +110,7 @@ local function _clear_breakpoints()
     _by_id = {}
     _source_breakpoints = {}
     _need_saving = true
-    for type, tracker in pairs(_trackers) do
-        if tracker.on_all_removed then tracker.on_all_removed(removed) end
-    end
+    _trackers:invoke("on_all_removed", removed)
 end
 
 
@@ -154,9 +146,7 @@ local function _add_breakpoint(file, line, condition, hitCondition, logMessage)
 
     _need_saving = true
 
-    for type, tracker in pairs(_trackers) do
-        if tracker.on_added then tracker.on_added(bp) end
-    end
+    _trackers:invoke("on_added", bp)
 
     return true
 end
@@ -186,17 +176,13 @@ function M.update_verified_status(id, verified)
     local bp = _by_id[id]
     if bp then
         _verified[id] = verified
-        for type, tracker in pairs(_trackers) do
-            if tracker.on_status_update then tracker.on_status_update(bp, verified) end
-        end
+        _trackers:invoke("on_status_update", bp, verified)
     end
 end
 
 function M.reset_verified_status()
     for id, bp in pairs(_by_id) do
-        for type, tracker in pairs(_trackers) do
-            if tracker.on_status_update then tracker.on_status_update(bp, nil) end
-        end
+        _trackers:invoke("on_status_update", bp, nil)
     end
     for id, bp in pairs(_by_id) do
         _verified[bp.id] = nil
@@ -285,17 +271,13 @@ end
 ---@param callbacks loop.dap.breakpoints.TrackerCallbacks
 ---@return number
 function M.add_tracker(callbacks)
-    local tracker_id = _last_tracker_id + 1
-    _last_tracker_id = tracker_id
-    _trackers[tracker_id] = callbacks
-    if callbacks then
-        --initial snapshot
-        for id, bp in pairs(_by_id) do
-            callbacks.on_added(bp)
-            local verified = _verified[id]
-            if verified and callbacks.on_status_update then
-                callbacks.on_status_update(bp, verified)
-            end
+    local tracker_id = _trackers:add_tracker(callbacks)
+    --initial snapshot
+    for id, bp in pairs(_by_id) do
+        callbacks.on_added(bp)
+        local verified = _verified[id]
+        if verified and callbacks.on_status_update then
+            callbacks.on_status_update(bp, verified)
         end
     end
     return tracker_id
@@ -304,9 +286,7 @@ end
 ---@param id number
 ---@return boolean
 function M.remove_tracker(id)
-    local removed = _trackers[id] ~= nil
-    _trackers[id] = nil
-    return removed
+    return _trackers:remove_tracker(id)
 end
 
 return M

@@ -1,6 +1,6 @@
 local class = require('loop.tools.class')
 local ItemListPage = require('loop.pages.ItemListPage')
-
+local uitools = require('loop.tools.uitools')
 local breakpoints = require('loop.dap.breakpoints')
 
 ---@class loop.pages.BreakpointsPage : loop.pages.ItemListPage
@@ -45,7 +45,7 @@ local function _format_item(bp, verified)
         group = "Debug"
     }
     ---@type loop.pages.ItemListPage.Item
-    return { id = bp.id, text = table.concat(parts, ''), highlights = {highlight} }
+    return { id = bp.id, data = bp,  text = table.concat(parts, ''), highlights = {highlight} }
 end
 
 ---@param bp loop.dap.SourceBreakpoint
@@ -80,8 +80,16 @@ end
 
 function BreakpointsPage:init()
     ItemListPage.init(self, "Breakpoints")
-    self._items = {}
-    self._index = {}
+
+    self:add_tracker({
+        on_selection = function (item)
+            if item then
+                ---@type loop.dap.SourceBreakpoint
+                local bp = item.data
+                uitools.smart_open_file(bp.file, bp.line, bp.column)
+            end
+        end
+    })
 
     require('loop.dap.breakpoints').add_tracker({
         on_added = function (bp) self:_update_one(bp) end,
@@ -89,10 +97,6 @@ function BreakpointsPage:init()
         on_all_removed = function (bpts) self:_on_all_removed(bpts) end,
         on_status_update = function (bp, verified) self:_on_status_update(bp, verified) end,
     })    
-end
-
-function BreakpointsPage:_on_item_selected(item)
-    vim.notify("BreakpointsPage item selected: " .. vim.inspect(item or "nil"))
 end
 
 return BreakpointsPage
