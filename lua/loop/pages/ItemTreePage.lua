@@ -161,7 +161,7 @@ end
 function ItemTreePage:add_item(new_item, parent_id)
     local child = new_item
     assert(child and child.id and child.text, "Invalid child item")
-    assert(not self._index[child.id], "Item with this id already exists")
+    assert(not self._index[child.id], "Item with this id already exists: " .. tostring(child.id))
 
     if parent_id == nil then
         -- Add as root

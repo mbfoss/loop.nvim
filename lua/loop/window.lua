@@ -44,6 +44,8 @@ local _tabs = {
     threads = { index = 6, label = "Threads", pages = {}, list_prefix = "Threads - " },
     ---@type loop.TabInfo
     stacktrace = { index = 7, label = "Call Stack", pages = {}, list_prefix = "Call Stack - " },
+    ---@type loop.TabInfo
+    variables = { index = 8, label = "Variables", pages = {}, list_prefix = "Variables - " },
 }
 
 local _tabs_arr = (function()
@@ -456,6 +458,7 @@ function M.add_debug_task(task_name)
 
     local output_pages = {}
     local stacktrace_pages = {}
+    local variable_pages = {}
 
     ---@type loop.job.debugjob.Tracker
     local tracker = {
@@ -464,19 +467,19 @@ function M.add_debug_task(task_name)
         end,
         on_sess_added = function(id, name, parent_id)
             sessionspage:add_item({ id = id, text = name }, parent_id)
-            task_page:add_line("[" .. name .. "] debug session created")            
+            task_page:add_line("[" .. name .. "] debug session created")
         end,
         on_sess_removed = function(id, name)
             sessionspage:remove_item(id)
         end,
-        on_sess_state = function (sess_id, name, data)
+        on_sess_state = function(sess_id, name, data)
             task_page:add_line("[" .. name .. "] " .. data.state)
             if data.state == "ended" then
                 signs.remove_signs("currentframe")
                 local page = stacktrace_pages[sess_id]
                 if page then
                     page:clear_content()
-                end                
+                end
             end
         end,
         on_output = function(sess_id, sess_name, category, output)
@@ -498,26 +501,59 @@ function M.add_debug_task(task_name)
         end,
         on_thread_pause = function(sess_id, sess_name, event_data)
             if not event_data.thread_id then return end
-            -- handle current frame sign
-            event_data.stack_provider({threadId = event_data.thread_id, levels=1}, function(err, data)
-                local topframe = data and data.stackFrames[1] or nil
-                if topframe and topframe.source and topframe.source.path then
-                    signs.place_file_sign(topframe.source.path, topframe.line, "currentframe", "currentframe")
-                    uitools.smart_open_file(topframe.source.path, topframe.line, topframe.column)
+            local curframe
+            -- handle current frame
+            event_data.stack_provider({ threadId = event_data.thread_id, levels = 1 }, function(err, data)
+                ---@type loop.dap.proto.StackFrame
+                curframe = data and data.stackFrames[1] or nil
+                if curframe and curframe.source and curframe.source.path then
+                    signs.place_file_sign(curframe.source.path, curframe.line, "currentframe", "currentframe")
+                    uitools.smart_open_file(curframe.source.path, curframe.line, curframe.column)
+                end
+                -- handle scopes/variable
+                if curframe then
+                    ---@type loop.pages.ItemTreePage|nil
+                    ---@diagnostic disable-next-line: assign-type-mismatch
+                    local page = variable_pages[sess_id]
+                    if not page then
+                        page = ItemTreePage:new(sess_name)
+                        _add_tab_page(_tabs.variables, page)
+                        variable_pages[sess_id] = page
+                    end
+                    event_data.scopes_provider({ frameId = curframe.id }, function(_, scopes_data)
+                        if scopes_data then
+                            for scope_idx, scope in ipairs(scopes_data.scopes) do
+                                ---@type loop.pages.ItemTreePage.Item
+                                local scope_item = { id = tostring(scope_idx), text = scope.name }
+                                page:add_item(scope_item, nil)
+                                event_data.variables_provider({ variablesReference = scope.variablesReference}, function (_, vars_data)
+                                    if vars_data then
+                                        for var_idx,var in ipairs(vars_data.variables) do
+                                        ---@type loop.pages.ItemTreePage.Item
+                                        local var_item = { id = scope_item.id .. ':' .. tostring(var_idx), text = var.name .. ": " .. var.value }
+                                             page:add_item(var_item, scope_item.id)
+                                        end
+                                    end
+                                end)
+                            end
+                        end
+                    end)
                 end
             end)
             -- handle stack trace page
-            ---@type loop.pages.StackTracePage|nil
-            ---@diagnostic disable-next-line: assign-type-mismatch
-            local page = stacktrace_pages[sess_id]
-            if not page then
-                page = StackTracePage:new(sess_name)
-                _add_tab_page(_tabs.stacktrace, page)
-                stacktrace_pages[sess_id] = page
+            do
+                ---@type loop.pages.StackTracePage|nil
+                ---@diagnostic disable-next-line: assign-type-mismatch
+                local page = stacktrace_pages[sess_id]
+                if not page then
+                    page = StackTracePage:new(sess_name)
+                    _add_tab_page(_tabs.stacktrace, page)
+                    stacktrace_pages[sess_id] = page
+                end
+                page:set_content(event_data)
             end
-            page:set_content(event_data)
         end,
-        on_thread_continue = function (sess_id, sess_name)
+        on_thread_continue = function(sess_id, sess_name)
             signs.remove_signs("currentframe")
             local page = stacktrace_pages[sess_id]
             if page then
