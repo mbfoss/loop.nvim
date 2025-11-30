@@ -101,17 +101,29 @@
 ---@field stackFrames loop.dap.proto.StackFrame[]
 ---@field totalFrames integer|nil
 
+---@alias loop.dap.proto.Scope.PresentationHint
+---| "normal"
+---| "locals"
+---| "arguments"
+---| "registers"
+---| "globals"
+---| "static"
+---| "captured"
+---| "watch"
+---| "special"
+
 ---@class loop.dap.proto.Scope
 ---@field name string
 ---@field variablesReference integer
 ---@field expensive boolean
----@field namedVariables integer|nil
----@field indexedVariables integer|nil
----@field source loop.dap.proto.Source|nil
----@field line integer|nil
----@field column integer|nil
----@field endLine integer|nil
----@field endColumn integer|nil
+---@field namedVariables integer?
+---@field indexedVariables integer?
+---@field source loop.dap.proto.Source?
+---@field line integer?
+---@field column integer?
+---@field endLine integer?
+---@field endColumn integer?
+---@field presentationHint loop.dap.proto.Scope.PresentationHint?
 
 ---@class loop.dap.proto.VariablePresentationHint
 ---@field kind "property"|"method"|"class"|"data"|"event"|"baseClass"|"innerClass"|"interface"|"mostDerivedClass"|"virtual"|nil

@@ -38,7 +38,7 @@ local function _format_item(bp, verified)
         table.insert(parts, " log: " .. bp.logMessage:gsub("\n", " "))
     end
 
-    ---@type loop.pages.ItemListPage.highlight
+    ---@type loop.pages.ItemListPage.Highlight
     local highlight = {
         start_col = 0,
         end_col = #symbol,

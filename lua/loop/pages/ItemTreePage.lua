@@ -152,58 +152,71 @@ function ItemTreePage:get_item(id)
     return idx and self._flat_items[idx] or nil
 end
 
---- Adds a new child item under the node with the given parent_id.
---- If parent_id is nil, adds as a new root item.
---- Returns true if the item was added, false if parent not found.
----@param new_item loop.pages.ItemTreePage.Item
----@param parent_id any?
----@return boolean added
-function ItemTreePage:add_item(new_item, parent_id)
-    local child = new_item
-    assert(child and child.id and child.text, "Invalid child item")
-    assert(not self._index[child.id], "Item with this id already exists: " .. tostring(child.id))
+--- Upserts (update or insert) an item in the tree.
+--- • If item with same `id` exists → updates text/data/highlights in-place (preserves position, children, expanded state)
+--- • Otherwise → adds as child of `parent_id` (or root if nil)
+--- Returns the final item (existing or newly inserted), or nil if parent not found.
+---@param item loop.pages.ItemTreePage.Item
+---@param parent_id any?     -- nil = root level
+---@return loop.pages.ItemTreePage.Item|nil
+function ItemTreePage:upsert_item(item, parent_id)
+    assert(item and item.id ~= nil and item.text ~= nil, "Invalid item: must have .id and .text")
 
-    if parent_id == nil then
-        -- Add as root
-        table.insert(self._root_items, child)
-        child.parent = nil
-    else
-        -- Find parent in the current tree (search roots recursively)
-        local function find_parent(node)
-            if node.id == parent_id then
-                return node
-            end
+    local existing = self:get_item(item.id)
+
+    if existing then
+        -- UPDATE existing node in-place
+        existing.text       = item.text
+        existing.data       = item.data
+        existing.highlights = item.highlights or existing.highlights
+
+        -- Preserve: parent, children, expanded state, depth, etc.
+        self:_refresh_buffer(self:get_buf()) -- only need to redraw highlights + text
+        return existing
+    end
+
+    -- INSERT new node
+    local parent_node = nil
+
+    if parent_id ~= nil then
+        -- Find parent recursively
+        local function find(node)
+            if node.id == parent_id then return node end
             if node.children then
-                for _, c in ipairs(node.children) do
-                    local found = find_parent(c)
+                for _, child in ipairs(node.children) do
+                    local found = find(child)
                     if found then return found end
                 end
             end
-            return nil
         end
 
-        local parent = nil
         for _, root in ipairs(self._root_items) do
-            parent = find_parent(root)
-            if parent then break end
+            parent_node = find(root)
+            if parent_node then break end
         end
 
-        if not parent then
-            return false -- parent not found
-        end
-
-        if not parent.children then
-            parent.children = {}
-        end
-        table.insert(parent.children, child)
-        child.parent = parent
+        if not parent_node then
+            return nil
+        end                -- parent not found
+        parent_node.children = parent_node.children or {}
+    else
+        -- Adding as new root
+        parent_node = nil
     end
 
-    -- Rebuild visible tree and refresh UI
+    -- Actually insert
+    item.parent = parent_node
+    if parent_node then
+        table.insert(parent_node.children, item)
+    else
+        table.insert(self._root_items, item)
+    end
+
+    -- Full rebuild needed for new node
     self:_rebuild_flat()
     self:_refresh_buffer(self:get_buf())
 
-    return true
+    return item
 end
 
 --- Removes an item (and optionally all its descendants) from the tree.

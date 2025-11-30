@@ -466,7 +466,7 @@ function M.add_debug_task(task_name)
             task_page:add_line(text, level)
         end,
         on_sess_added = function(id, name, parent_id)
-            sessionspage:add_item({ id = id, text = name }, parent_id)
+            sessionspage:upsert_item({ id = id, text = name }, parent_id)
             task_page:add_line("[" .. name .. "] debug session created")
         end,
         on_sess_removed = function(id, name)
@@ -523,18 +523,22 @@ function M.add_debug_task(task_name)
                     event_data.scopes_provider({ frameId = curframe.id }, function(_, scopes_data)
                         if scopes_data then
                             for scope_idx, scope in ipairs(scopes_data.scopes) do
-                                ---@type loop.pages.ItemTreePage.Item
-                                local scope_item = { id = tostring(scope_idx), text = scope.name }
-                                page:add_item(scope_item, nil)
-                                event_data.variables_provider({ variablesReference = scope.variablesReference}, function (_, vars_data)
-                                    if vars_data then
-                                        for var_idx,var in ipairs(vars_data.variables) do
-                                        ---@type loop.pages.ItemTreePage.Item
-                                        local var_item = { id = scope_item.id .. ':' .. tostring(var_idx), text = var.name .. ": " .. var.value }
-                                             page:add_item(var_item, scope_item.id)
-                                        end
-                                    end
-                                end)
+                                if scope.presentationHint == "locals" then
+                                    ---@type loop.pages.ItemTreePage.Item
+                                    local scope_item = { id = tostring(scope_idx), text = scope.name }
+                                    page:upsert_item(scope_item, nil)
+                                    event_data.variables_provider({ variablesReference = scope.variablesReference },
+                                        function(_, vars_data)
+                                            if vars_data then
+                                                for var_idx, var in ipairs(vars_data.variables) do
+                                                    ---@type loop.pages.ItemTreePage.Item
+                                                    local var_item = { id = scope_item.id .. ':' .. tostring(var_idx), text =
+                                                    var.name .. ": " .. var.value }
+                                                    page:upsert_item(var_item, scope_item.id)
+                                                end
+                                            end
+                                        end)
+                                end
                             end
                         end
                     end)
