@@ -362,11 +362,9 @@ function M.add_events(lines, level)
     assert(page)
     assert(getmetatable(page) == OutputPage)
     local timestamp = os.date("%H:%M:%S")
-    local output = {}
     for _, line in ipairs(lines) do
-        table.insert(output, timestamp .. ' ' .. line)
+        page:add_line(timestamp .. ' ' .. line, level, #timestamp)
     end
-    page:add_lines(output, level, #timestamp)
     if level == "error" then
         M.show_events()
     end
@@ -461,13 +459,24 @@ function M.add_debug_task(task_name)
     ---@type loop.job.debugjob.Tracker
     local tracker = {
         on_trace = function(text, level)
-            task_page:add_lines({ text }, level)
+            task_page:add_line(text, level)
         end,
         on_sess_added = function(id, name)
             sesionspage:set_item({ id = id, text = name })
+            task_page:add_line("[" .. name .. "] debug session created")            
         end,
         on_sess_removed = function(id, name)
             sesionspage:remove_item(id)
+        end,
+        on_sess_state = function (sess_id, name, data)
+            task_page:add_line("[" .. name .. "] " .. data.state)
+            if data.state == "ended" then
+                signs.remove_signs("currentframe")
+                local page = stacktrace_pages[sess_id]
+                if page then
+                    page:clear_content()
+                end                
+            end
         end,
         on_output = function(sess_id, sess_name, category, output)
             ---@type loop.pages.OutputPage|nil
@@ -479,7 +488,7 @@ function M.add_debug_task(task_name)
                 output_pages[sess_id] = page
             end
             local level = category == "stderr" and "error" or nil
-            page:add_lines({ output }, level)
+            page:add_line(output, level)
         end,
         on_new_term = function(name, bufnr)
             local page = Page:new("term", name)

@@ -16,6 +16,7 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field on_trace fun(text:string,level:"error"|"warn"|nil)|nil
 ---@field on_sess_added fun(id:number,name:string)|nil
 ---@field on_sess_removed fun(id:number, name:string)|nil
+---@field on_sess_state fun(id:number, name:string, data:loop.dap.session.notify.StateData)|nil
 ---@field on_new_term fun(name:string, bufnr:number)|nil|nil
 ---@field on_output fun(sess_id:number, sess_name:string, category:string, output:string)|nil
 ---@field on_thread_pause fun(sess_id:number, sess_name:string, data:loop.dap.session.notify.ThreadData)|nil
@@ -116,7 +117,6 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
     self._sessions[session_id] = session
 
     self._trackers:invoke("on_sess_added", session_id, name)
-    self._trackers:invoke("on_trace", "New debug session started: " .. name)
 
     return true, nil
 end
@@ -129,7 +129,7 @@ function DebugJob:_session_exit_handler(session_id, code)
             self._sessions[session_id] = nil
 
             self._trackers:invoke("on_trace",
-                "Session " .. tostring(session_id) .. " debugger exited (code " .. tostring(code) .. ")")
+                "[" .. tostring(session:name()) .. "] debugger exited (code " .. tostring(code) .. ")")
 
             self:_update_allbreakpoints_status()
             if next(self._sessions) == nil then
@@ -176,13 +176,13 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
     if event == "trace" then
         ---@type loop.dap.session.notify.Trace
         local trace = event_data
-        self._trackers:invoke("on_trace", "Session " .. sess_id .. ": " .. (trace.text or ""), trace.level)
+        self._trackers:invoke("on_trace", "[" .. tostring(session:name()) .. "] " .. (trace.text or ""), trace.level)
         return
     end
     if event == "state" then
         ---@type loop.dap.session.notify.StateData
         local state = event_data
-        self._trackers:invoke("on_trace", "Session " .. sess_id .. " " .. state.state)
+        self._trackers:invoke("on_sess_state", sess_id, session:name(), state)
         return
     end
     if event == "output" then
@@ -191,10 +191,10 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
         if output.category == "stdout" or output.category == "stderr" then
             self:add_debug_output(sess_id, session:name(), output.category, output.output)
         elseif output.category == "console" then
-            self._trackers:invoke("on_trace", "Session " .. tostring(sess_id) .. ": " .. tostring(output.output))
+            self._trackers:invoke("on_trace", "[" .. tostring(session:name()) .. "] " .. tostring(output.output))
         elseif output.category ~= "telemetry" then
             self._trackers:invoke("on_trace",
-                "Session " .. tostring(sess_id) .. ": (" .. tostring(output.category) .. ") " .. tostring(output.output))
+                "[" .. tostring(session:name()) .. "] (" .. tostring(output.category) .. ") " .. tostring(output.output))
         end
         return
     end

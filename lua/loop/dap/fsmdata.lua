@@ -22,7 +22,7 @@ M.trigger =
 ---@field starting loop.dap.fsmdata.StateHandler
 ---@field running loop.dap.fsmdata.StateHandler
 ---@field disconnecting loop.dap.fsmdata.StateHandler
----@field kill loop.dap.fsmdata.StateHandler
+---@field terminating loop.dap.fsmdata.StateHandler
 ---@field ended loop.dap.fsmdata.StateHandler
 
 ---@param handlers loop.dap.fsmdata.StateHandlers
@@ -59,11 +59,11 @@ function M.create_fsm_data(handlers)
                 triggers = {
                     [M.trigger.disconnect] = 'disconnecting', --required in some cases
                     [M.trigger.disconnect_resp_ok] = "ended",
-                    [M.trigger.disconnect_resp_err] = "kill"
+                    [M.trigger.disconnect_resp_err] = "terminating"
                 }
             },
-            kill = {
-                state_handler = handlers.kill,
+            terminating = {
+                state_handler = handlers.terminating,
                 triggers = {
                     [M.trigger.killed] = "ended",
                 }

@@ -16,11 +16,14 @@ local _hl_groups = {
 };
 
 ---@param buf integer
----@param lines string[]
+---@param line string
 ---@param highlight nil|"warn"|"error"
 ---@param highligh_endcol nil|number
-local function append_lines(buf, lines, highlight, highligh_endcol)
-    lines = strtools.clean_and_split_lines(lines)
+local function append_line(buf, line, highlight, highligh_endcol)
+    -- remove all \r
+    line = line:gsub("\r", "")
+    line = line:gsub("\n", " ")
+
     local count = vim.api.nvim_buf_line_count(buf)
 
     local hl_group = _hl_groups[highlight]
@@ -41,12 +44,10 @@ local function append_lines(buf, lines, highlight, highligh_endcol)
     if count == 1 then
         local firstln = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
         if firstln == "" then
-            vim.api.nvim_buf_set_lines(buf, 0, 1, false, lines)
+            vim.api.nvim_buf_set_lines(buf, 0, 1, false, {line})
             -- highlight replacement if requested
             if highlight then
-                for i = 0, #lines - 1 do
-                    _highlight_line(i)
-                end
+                _highlight_line(0)
             end
 
             return
@@ -54,14 +55,10 @@ local function append_lines(buf, lines, highlight, highligh_endcol)
     end
 
     -- Append at end
-    vim.api.nvim_buf_set_lines(buf, count, count, false, lines)
-
+    vim.api.nvim_buf_set_lines(buf, count, count, false, {line})
     -- Highlight newly added lines if requested
     if highlight then
-        for i = 0, #lines - 1 do
-            local row = count + i
-            _highlight_line(row)
-        end
+        _highlight_line(count)
     end
 end
 
@@ -71,10 +68,10 @@ function OutputPage:init(name)
     self:follow_last_line()
 end
 
----@param lines string[]
+---@param line string
 ---@param highlight nil|"warn"|"error"
 ---@param highligh_endcol nil|number
-function OutputPage:add_lines(lines, highlight, highligh_endcol)
+function OutputPage:add_line(line, highlight, highligh_endcol)
     local buf = self:get_or_create_buf()
 
     local on_last_line = false
@@ -90,7 +87,7 @@ function OutputPage:add_lines(lines, highlight, highligh_endcol)
     end
 
     vim.bo[buf].modifiable = true
-    append_lines(buf, lines, highlight, highligh_endcol)
+    append_line(buf, line, highlight, highligh_endcol)
     vim.bo[buf].modifiable = false
 
     if on_last_line and vim.api.nvim_win_get_buf(cur_win) == buf then

@@ -70,6 +70,9 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field on_success fun(resp_body:any)
 ---@field on_failure fun(reason:string)
 
+---@class loop.dap.session.notify.StateData
+---@field state "initializing"|"starting"|"running"|"disconnecting"|"terminating"|"ended"
+
 ---@alias loop.dap.session.StackProvider fun(args:loop.dap.proto.StackTraceArguments, callback:fun(err:string|nil, data: loop.dap.proto.StackTraceResponse | nil))
 ---@alias loop.dap.session.ScopesProvider fun(args:loop.dap.proto.ScopesArguments, callback:fun(err:string|nil, data: loop.dap.proto.ScopesResponse | nil))
 ---@alias loop.dap.session.VariablesProvider fun(args:loop.dap.proto.VariablesArguments, callback:fun(err:string|nil, data: loop.dap.proto.VariablesResponse | nil))
@@ -203,7 +206,7 @@ function Session:start(args)
         starting = function(_, _) self:_on_starting_state() end,
         running = function(_, _) self:_on_running_state() end,
         disconnecting = function(_, _) self:_on_disconnecting_state() end,
-        kill = function(_, _) self:_on_kill_state() end,
+        terminating = function(_, _) self:_on_terminating_state() end,
         ended = function(_, _) self:_on_ended_state() end,
     }
     -- start the FSM
@@ -334,7 +337,7 @@ end
 
 function Session:_notify_about_state()
     local state = self._process_ended and "ended" or self._fsm:curr_state()
-    ---@class loop.dap.session.notify.StateData
+    ---@type loop.dap.session.notify.StateData
     local data = { state = state }
     self:_notify_tracker("state", data)
 end
@@ -455,7 +458,7 @@ end
 ---@param event loop.dap.proto.StoppedEvent|nil
 function Session:_on_stopped_event(event)
     local cur_state = self._fsm:curr_state()
-    if cur_state == "disconnecting" or cur_state == "kill" or cur_state == "ended" then
+    if cur_state == "disconnecting" or cur_state == "terminating" or cur_state == "ended" then
         self._log:error("unexpected stopped event")
         return
     end
@@ -733,7 +736,7 @@ function Session:_on_disconnecting_state()
     end)
 end
 
-function Session:_on_kill_state()
+function Session:_on_terminating_state()
     self._can_send_breakpoints = false
     self:stop_tracking_breakpoints()
     self:_notify_about_state()
