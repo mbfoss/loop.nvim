@@ -185,18 +185,18 @@ local function _create_debug_job(task, output_handler, exit_handler)
     end
 
     -- Resolve request_args using functions if needed
-    local resolved_args = vim.tbl_deep_extend("force", {}, dbg_config.default_request_args or {})
+    local resolved_args = vim.tbl_deep_extend("force", {}, dbg_config.default_args or {})
     for k, v in pairs(resolved_args) do
         if type(v) == "function" then
             local ok, result = pcall(v, task)
             if not ok then
-                return nil, ("failed to resolve debugger_args.%s: %s"):format(k, result)
+                return nil, ("failed to resolve debug.%s: %s"):format(k, result)
             end
             resolved_args[k] = result
         end
     end
 
-    resolved_args = vim.tbl_deep_extend("force", resolved_args, task.debugger_args or {})
+    resolved_args = vim.tbl_deep_extend("force", resolved_args, task.debug or {})
 
     if dbg_config.dap.type ~= "executable" and dbg_config.dap.type ~= "server" then
         return nil, ("invalid dat type '%s'"):format(dbg_config.dap.type)

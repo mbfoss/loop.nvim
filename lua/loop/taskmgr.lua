@@ -12,7 +12,7 @@ local selector = require("loop.selector")
 local function _task_as_json(task)
     local function order_handler(_, _)
         return { "name", "type", "command", "cwd", "depends_on",
-            "quickfix_matcher", "debugger", "debugger_args" }
+            "quickfix_matcher", "debugger", "debug" }
     end
     return jsontools.to_string(task, order_handler)
 end

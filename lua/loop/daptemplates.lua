@@ -25,7 +25,7 @@ end
 ---@class loop.Config.Debugger
 ---@field dap          loop.dap.session.Args.DAP
 ---@field request      "launch" | "attach"
----@field default_request_args  table<string,any>
+---@field default_args  table<string,any>
 ---@field terminate_debuggee boolean|nil
 
 
@@ -43,9 +43,7 @@ local debuggers = {
             --cmd  = "/Library/Developer/CommandLineTools/usr/bin/lldb-dap"
         },
         request = "launch",
-        default_request_args = {
-            request = "launch",
-            type = "lldb",
+        default_args = {
             program = get_task_program,
             args = get_task_args,
             cwd = get_task_cwd,
@@ -74,7 +72,7 @@ local debuggers = {
             cwd = os.getenv("HOME"),
         },
         request = "launch",
-        default_request_args = {
+        default_args = {
             type = "pwa-node",
             request = "launch",
             runtimeExecutable = "node",
@@ -97,7 +95,7 @@ local debuggers = {
             command = { "python3", "-m", "debugpy.adapter" },
         },
         request = "launch",
-        default_request_args = {
+        default_args = {
             program = function(task) return task.command or "${file}" end,
             cwd = get_task_cwd,
             stopOnEntry = false,
@@ -118,7 +116,7 @@ local debuggers = {
             command = { "netcoredbg", "--interpreter=vscode" },
         },
         request = "launch",
-        default_request_args = {
+        default_args = {
             program = get_task_program,
             args = get_task_args,
             cwd = get_task_cwd,
@@ -138,7 +136,7 @@ local debuggers = {
             command = { "bashdb", "--adapter" },
         },
         request = "launch",
-        default_request_args = {
+        default_args = {
             program = get_task_program,
             cwd = get_task_cwd,
             stopOnEntry = false,
@@ -147,7 +145,7 @@ local debuggers = {
     -- ──────────────────────────────────────────────────────────────
     -- LuaJIT via CodeLLDB (great for embedded/C modules)
     -- ──────────────────────────────────────────────────────────────
-    luajit_lldb = {
+    ["luajit-lldb"] = {
         dap = {
             adapter_id = "lldb",
             name = "LuaJIT via LLDB",
@@ -155,7 +153,7 @@ local debuggers = {
             command = { "lldb-dap" },
         },
         request = "launch",
-        default_request_args = {
+        default_args = {
             program = get_task_program,
             args = get_task_args,
             cwd = get_task_cwd,
@@ -174,7 +172,7 @@ local debuggers = {
     -- ──────────────────────────────────────────────────────────────
     -- Lua - local-lua-debugger-vscode (recommended for pure Lua)
     -- ──────────────────────────────────────────────────────────────
-    lua_local = {
+    ["lua-local"] = {
         dap = {
             adapter_id = "lua-local",
             name = "Local Lua Debugger",
@@ -185,10 +183,9 @@ local debuggers = {
             },
         },
         request = "launch",
-        default_request_args = {
+        default_args = {
             type = "lua-local",
             request = "launch",
-            name = "Launch Current File",
             program = {
                 lua = "lua", -- change to "luajit" if you use LuaJIT
                 file = "${file}",
@@ -203,24 +200,19 @@ local debuggers = {
     -- ──────────────────────────────────────────────────────────────
     -- Generic Lua Remote Debugger (works for Neovim plugins, scripts, etc.)
     -- ──────────────────────────────────────────────────────────────
-    lua_remote = {
+    ["lua-remote"] = {
         dap = {
             adapter_id = "lua-remote",
             name = "Lua Remote Debugger",
             type = "server", -- we attach to a running adapter
             host = "127.0.0.1",
-            port = 5678,     -- change if you wan
+            port = 8086,     -- change if you wan
         },
         request = "attach",
-        default_request_args = {
-            type = "lua-local", -- protocol name used by local-lua-debugger-vscode / OSV
+        default_args = {
             request = "attach",
-            name = "Attach to Lua process",
+            type = "lua-local", -- protocol name used by local-lua-debugger-vscode / OSV
             host = "127.0.0.1",
-            port = 5678,
-            program = {
-                lua = "lua", -- or "luajit" if the target uses LuaJIT
-            },
             cwd = "${workspaceFolder}",
             stopOnEntry = false,
             -- Optional: useful when debugging inside containers or with path remapping
@@ -243,7 +235,7 @@ local debuggers = {
             port = 38697,
         },
         request = "launch",
-        default_request_args = {
+        default_args = {
             mode = "debug",
             program = "${workspaceFolder}",
             args = get_task_args,
@@ -265,7 +257,7 @@ local debuggers = {
             port = 38690,
         },
         request = "launch",
-        default_request_args = {
+        default_args = {
             program = get_task_program,
             args = get_task_args,
             cwd = get_task_cwd,
@@ -287,8 +279,7 @@ local debuggers = {
             args = { vim.fn.stdpath("data") .. "/mason/packages/php-debug-adapter/extension/out/phpDebug.js" },
         },
         request = "launch",
-        default_request_args = {
-            name = "Listen for Xdebug",
+        default_args = {
             type = "php",
             request = "launch",
             port = 9003,
@@ -316,7 +307,7 @@ local debuggers = {
             },
         },
         request = "launch",
-        default_request_args = {
+        default_args = {
             mainClass = function()
                 -- you can make this smarter with gradle/maven parsing
                 return vim.fn.input("Main class: ", "", "file")
@@ -332,7 +323,7 @@ local debuggers = {
     -- ──────────────────────────────────────────────────────────────
     -- Generic “attach to any local process” (pick PID)
     -- ──────────────────────────────────────────────────────────────
-    lldb_attach_proess = {
+    ["lldb-attach-proess"] = {
         dap = {
             adapter_id = "lldb",
             name = "Attach to process (PID)",
@@ -340,8 +331,7 @@ local debuggers = {
             command = { "lldb-dap" },
         },
         request = "attach",
-        default_request_args = {
-            name = "Attach to PID",
+        default_args = {
             program = get_task_program,
             pid = "${select-process-pid}",
             stopOnEntry = true,

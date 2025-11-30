@@ -25,13 +25,13 @@ M.defaut_config = {
         netcoredbg = daptemplates.netcoredbg,
         bashdb = daptemplates.bashdb,
         luajit_lldb = daptemplates.luajit_lldb,
-        lua_local = daptemplates.lua_local,
-        lua_remote = daptemplates.lua_remote,
+        ["lua-local"] = daptemplates["lua-local"],
+        ["lua-remote"] = daptemplates["lua-remote"],
         delve = daptemplates.delve,
         codelldb = daptemplates.codelldb,
         php = daptemplates.php,
         java = daptemplates.java,
-        lldb_attach_proess = daptemplates.lldb_attach_proess,
+        ["lldb-attach-proess"] = daptemplates["lldb-attach-proess"],
     },
 }
 

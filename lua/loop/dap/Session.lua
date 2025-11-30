@@ -359,7 +359,8 @@ function Session:state()
 end
 
 function Session:debug_continue()
-    self._base_session:request_continue({ threadId = 0, singleThread = false },
+    local thread_id = self._stopped_threads[1] and self._stopped_threads[1].id or 0
+    self._base_session:request_continue({ threadId = thread_id, singleThread = false },
         function(err, resp)
             if err or not resp then
                 self:_trace_notification("continue error: " .. tostring(err), "error")
@@ -663,11 +664,11 @@ function Session:_send_pending_breakpoints(on_complete)
             function(err, resp)
                 if resp then
                     for idx, bp in ipairs(resp.breakpoints) do
-                        assert(bp.id)
+                        local dap_id = bp.id or idx -- some dapters don't sent an id
                         local original = originals[idx]
                         original.verified = bp.verified
-                        original.dap_id = bp.id
-                        self._source_breakpoints.by_dap_id[bp.id] = original
+                        original.dap_id = dap_id
+                        self._source_breakpoints.by_dap_id[dap_id] = original
                     end
                     ---@type loop.dap.session.notify.BreakpointsEvent
                     local data = {}

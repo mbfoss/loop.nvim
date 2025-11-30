@@ -48,12 +48,12 @@ local function order_handler(path, attrs)
         return { "$schema", "tasks" }
     end
     return { "name", "type", "command", "cwd", "depends_on",
-        "quickfix_matcher", "debugger", "debugger_args" }
+        "quickfix_matcher", "debugger", "debug" }
 end
 
 local function task_order_handler(path, attrs)
     return { "name", "type", "command", "cwd", "depends_on",
-        "quickfix_matcher", "debugger", "debugger_args" }
+        "quickfix_matcher", "debugger", "debug" }
 end
 
 ---@param config_dir string

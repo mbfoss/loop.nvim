@@ -57,7 +57,7 @@ return [[
             "type": [ "string", "null" ],
             "description": "Required for type = 'debug'. Name of the debug adapter."
           },
-          "debugger_args": {
+          "debug": {
             "type": "object",
             "additionalProperties": true
           }

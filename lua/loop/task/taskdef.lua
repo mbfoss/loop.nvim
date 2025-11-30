@@ -9,4 +9,4 @@
 ---@field quickfix_matcher string|nil
 ---@field depends_on string[]? # optional list of dependent task names
 ---@field debugger string|nil
----@field debugger_args table<string,any>|nil
+---@field debug table<string,any>|nil

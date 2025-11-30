@@ -31,7 +31,7 @@ return {
         command = "${FILEROOT}.out",
         cwd = "${PROJDIR}",
         debugger = "lldb",
-        debugger_args = {
+        debug = {
             stopOnEntry = true,
             environment = {},
             sourceLanguages = { "cpp" },
@@ -45,8 +45,7 @@ return {
         command = nil,
         cwd = "${PROJDIR}",
         debugger = "js-debug",
-        debugger_args = {
-            request = "launch",
+        debug = {
             runtimeExecutable = "node",
             program = "${PROJDIR}/main.js",
             stopOnEntry = true,
@@ -60,9 +59,19 @@ return {
         type = "debug",
         command = nil,
         debugger = "js-debug",
-        debugger_args = {
-            request = "attach",
+        debug = {
             port = 9229,
+            restart = true,
+        },
+    },
+
+    {
+        name = "Attach to OSV (lua)",
+        type = "debug",
+        command = nil,
+        debugger = "lua-remote",
+        debug = {
+            port = 8086,
             restart = true,
         },
     },
@@ -72,7 +81,7 @@ return {
         type = "debug",
         command = nil,
         debugger = "debugpy",
-        debugger_args = {
+        debug = {
             program = "${file}",
             stopOnEntry = true,
             justMyCode = false,
