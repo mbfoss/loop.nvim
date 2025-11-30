@@ -184,7 +184,7 @@ local debuggers = {
         },
         request = "launch",
         default_args = {
-            type = "lua-local",
+            type = "lua",
             request = "launch",
             program = {
                 lua = "lua", -- change to "luajit" if you use LuaJIT
@@ -211,7 +211,7 @@ local debuggers = {
         request = "attach",
         default_args = {
             request = "attach",
-            type = "lua-local", -- protocol name used by local-lua-debugger-vscode / OSV
+            type = "lua",
             host = "127.0.0.1",
             cwd = "${workspaceFolder}",
             stopOnEntry = false,

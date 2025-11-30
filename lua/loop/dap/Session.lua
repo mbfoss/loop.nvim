@@ -104,6 +104,7 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field _tracker loop.session.Tracker
 ---@field _can_send_breakpoints boolean
 ---@field _source_breakpoints loop.dap.session.SourceBreakpointsData
+---@field _stopped_thread number|nil
 ---@field _stopped_threads loop.dap.proto.Thread[]
 ---@field _subsession_id number
 ---@field _breakpoints_tracker_id number
@@ -359,10 +360,14 @@ function Session:state()
 end
 
 function Session:debug_continue()
-    local thread_id = self._stopped_threads[1] and self._stopped_threads[1].id or 0
+    local thread_id = self._stopped_thread
+    if not thread_id then
+        self._log:debug("no thread to continue")
+        return
+    end
     self._base_session:request_continue({ threadId = thread_id, singleThread = false },
-        function(err, resp)
-            if err or not resp then
+        function(err, _)
+            if err then
                 self:_trace_notification("continue error: " .. tostring(err), "error")
                 return
             end
@@ -371,7 +376,11 @@ function Session:debug_continue()
 end
 
 function Session:debug_stepIn()
-    local thread_id = self._stopped_threads[1] and self._stopped_threads[1].id or 0
+    local thread_id = self._stopped_thread
+    if not thread_id then
+        self._log:debug("no thread to step-in")
+        return
+    end
     self._base_session:request_stepIn({ threadId = thread_id, singleThread = false }, function(err)
         if err then
             self:_trace_notification("stepIn error: " .. tostring(err), "error")
@@ -380,8 +389,11 @@ function Session:debug_stepIn()
 end
 
 function Session:debug_stepOut()
-    local thread_id = self._stopped_threads[1] and self._stopped_threads[1].id or 0
-    thread_id = thread_id or 0
+    local thread_id = self._stopped_thread
+    if not thread_id then
+        self._log:debug("no thread to step-out")
+        return
+    end
     self._base_session:request_stepOut({ threadId = thread_id, singleThread = false }, function(err)
         if err then
             self:_trace_notification("stepOut error: " .. tostring(err), "error")
@@ -390,7 +402,11 @@ function Session:debug_stepOut()
 end
 
 function Session:debug_stepOver()
-    local thread_id = self._stopped_threads[1] and self._stopped_threads[1].id or 0
+    local thread_id = self._stopped_thread
+    if not thread_id then
+        self._log:debug("no thread to step-over")
+        return
+    end
     self._base_session:request_next({ threadId = thread_id, granularity = "line" }, function(err)
         if err then
             self:_trace_notification("stepOver error: " .. tostring(err), "error")
@@ -462,6 +478,7 @@ function Session:_on_stopped_event(event)
         return
     end
 
+    self._stopped_thread = event and event.threadId or nil
     self._data_providers = Session:_create_data_providers(self._base_session)
 
     assert(event)
@@ -490,6 +507,7 @@ function Session:_on_thread_continued()
     if self._data_providers then
         self._data_providers.expiry_info.expired = true
     end
+    self._stopped_thread = nil
     self._stopped_threads = {}
     self:_notify_tracker("threads_continued")    
 end
