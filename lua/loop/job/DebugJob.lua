@@ -14,7 +14,7 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@class loop.job.debugjob.Tracker
 ---@field on_exit fun(code : number)|nil
 ---@field on_trace fun(text:string,level:"error"|"warn"|nil)|nil
----@field on_sess_added fun(id:number,name:string)|nil
+---@field on_sess_added fun(id:number,name:string, parent_id:number)|nil
 ---@field on_sess_removed fun(id:number, name:string)|nil
 ---@field on_sess_state fun(id:number, name:string, data:loop.dap.session.notify.StateData)|nil
 ---@field on_new_term fun(name:string, bufnr:number)|nil|nil
@@ -116,7 +116,7 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
     self:_update_allbreakpoints_status()
     self._sessions[session_id] = session
 
-    self._trackers:invoke("on_sess_added", session_id, name)
+    self._trackers:invoke("on_sess_added", session_id, name, parent_sess_id)
 
     return true, nil
 end
@@ -298,7 +298,7 @@ end
 function DebugJob:_on_subsession_request(sess_id, session, request)
     self._log:debug("Starting subsession via startDebugging: " .. vim.inspect(request))
 
-    local ok, err = self:add_new_session(request.name, request.debug_args)
+    local ok, err = self:add_new_session(request.name, request.debug_args, sess_id)
     if not ok then
         return request.on_failure("failed to startup child session, " .. tostring(err))
     end

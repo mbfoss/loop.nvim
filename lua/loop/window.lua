@@ -2,6 +2,7 @@ local M = {}
 local Page = require('loop.pages.Page')
 local OutputPage = require('loop.pages.OutputPage')
 local ItemListPage = require('loop.pages.ItemListPage')
+local ItemTreePage = require('loop.pages.ItemTreePage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local StackTracePage = require('loop.pages.StackTracePage')
 local uitools = require('loop.tools.uitools')
@@ -449,8 +450,8 @@ function M.add_debug_task(task_name)
     local task_page = OutputPage:new(task_name)
     _add_tab_page(_tabs.tasks, task_page)
 
-    local sesionspage = ItemListPage:new("Debug sessions")
-    _add_tab_page(_tabs.debug_sessions, sesionspage)
+    local sessionspage = ItemTreePage:new("Debug sessions")
+    _add_tab_page(_tabs.debug_sessions, sessionspage)
     created = true
 
     local output_pages = {}
@@ -461,12 +462,12 @@ function M.add_debug_task(task_name)
         on_trace = function(text, level)
             task_page:add_line(text, level)
         end,
-        on_sess_added = function(id, name)
-            sesionspage:set_item({ id = id, text = name })
+        on_sess_added = function(id, name, parent_id)
+            sessionspage:add_item({ id = id, text = name }, parent_id)
             task_page:add_line("[" .. name .. "] debug session created")            
         end,
         on_sess_removed = function(id, name)
-            sesionspage:remove_item(id)
+            sessionspage:remove_item(id)
         end,
         on_sess_state = function (sess_id, name, data)
             task_page:add_line("[" .. name .. "] " .. data.state)

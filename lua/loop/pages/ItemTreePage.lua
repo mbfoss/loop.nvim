@@ -1,246 +1,339 @@
+-- loop/pages/ItemTreePage.lua
 local class = require('loop.tools.class')
-local Page  = require('loop.pages.Page')
+local Page = require('loop.pages.Page')
+local Trackers = require("loop.tools.Trackers")
 
-local ns_id = vim.api.nvim_create_namespace('LoopPluginTreePage')
+local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemTreePage')
 
---------------------------------------------------------------------------------
--- Types
---------------------------------------------------------------------------------
+---@class loop.pages.ItemTreePage.Highlight
+---@field group string
+---@field start_col number 0-based
+---@field end_col number 0-based
 
----@class loop.pages.ItemTreeNode.highlight
----@field group string                 -- highlight group name
----@field start_col number             -- 0-based start column
----@field end_col number               -- 0-based end column
+--
+---@class loop.pages.ItemTreePage.Item
+---@field id any
+---@field text string
+---@field data any?
+---@field highlights loop.pages.ItemTreePage.Highlight[]|nil
+---@field children loop.pages.ItemTreePage.Item[]?
+---@field parent loop.pages.ItemTreePage.Item?
+---@field expanded boolean?
+---@field depth integer?
 
----@class loop.pages.ItemTreeNode
----@field id any                       -- unique identifier
----@field text string                  -- text to display
----@field data any                     -- arbitrary payload
----@field children loop.pages.ItemTreeNode[]|nil
----@field expanded boolean|nil         -- whether the node is expanded
----@field highlights loop.pages.ItemTreeNode.highlight[]|nil
-
----@class loop.pages.ItemTreePage.FlatEntry
----@field node loop.pages.ItemTreeNode
----@field depth number                 -- depth in the tree
+---@class loop.pages.ItemTreePage.TrackerCallbacks
+---@field on_selection fun(item: loop.pages.ItemTreePage.Item|nil)
 
 ---@class loop.pages.ItemTreePage : loop.pages.Page
----@field _roots loop.pages.ItemTreeNode[]      -- top-level roots
----@field _flat  loop.pages.ItemTreePage.FlatEntry[]   -- linearized tree
----@field _index table<any, number>             -- id → flat index
----@field _select_handler fun(cur: loop.pages.ItemTreePage.FlatEntry|nil)|nil
+---@field new fun(self:loop.pages.ItemTreePage, name:string):loop.pages.ItemTreePage
+---@field _root_items loop.pages.ItemTreePage.Item[]
+---@field _flat_items loop.pages.ItemTreePage.Item[]     -- currently visible lines
+---@field _index table<any, number>                      -- id → flat index
+---@field _trackers loop.tools.Trackers<loop.pages.ItemTreePage.TrackerCallbacks>
 local ItemTreePage = class(Page)
 
---------------------------------------------------------------------------------
--- Constructor
---------------------------------------------------------------------------------
-
----Initialize the tree page.
----@param name string
 function ItemTreePage:init(name)
     Page.init(self, "tree", name)
 
-    self._roots = {}
-    self._flat  = {}
+    self._root_items = {}
+    self._flat_items = {}
     self._index = {}
+    self._trackers = Trackers:new()
 
-    --TODO: add tracker 
-    self:add_keymap("<CR>", {
-        callback = function() self:_on_select() end,
-        desc = "Select node",
-    })
-
-    self:add_keymap("<Tab>", {
-        callback = function() self:toggle_expand() end,
-        desc = "Expand/collapse node",
-    })
-end
-
----Set the tree’s list of root nodes.
----@param roots loop.pages.ItemTreeNode[]
-function ItemTreePage:set_items(roots)
-    self._roots = roots or {}
-    self:_rebuild_flat()
-    self:_refresh_buffer(self:get_buf())
-end
-
----Toggle expand/collapse on the node under cursor.
-function ItemTreePage:toggle_expand()
-    local cur = self:get_cur_item()
-    if not cur then return end
-    local node = cur.node
-
-    node.expanded = not node.expanded
-
-    self:_rebuild_flat()
-    self:_refresh_buffer(self:get_buf())
-end
-
----Get the tree node under the cursor.
----@return loop.pages.ItemTreePage.FlatEntry|nil
-function ItemTreePage:get_cur_item()
-    local buf = self:get_buf()
-    if buf == -1 or buf ~= vim.api.nvim_get_current_buf() then
-        return nil
-    end
-
-    local row = vim.api.nvim_win_get_cursor(0)[1]
-    return self._flat[row]
-end
-
----Replace/update an existing node by id.
----@param item loop.pages.ItemTreeNode
-function ItemTreePage:set_item(item)
-    if not item or item.id == nil then return end
-
-    for _, entry in ipairs(self._flat) do
-        if entry.node.id == item.id then
-            entry.node.text       = item.text
-            entry.node.data       = item.data
-            entry.node.highlights = item.highlights
-            break
+    -- Keymaps
+    local function on_enter()
+        local item = self:get_cur_item()
+        if item and item.children then
+            self:toggle_expand(item)
+        else
+            self._trackers:invoke("on_selection", item)
         end
     end
 
+    self:add_keymap('<CR>', { callback = on_enter, desc = "Select or toggle folder" })
+    self:add_keymap('<2-LeftMouse>', { callback = on_enter, desc = "Select or toggle folder" })
+    self:add_keymap('zo', { callback = function() self:expand_under_cursor() end, desc = "Expand folder" })
+    self:add_keymap('zc', { callback = function() self:collapse_under_cursor() end, desc = "Collapse folder" })
+    self:add_keymap('za', { callback = function() self:toggle_under_cursor() end, desc = "Toggle folder" })
+    self:add_keymap('zM', { callback = function() self:collapse_all() end, desc = "Collapse all" })
+    self:add_keymap('zR', { callback = function() self:expand_all() end, desc = "Expand all" })
+end
+
+-- ===================================================================
+-- Public API
+-- ===================================================================
+
+---@param callbacks loop.pages.ItemTreePage.TrackerCallbacks
+---@return number tracker_id
+function ItemTreePage:add_tracker(callbacks)
+    return self._trackers:add_tracker(callbacks)
+end
+
+---@param id number
+---@return boolean
+function ItemTreePage:remove_tracker(id)
+    return self._trackers:remove_tracker(id)
+end
+
+---@param roots loop.pages.ItemTreePage.Item[]
+function ItemTreePage:set_roots(roots)
+    self._root_items = roots or {}
+    self:_rebuild_flat()
     self:_refresh_buffer(self:get_buf())
 end
 
----Remove a node by id (searches recursively).
----@param id any
-function ItemTreePage:remove_item(id)
+---@param item loop.pages.ItemTreePage.Item
+function ItemTreePage:toggle_expand(item)
+    if not item.children then return end
+    item.expanded = not (item.expanded == true)
+    self:_rebuild_flat()
+    self:_refresh_buffer(self:get_buf())
+end
 
-    local function rec_remove(nodes)
-        for i, n in ipairs(nodes) do
-            if n.id == id then
-                table.remove(nodes, i)
-                return true
+function ItemTreePage:expand_under_cursor()
+    local item = self:get_cur_item()
+    if item and item.children and not item.expanded then
+        item.expanded = true
+        self:_rebuild_flat()
+        self:_refresh_buffer(self:get_buf())
+    end
+end
+
+function ItemTreePage:collapse_under_cursor()
+    local item = self:get_cur_item()
+    if item and item.children and item.expanded then
+        item.expanded = false
+        self:_rebuild_flat()
+        self:_refresh_buffer(self:get_buf())
+    end
+end
+
+function ItemTreePage:toggle_under_cursor()
+    local item = self:get_cur_item()
+    if item and item.children then
+        self:toggle_expand(item)
+    end
+end
+
+function ItemTreePage:expand_all()
+    local function rec(node)
+        if node.children then
+            node.expanded = true
+            for _, c in ipairs(node.children) do rec(c) end
+        end
+    end
+    for _, r in ipairs(self._root_items) do rec(r) end
+    self:_rebuild_flat()
+    self:_refresh_buffer(self:get_buf())
+end
+
+function ItemTreePage:collapse_all()
+    for _, r in ipairs(self._root_items) do
+        r.expanded = false
+    end
+    self:_rebuild_flat()
+    self:_refresh_buffer(self:get_buf())
+end
+
+---@return loop.pages.ItemTreePage.Item|nil
+function ItemTreePage:get_cur_item()
+    local buf = self:get_buf()
+    if vim.api.nvim_get_current_buf() ~= buf or buf == -1 then
+        return nil
+    end
+    local row = vim.api.nvim_win_get_cursor(0)[1] -- 1-based
+    return self._flat_items[row]
+end
+
+---@param id any
+---@return loop.pages.ItemTreePage.Item|nil
+function ItemTreePage:get_item(id)
+    local idx = self._index[id]
+    return idx and self._flat_items[idx] or nil
+end
+
+--- Adds a new child item under the node with the given parent_id.
+--- If parent_id is nil, adds as a new root item.
+--- Returns true if the item was added, false if parent not found.
+---@param new_item loop.pages.ItemTreePage.Item
+---@param parent_id any?
+---@return boolean added
+function ItemTreePage:add_item(new_item, parent_id)
+    local child = new_item
+    assert(child and child.id and child.text, "Invalid child item")
+    assert(not self._index[child.id], "Item with this id already exists")
+
+    if parent_id == nil then
+        -- Add as root
+        table.insert(self._root_items, child)
+        child.parent = nil
+    else
+        -- Find parent in the current tree (search roots recursively)
+        local function find_parent(node)
+            if node.id == parent_id then
+                return node
             end
-            if n.children and rec_remove(n.children) then
-                return true
+            if node.children then
+                for _, c in ipairs(node.children) do
+                    local found = find_parent(c)
+                    if found then return found end
+                end
+            end
+            return nil
+        end
+
+        local parent = nil
+        for _, root in ipairs(self._root_items) do
+            parent = find_parent(root)
+            if parent then break end
+        end
+
+        if not parent then
+            return false -- parent not found
+        end
+
+        if not parent.children then
+            parent.children = {}
+        end
+        table.insert(parent.children, child)
+        child.parent = parent
+    end
+
+    -- Rebuild visible tree and refresh UI
+    self:_rebuild_flat()
+    self:_refresh_buffer(self:get_buf())
+
+    return true
+end
+
+--- Removes an item (and optionally all its descendants) from the tree.
+--- Returns true if the item was found and removed, false otherwise.
+---@param id any                      -- item id to remove
+---@param recursive boolean|nil        -- if true/nil, also remove all children (default: true)
+---@return boolean removed
+function ItemTreePage:remove_item(id, recursive)
+    if recursive == nil then recursive = true end
+
+    -- Helper: detach from parent’s children table
+    local function detach_from_parent(item)
+        if not item.parent then
+            -- It's a root
+            for i, root in ipairs(self._root_items) do
+                if root == item then
+                    table.remove(self._root_items, i)
+                    return true
+                end
+            end
+        else
+            if item.parent.children then
+                for i, child in ipairs(item.parent.children) do
+                    if child == item then
+                        table.remove(item.parent.children, i)
+                        return true
+                    end
+                end
             end
         end
         return false
     end
 
-    rec_remove(self._roots)
+    local item = self:get_item(id)
+    if not item then return false end
+
+    if recursive and item.children then
+        -- Clear children recursively so we don't leave dangling references
+        local function clear_children(node)
+            if node.children then
+                for _, child in ipairs(node.children) do
+                    clear_children(child)
+                end
+                node.children = nil
+            end
+        end
+        clear_children(item)
+    end
+
+    -- Actually remove from the tree structure
+    detach_from_parent(item)
+
+    -- Rebuild flat view and refresh buffer
     self:_rebuild_flat()
     self:_refresh_buffer(self:get_buf())
+
+    return true
 end
 
---------------------------------------------------------------------------------
--- Internal helpers
---------------------------------------------------------------------------------
+-- ===================================================================
+-- Internal
+-- ===================================================================
 
----Call select handler (if any).
-function ItemTreePage:_on_select()
-    if self._select_handler then
-        local cur = self:get_cur_item()
-        self._select_handler(cur)
-    end
-end
-
----Rebuild flattened list from hierarchical tree.
 function ItemTreePage:_rebuild_flat()
-    self._flat  = {}
+    self._flat_items = {}
     self._index = {}
 
-    local function walk(list, depth)
-        for _, node in ipairs(list) do
-            local e = { node = node, depth = depth }
-            table.insert(self._flat, e)
-            self._index[node.id] = #self._flat
+    local function visit(node, depth)
+        node.depth = depth
+        node.expanded = (node.expanded ~= false)
 
-            if node.expanded and node.children then
-                walk(node.children, depth + 1)
+        table.insert(self._flat_items, node)
+        self._index[node.id] = #self._flat_items
+
+        if node.expanded and node.children then
+            for _, child in ipairs(node.children) do
+                child.parent = node
+                visit(child, depth + 1)
             end
         end
     end
 
-    walk(self._roots, 0)
+    for _, root in ipairs(self._root_items) do
+        root.parent = nil
+        visit(root, 0)
+    end
 end
 
---------------------------------------------------------------------------------
--- Buffer Management + Rendering
---------------------------------------------------------------------------------
-
----Redraw the tree into the buffer.
 ---@param buf number
 function ItemTreePage:_refresh_buffer(buf)
-    if buf == -1 or not vim.api.nvim_buf_is_valid(buf) then
-        return
-    end
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
 
-    vim.api.nvim_buf_clear_namespace(buf, ns_id, 0, -1)
-
-    vim.bo[buf].modifiable = true
+    vim.api.nvim_buf_clear_namespace(buf, _ns_id, 0, -1)
 
     local lines = {}
-    local folds = {}
-
-    for i, entry in ipairs(self._flat) do
-        local node  = entry.node
-        local depth = entry.depth
-
-        local indent = string.rep("  ", depth)
-        local icon
-
-        if node.children and #node.children > 0 then
-            icon = node.expanded and "▾ " or "▸ "
-        else
-            icon = "  "
-        end
-
-        lines[i] = indent .. icon .. node.text:gsub("\n", " ")
-
-        -- collapsed node → compute closed fold range
-        if node.children and node.expanded == false then
-            local start = i
-            local stop  = i
-
-            for j = i + 1, #self._flat do
-                if self._flat[j].depth <= depth then break end
-                stop = j
-            end
-
-            if stop > start then
-                table.insert(folds, { start = start, stop = stop })
-            end
-        end
+    for _, item in ipairs(self._flat_items) do
+        local indent = ("  "):rep(item.depth)
+        local prefix = item.children and (item.expanded and "▼ " or "▶ ") or "  "
+        local line = indent .. prefix .. item.text:gsub("\n", " ")
+        table.insert(lines, line)
     end
 
+    vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.bo[buf].modifiable = false
 
-    --------------------------------------------------------------------------
-    -- Classic manual-fold implementation:
-    --------------------------------------------------------------------------
-
-    vim.api.nvim_set_option_value("foldmethod", "manual", { scope = "local", buf = buf })
-    vim.api.nvim_buf_call(buf, function()
-        vim.cmd("normal! zE")
-    end)
-
-    for _, f in ipairs(folds) do
-        vim.api.nvim_buf_call(buf, function()
-            vim.cmd(f.start .. "," .. f.stop .. "fold")
-        end)
-    end
-
-    --------------------------------------------------------------------------
-    -- Highlights
-    --------------------------------------------------------------------------
-    for i, entry in ipairs(self._flat) do
-        local node = entry.node
-        if node.highlights then
-            for _, hl in ipairs(node.highlights) do
-                vim.api.nvim_buf_set_extmark(buf, ns_id, i - 1, hl.start_col, {
-                    end_col  = hl.end_col,
+    -- Apply highlights with correct offset
+    for idx, item in ipairs(self._flat_items) do
+        if item.highlights then
+            local offset = #(("  "):rep(item.depth) .. (item.children and "x " or "  "))
+            for _, hl in ipairs(item.highlights) do
+                local start_col = hl.start_col + offset
+                local end_col
+                end_col = hl.end_col + offset
+                vim.api.nvim_buf_set_extmark(buf, _ns_id, idx - 1, start_col, {
+                    end_col = end_col,
                     hl_group = hl.group,
                     priority = 200,
                 })
             end
         end
     end
+end
+
+function ItemTreePage:get_or_create_buf()
+    local buf, created = Page.get_or_create_buf(self)
+    if created then
+        self:_refresh_buffer(buf)
+    end
+    return buf, created
 end
 
 return ItemTreePage

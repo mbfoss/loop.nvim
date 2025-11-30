@@ -2,7 +2,7 @@ local class = require('loop.tools.class')
 local Page = require('loop.pages.Page')
 local Trackers = require("loop.tools.Trackers")
 
----@class loop.pages.ItemListPage.highlight
+---@class loop.pages.ItemListPage.Highlight
 ---@field group string
 ---@field start_col number 0-based
 ---@field end_col number 0-based
@@ -11,7 +11,7 @@ local Trackers = require("loop.tools.Trackers")
 ---@field id any
 ---@field text string
 ---@field data any
----@field highlights loop.pages.ItemListPage.highlight[]|nil
+---@field highlights loop.pages.ItemListPage.Highlight[]|nil
 
 ---@class loop.pages.ItemListPage.TrackerCallbacks
 ---@field on_selection fun(item:loop.pages.ItemListPage.Item|nil)
