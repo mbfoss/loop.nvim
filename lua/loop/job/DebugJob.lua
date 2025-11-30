@@ -265,9 +265,9 @@ function DebugJob:add_debug_term(name, args, on_success, on_failure)
         return
     end
 
+    self._trackers:invoke("on_new_term", name, bufnr)
     local pid = proc:get_pid()
     on_success(pid)
-    self._trackers:invoke("on_new_term", name, bufnr)
 end
 
 ---@param sess_id number
