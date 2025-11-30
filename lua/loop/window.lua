@@ -1,14 +1,13 @@
 local M = {}
 local Page = require('loop.pages.Page')
 local OutputPage = require('loop.pages.OutputPage')
+local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local ItemListPage = require('loop.pages.ItemListPage')
 local ItemTreePage = require('loop.pages.ItemTreePage')
-local BreakpointsPage = require('loop.pages.BreakpointsPage')
 local StackTracePage = require('loop.pages.StackTracePage')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local selector = require("loop.selector")
-local signs = require('loop.signs')
 
 ---@class loop.TabInfo
 ---@field index number
@@ -423,149 +422,33 @@ function M.show_stacktrace()
     create_window()
 end
 
-function M.delete_task_buffers()
+function M.remove_task_pages()
     _delete_tab_pages(_tabs.tasks)
     _delete_tab_pages(_tabs.debug_sessions)
     _delete_tab_pages(_tabs.debug_output)
     _delete_tab_pages(_tabs.stacktrace)
+    _delete_tab_pages(_tabs.variables)
 end
 
----@param name string -- task name
----@param bufnr number
-function M.add_term_task_page(name, bufnr)
+---@param type "task"|"debugsession"|"debugoutput"|"stacktrace"|"variables"
+---@param page loop.pages.Page
+function M.add_page(type, page)
     assert(setup_done)
-    assert(type(name) == "string")
-    assert(vim.api.nvim_buf_is_valid(bufnr))
-
-    local page = Page:new("term", name)
-    page:assign_buf(bufnr)
-    _add_tab_page(_tabs.tasks, page)
-    _set_active_tab(_tabs.tasks.index, nil)
-end
-
----@param task_name string -- task name
----@return loop.job.debugjob.Tracker
-function M.add_debug_task(task_name)
-    assert(setup_done)
-    assert(type(task_name) == "string")
-    -- create page
-    local task_page = OutputPage:new(task_name)
-    _add_tab_page(_tabs.tasks, task_page)
-
-    local sessionspage = ItemTreePage:new("Debug sessions")
-    _add_tab_page(_tabs.debug_sessions, sessionspage)
-    created = true
-
-    local output_pages = {}
-    local stacktrace_pages = {}
-    local variable_pages = {}
-
-    ---@type loop.job.debugjob.Tracker
-    local tracker = {
-        on_trace = function(text, level)
-            task_page:add_line(text, level)
-        end,
-        on_sess_added = function(id, name, parent_id)
-            sessionspage:upsert_item({ id = id, text = name }, parent_id)
-            task_page:add_line("[" .. name .. "] debug session created")
-        end,
-        on_sess_removed = function(id, name)
-            sessionspage:remove_item(id)
-        end,
-        on_sess_state = function(sess_id, name, data)
-            task_page:add_line("[" .. name .. "] " .. data.state)
-            if data.state == "ended" then
-                signs.remove_signs("currentframe")
-                local page = stacktrace_pages[sess_id]
-                if page then
-                    page:clear_content()
-                end
-            end
-        end,
-        on_output = function(sess_id, sess_name, category, output)
-            ---@type loop.pages.OutputPage|nil
-            ---@diagnostic disable-next-line: assign-type-mismatch
-            local page = output_pages[sess_id]
-            if not page then
-                page = OutputPage:new(sess_name)
-                _add_tab_page(_tabs.debug_output, page)
-                output_pages[sess_id] = page
-            end
-            local level = category == "stderr" and "error" or nil
-            page:add_line(output, level)
-        end,
-        on_new_term = function(name, bufnr)
-            local page = Page:new("term", name)
-            page:assign_buf(bufnr)
-            _add_tab_page(_tabs.debug_output, page)
-        end,
-        on_thread_pause = function(sess_id, sess_name, event_data)
-            if not event_data.thread_id then return end
-            local curframe
-            -- handle current frame
-            event_data.stack_provider({ threadId = event_data.thread_id, levels = 1 }, function(err, data)
-                ---@type loop.dap.proto.StackFrame
-                curframe = data and data.stackFrames[1] or nil
-                if curframe and curframe.source and curframe.source.path then
-                    signs.place_file_sign(curframe.source.path, curframe.line, "currentframe", "currentframe")
-                    uitools.smart_open_file(curframe.source.path, curframe.line, curframe.column)
-                end
-                -- handle scopes/variable
-                if curframe then
-                    ---@type loop.pages.ItemTreePage|nil
-                    ---@diagnostic disable-next-line: assign-type-mismatch
-                    local page = variable_pages[sess_id]
-                    if not page then
-                        page = ItemTreePage:new(sess_name)
-                        _add_tab_page(_tabs.variables, page)
-                        variable_pages[sess_id] = page
-                    end
-                    event_data.scopes_provider({ frameId = curframe.id }, function(_, scopes_data)
-                        if scopes_data then
-                            for scope_idx, scope in ipairs(scopes_data.scopes) do
-                                if scope.presentationHint == "locals" then
-                                    ---@type loop.pages.ItemTreePage.Item
-                                    local scope_item = { id = tostring(scope_idx), text = scope.name }
-                                    page:upsert_item(scope_item, nil)
-                                    event_data.variables_provider({ variablesReference = scope.variablesReference },
-                                        function(_, vars_data)
-                                            if vars_data then
-                                                for var_idx, var in ipairs(vars_data.variables) do
-                                                    ---@type loop.pages.ItemTreePage.Item
-                                                    local var_item = { id = scope_item.id .. ':' .. tostring(var_idx), text =
-                                                    var.name .. ": " .. var.value }
-                                                    page:upsert_item(var_item, scope_item.id)
-                                                end
-                                            end
-                                        end)
-                                end
-                            end
-                        end
-                    end)
-                end
-            end)
-            -- handle stack trace page
-            do
-                ---@type loop.pages.StackTracePage|nil
-                ---@diagnostic disable-next-line: assign-type-mismatch
-                local page = stacktrace_pages[sess_id]
-                if not page then
-                    page = StackTracePage:new(sess_name)
-                    _add_tab_page(_tabs.stacktrace, page)
-                    stacktrace_pages[sess_id] = page
-                end
-                page:set_content(event_data)
-            end
-        end,
-        on_thread_continue = function(sess_id, sess_name)
-            signs.remove_signs("currentframe")
-            local page = stacktrace_pages[sess_id]
-            if page then
-                page:clear_content()
-            end
-        end
-    }
-    return tracker
+    local tab
+    if type == "task" then
+        tab = _tabs.tasks
+    elseif type == "debugsession" then
+        tab = _tabs.debug_sessions
+    elseif type == "debugoutput" then
+        tab = _tabs.debug_output
+    elseif type == "stacktrace" then
+        tab = _tabs.stacktrace
+    elseif type == "variables" then
+        tab = _tabs.variables
+    end
+    assert(tab)
+    _add_tab_page(tab, page)
+    _set_active_tab(tab.index, nil)
 end
 
 ---@param config_dir string

@@ -1,12 +1,8 @@
-local class       = require('loop.tools.class')
-local config      = require('loop.config')
-local Trackers    = require("loop.tools.Trackers")
-local Job         = require('loop.job.Job')
-local Session     = require('loop.dap.Session')
-local TermProc    = require('loop.tools.TermProc')
-local selector    = require("loop.selector")
-local signs       = require('loop.signs')
-local breakpoints = require('loop.dap.breakpoints')
+local class    = require('loop.tools.class')
+local Trackers = require("loop.tools.Trackers")
+local Job      = require('loop.job.Job')
+local Session  = require('loop.dap.Session')
+local TermProc = require('loop.tools.TermProc')
 
 ---@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"|"terminate"|"terminate_all"
 
@@ -21,13 +17,14 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field on_output fun(sess_id:number, sess_name:string, category:string, output:string)|nil
 ---@field on_thread_pause fun(sess_id:number, sess_name:string, data:loop.dap.session.notify.ThreadData)|nil
 ---@field on_thread_continue fun(sess_id:number, sess_name:string)|nil
+---@field on_breakpoint_event fun(sess_id:number, sess_name:string, event:loop.dap.session.notify.BreakpointsEvent)|nil
 
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob, name:string) : loop.job.DebugJob
 ---@field _sessions table<number,loop.dap.Session>
 ---@field _last_session_id number
 ---@field _trackers loop.tools.Trackers<loop.job.debugjob.Tracker>
-local DebugJob    = class(Job)
+local DebugJob = class(Job)
 
 ---Initializes the DebugJob instance.
 ---@param name string
@@ -113,7 +110,6 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
         return false, "Failed to start debug session, " .. start_err
     end
 
-    self:_update_allbreakpoints_status()
     self._sessions[session_id] = session
 
     self._trackers:invoke("on_sess_added", session_id, name, parent_sess_id)
@@ -131,10 +127,9 @@ function DebugJob:_session_exit_handler(session_id, code)
             self._trackers:invoke("on_trace",
                 "[" .. tostring(session:name()) .. "] debugger exited (code " .. tostring(code) .. ")")
 
-            self:_update_allbreakpoints_status()
             if next(self._sessions) == nil then
-                breakpoints.reset_verified_status()
                 self._trackers:invoke("on_exit", code)
+                self._trackers:disable() --don't send any more events
             end
         end
     end)
@@ -274,7 +269,6 @@ end
 ---@param session loop.dap.Session
 ---@param event_data loop.dap.session.notify.ThreadData
 function DebugJob:_on_session_threads_pause(sess_id, session, event_data)
-
     self._trackers:invoke("on_thread_pause", sess_id, session:name(), event_data)
 end
 
@@ -282,9 +276,7 @@ end
 ---@param session loop.dap.Session
 ---@param event loop.dap.session.notify.BreakpointsEvent
 function DebugJob:_on_session_breakpoints_event(sess_id, session, event)
-    for _, state in ipairs(event) do
-        self:_update_breakpoint_status(state.id)
-    end
+    self._trackers:invoke("on_breakpoint_event", sess_id, session, event, event)
 end
 
 ---@param sess_id number
@@ -304,22 +296,6 @@ function DebugJob:_on_subsession_request(sess_id, session, request)
     end
 
     request.on_success({})
-end
-
-function DebugJob:_update_allbreakpoints_status()
-    local ids = breakpoints.get_ids()
-    for _, id in ipairs(ids) do
-        self:_update_breakpoint_status(id)
-    end
-end
-
-function DebugJob:_update_breakpoint_status(id)
-    local verified = next(self._sessions) == nil
-    for _, session in pairs(self._sessions) do
-        local state = session:get_breakpoint_state(id)
-        verified = verified or (state or false)
-    end
-    breakpoints.update_verified_status(id, verified)
 end
 
 return DebugJob

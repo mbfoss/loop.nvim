@@ -296,7 +296,7 @@ function M.setup(config)
     _setup_done = true
 
     require('loop.signs').setup()
-    require('loop.bpsigns').setup()
+    require('loop.debugui').setup()
 
     window.setup({})
 

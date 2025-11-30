@@ -25,7 +25,7 @@ local breakpoints = require('loop.dap.breakpoints')
 
 
 ---@class loop.dap.session.notify.BreakpointState
----@field id number
+---@field breakpoint_id number
 ---@field verified boolean
 ---@field removed boolean|nil
 
@@ -363,11 +363,7 @@ function Session:debug_continue()
                 self:_trace_notification("continue error: " .. tostring(err), "error")
                 return
             end
-            if self._data_providers then
-                self._data_providers.expiry_info.expired = true
-            end
-            self._stopped_threads = {}
-            self:_notify_tracker("threads_continued")
+            self:_on_thread_continued()
         end)
 end
 
@@ -484,8 +480,7 @@ function Session:_on_stopped_event(event)
     end)
 end
 
----@param event loop.dap.proto.ContinuedEvent|nil
-function Session:_on_continued_event(event)
+function Session:_on_thread_continued()
     if self._fsm:curr_state() ~= "running" then
         self._log:error("unexpected continued event")
     end
@@ -493,6 +488,12 @@ function Session:_on_continued_event(event)
         self._data_providers.expiry_info.expired = true
     end
     self._stopped_threads = {}
+    self:_notify_tracker("threads_continued")    
+end
+
+---@param event loop.dap.proto.ContinuedEvent|nil
+function Session:_on_continued_event(event)
+    self:_on_thread_continued()
 end
 
 ---@param event loop.dap.proto.BreakpointEvent|nil
@@ -505,7 +506,7 @@ function Session:_on_breakpoint_event(event)
         bp.verified = event.breakpoint.verified
         local removed = event.reason == "removed"
         ---@type loop.dap.session.notify.BreakpointsEvent
-        local data = { { id = bp.user_data.id, verified = bp.verified, removed = removed } }
+        local data = { { breakpoint_id = bp.user_data.id, verified = bp.verified, removed = removed } }
         self:_notify_tracker("breakpoints", data)
         if removed then
             self._source_breakpoints.by_dap_id[dapid] = nil
@@ -670,7 +671,7 @@ function Session:_send_pending_breakpoints(on_complete)
                     local data = {}
                     for _, bp in ipairs(originals) do
                         ---@type loop.dap.session.notify.BreakpointState
-                        local state = { id = bp.user_data.id, verified = bp.verified }
+                        local state = { breakpoint_id = bp.user_data.id, verified = bp.verified }
                         table.insert(data, state)
                     end
                     self:_notify_tracker("breakpoints", data)

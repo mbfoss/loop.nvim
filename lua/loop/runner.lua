@@ -8,6 +8,8 @@ local TermJob = require('loop.job.TermJob')
 local DebugJob = require('loop.job.DebugJob')
 local VimCmdJob = require('loop.job.VimCmdJob')
 local window = require('loop.window')
+local debugui = require('loop.debugui')
+local Page = require('loop.pages.Page')
 
 ---@class loop.runner.TaskChain
 ---@field tasks loop.Task[]
@@ -151,10 +153,13 @@ local function _create_tool_job(task, output_handler, exit_handler)
         on_exit_handler = exit_handler,
     }
     local job = TermJob:new()
-    local ok, err = job:start(args)
-    if not ok then
+    local bufnr, err = job:start(args)
+    if bufnr == -1 then
         return nil, err
     end
+    local page = Page:new("term", task.name)
+    page:assign_buf(bufnr)    
+    window.add_page("task", page)
     return job, nil
 end
 
@@ -195,12 +200,12 @@ local function _create_debug_job(task, output_handler, exit_handler)
 
     if dbg_config.dap.type ~= "local" and dbg_config.dap.type ~= "remote" then
         return nil, ("invalid dat type '%s'"):format(dbg_config.dap.type)
-    end    
+    end
 
     if dbg_config.request ~= "launch" and dbg_config.request ~= "attach" then
         return nil, ("invalid request type '%s'"):format(dbg_config.request)
     end
- 
+
     -- Build DebugJob start args
     ---@type loop.DebugJob.StartArgs
     local args = {
@@ -214,9 +219,10 @@ local function _create_debug_job(task, output_handler, exit_handler)
     }
 
     local job = DebugJob:new(task.name)
-    local tracker = window.add_debug_task(task.name)    
-    job:add_tracker(tracker)
-    job:add_tracker({ on_exit = exit_handler})
+
+    job:add_tracker(debugui.track_new_debugjob(task.name))
+    job:add_tracker({ on_exit = exit_handler })
+
     local ok, err = job:start(args)
     if not ok then
         return nil, err
@@ -284,7 +290,7 @@ local function _start_task_chain(tasks, on_complete)
         end
 
         if not chain.started then
-            window.delete_task_buffers()
+            window.remove_task_pages()
             chain.started = true
         end
 

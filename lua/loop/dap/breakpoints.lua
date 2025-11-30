@@ -17,7 +17,6 @@ local M        = {}
 ---@field on_added fun(bp:loop.dap.SourceBreakpoint)|nil
 ---@field on_removed fun(bp:loop.dap.SourceBreakpoint)|nil
 ---@field on_all_removed fun(bpts:loop.dap.SourceBreakpoint[])|nil
----@field on_status_update fun(bp:loop.dap.SourceBreakpoint, verified:boolean|nil)|nil
 
 local _last_breakpoint_id = 1000
 
@@ -26,9 +25,6 @@ local _source_breakpoints = {}
 
 ---@type table<number,loop.dap.SourceBreakpoint>
 local _by_id = {} -- breakpoints by unique id
-
----@type table<number,boolean>
-local _verified = {}
 
 ---@type loop.tools.Trackers<loop.dap.breakpoints.TrackerCallbacks>
 local _trackers = Trackers:new()
@@ -170,25 +166,6 @@ function M.clear_all_breakpoints()
     _clear_breakpoints()
 end
 
----@param id number
----@param verified boolean
-function M.update_verified_status(id, verified)
-    local bp = _by_id[id]
-    if bp then
-        _verified[id] = verified
-        _trackers:invoke("on_status_update", bp, verified)
-    end
-end
-
-function M.reset_verified_status()
-    for id, bp in pairs(_by_id) do
-        _trackers:invoke("on_status_update", bp, nil)
-    end
-    for id, bp in pairs(_by_id) do
-        _verified[bp.id] = nil
-    end
-end
-
 --- Load breakpoints from a JSON file in the given project config directory.
 ---@param proj_config_dir string Path to project config directory
 ---@return boolean success True on success
@@ -262,12 +239,6 @@ function M.for_each(handler)
     end
 end
 
----@param id number
----@return boolean|nil
-function M.is_verified(id)
-    return _verified[id]
-end
-
 ---@param callbacks loop.dap.breakpoints.TrackerCallbacks
 ---@return number
 function M.add_tracker(callbacks)
@@ -275,9 +246,8 @@ function M.add_tracker(callbacks)
     --initial snapshot
     for id, bp in pairs(_by_id) do
         callbacks.on_added(bp)
-        local verified = _verified[id]
-        if verified and callbacks.on_status_update then
-            callbacks.on_status_update(bp, verified)
+        if callbacks.on_added then
+            callbacks.on_added(bp)
         end
     end
     return tracker_id

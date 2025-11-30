@@ -1,0 +1,282 @@
+local config            = require('loop.config')
+local signs             = require('loop.signs')
+local selector          = require("loop.selector")
+local window            = require('loop.window')
+local breakpoints       = require('loop.dap.breakpoints')
+local Page              = require('loop.pages.Page')
+local OutputPage        = require('loop.pages.OutputPage')
+local ItemListPage      = require('loop.pages.ItemListPage')
+local ItemTreePage      = require('loop.pages.ItemTreePage')
+local StackTracePage    = require('loop.pages.StackTracePage')
+local uitools           = require('loop.tools.uitools')
+
+local M                 = {}
+
+local _setup_done       = false
+
+---@class loop.debug_ui.Breakpointata
+---@field breakpoint loop.dap.SourceBreakpoint
+---@field states table<number,boolean>|nil
+
+---@type table<number,loop.debug_ui.Breakpointata>
+local _breakpoints_data = {}
+
+---@param data loop.debug_ui.Breakpointata
+local function _refresh_breakpoint_sign(data)
+    local verified = nil
+    if data.states then
+        for _, state in ipairs(data.states) do
+            verified = verified or state
+        end
+    end
+    if verified == nil then verified = true end
+    local sign = verified and "active_breakpoint" or "inactive_breakpoint"
+    signs.place_file_sign(data.breakpoint.file, data.breakpoint.line, "breakpoints", sign)
+end
+
+---@param bp loop.dap.SourceBreakpoint
+local function _on_breakpoint_added(bp)
+    _breakpoints_data[bp.id] = {
+        breakpoint = bp,
+    }
+    signs.place_file_sign(bp.file, bp.line, "breakpoints", "active_breakpoint")
+end
+
+---@param bp loop.dap.SourceBreakpoint
+local function _on_breakpoint_removed(bp)
+    _breakpoints_data[bp.id] = nil
+    signs.remove_file_sign(bp.file, bp.line, "breakpoints")
+end
+
+---@param _ loop.dap.SourceBreakpoint[]
+local function _on_all_breakpoints_removed(_)
+    local files = {}
+    for _, data in ipairs(_breakpoints_data) do
+        files[data.breakpoint.file] = true
+    end
+    for file, _ in pairs(files) do
+        signs.remove_file_signs(file, "breakpoints")
+    end
+end
+
+---@param sess_id number
+---@param sess_name string
+---@param parent_id number|nil
+---@param task_page loop.pages.OutputPage
+---@param sessions_page loop.pages.ItemTreePage
+local function _on_session_added(sess_id, sess_name, parent_id, task_page, sessions_page)
+    sessions_page:upsert_item({ id = sess_id, text = sess_name }, parent_id)
+    task_page:add_line("[" .. sess_name .. "] debug session created")
+
+    for _, data in pairs(_breakpoints_data) do
+        data.states = data.states or {}
+        data.states[sess_id] = false
+        _refresh_breakpoint_sign(data)
+    end
+end
+
+---@param sess_id number
+---@param sess_name string
+---@param task_page loop.pages.OutputPage
+---@param sessions_page loop.pages.ItemTreePage
+local function _on_session_removed(sess_id, sess_name, task_page, sessions_page)
+    sessions_page:remove_item(sess_id)
+    for _, data in pairs(_breakpoints_data) do
+        if data.states then
+            data.states[sess_id] = nil
+            _refresh_breakpoint_sign(data)
+        end
+    end
+end
+
+---@param sess_id number
+---@param sess_name string
+---@param data loop.dap.session.notify.StateData
+---@param task_page loop.pages.OutputPage
+---@param stacktrace_page loop.pages.StackTracePage|nil
+local function _on_session_state_update(sess_id, sess_name, data, task_page, stacktrace_page)
+    task_page:add_line("[" .. sess_name .. "] " .. data.state)
+    if data.state == "ended" then
+        signs.remove_signs("currentframe")
+        if stacktrace_page then
+            stacktrace_page:clear_content()
+        end
+    end
+end
+
+---@param sess_id number
+---@param session loop.dap.Session
+---@param event loop.dap.session.notify.BreakpointsEvent
+local function _on_session_breakpoints_event(sess_id, session, event)
+    for _, state in ipairs(event) do
+        local bp = _breakpoints_data[state.breakpoint_id]
+        if bp then
+            bp.states = bp.states or {}
+            bp.states[sess_id] = state.verified
+            local data = _breakpoints_data[state.breakpoint_id]
+            if data then
+                _refresh_breakpoint_sign(data)
+            end
+        end
+    end
+end
+
+---@param sess_id number
+---@param sess_name string
+---@param event_data loop.dap.session.notify.ThreadData
+---@param variables_page loop.pages.ItemTreePage
+---@param stacktrace_page loop.pages.StackTracePage
+local function _on_thread_pause(sess_id, sess_name, event_data, variables_page, stacktrace_page)
+    if not event_data.thread_id then return end
+    local curframe
+    -- handle current frame
+    event_data.stack_provider({ threadId = event_data.thread_id, levels = 1 }, function(err, data)
+        ---@type loop.dap.proto.StackFrame
+        curframe = data and data.stackFrames[1] or nil
+        if curframe and curframe.source and curframe.source.path then
+            signs.place_file_sign(curframe.source.path, curframe.line, "currentframe", "currentframe")
+            uitools.smart_open_file(curframe.source.path, curframe.line, curframe.column)
+        end
+        -- handle scopes/variable
+        if curframe then
+            event_data.scopes_provider({ frameId = curframe.id }, function(_, scopes_data)
+                if scopes_data then
+                    for scope_idx, scope in ipairs(scopes_data.scopes) do
+                        if scope.presentationHint == "locals" then
+                            ---@type loop.pages.ItemTreePage.Item
+                            local scope_item = { id = tostring(scope_idx), text = scope.name }
+                            variables_page:upsert_item(scope_item, nil)
+                            event_data.variables_provider({ variablesReference = scope.variablesReference },
+                                function(_, vars_data)
+                                    if vars_data then
+                                        for var_idx, var in ipairs(vars_data.variables) do
+                                            ---@type loop.pages.ItemTreePage.Item
+                                            local var_item = {
+                                                id = scope_item.id .. ':' .. tostring(var_idx),
+                                                text =
+                                                    var.name .. ": " .. var.value
+                                            }
+                                            variables_page:upsert_item(var_item, scope_item.id)
+                                        end
+                                    end
+                                end)
+                        end
+                    end
+                end
+            end)
+        end
+    end)
+    -- handle stack trace page
+    do
+        stacktrace_page:set_content(event_data)
+    end
+end
+
+---@param sess_id number
+---@param sess_name string
+---@param stacktrace_page loop.pages.StackTracePage|nil
+local function _on_thread_continue(sess_id, sess_name, stacktrace_page)
+    signs.remove_signs("currentframe")
+    if stacktrace_page then
+        stacktrace_page:clear_content()
+    end
+end
+
+---@param task_name string -- task name
+---@return loop.job.debugjob.Tracker
+function M.track_new_debugjob(task_name)
+    assert(_setup_done)
+    assert(type(task_name) == "string")
+
+    ---@type loop.pages.OutputPage
+    local task_page = OutputPage:new(task_name)
+    window.add_page("task", task_page)
+
+    local sessionspage = ItemTreePage:new("Debug sessions")
+    window.add_page("debugsession", sessionspage)
+    created = true
+
+    local output_pages = {}
+    local stacktrace_pages = {}
+    local variable_pages = {}
+
+    ---@type loop.job.debugjob.Tracker
+    local tracker = {
+        on_trace = function(text, level)
+            task_page:add_line(text, level)
+        end,
+        on_sess_added = function(id, name, parent_id)
+            _on_session_added(id, name, parent_id, task_page, sessionspage)
+        end,
+        on_sess_removed = function(id, name)
+            _on_session_removed(id, name, task_page, sessionspage)
+        end,
+        on_sess_state = function(sess_id, name, data)
+            local stacktrace_page = stacktrace_pages[sess_id]
+            _on_session_state_update(sess_id, name, data, task_page, stacktrace_page)
+        end,
+        on_output = function(sess_id, sess_name, category, output)
+            ---@type loop.pages.OutputPage|nil
+            ---@diagnostic disable-next-line: assign-type-mismatch
+            local page = output_pages[sess_id]
+            if not page then
+                page = OutputPage:new(sess_name)
+                window.add_page("debugoutput", page)
+                output_pages[sess_id] = page
+            end
+            local level = category == "stderr" and "error" or nil
+            page:add_line(output, level)
+        end,
+        on_new_term = function(name, bufnr)
+            local page = Page:new("term", name)
+            page:assign_buf(bufnr)
+            window.add_page("debugoutput", page)
+        end,
+        on_thread_pause = function(sess_id, sess_name, event_data)
+            ---@type loop.pages.ItemTreePage|nil
+            local variable_page = variable_pages[sess_id]
+            ---@type loop.pages.StackTracePage|nil
+            local stacktrace_page = stacktrace_pages[sess_id]
+
+            if not variable_page then
+                variable_page = ItemTreePage:new(sess_name)
+                window.add_page("variables", variable_page)
+                variable_pages[sess_id] = variable_page
+            end
+
+            if not stacktrace_page then
+                stacktrace_page = StackTracePage:new(sess_name)
+                window.add_page("stacktrace", stacktrace_page)
+                stacktrace_pages[sess_id] = stacktrace_page
+            end
+
+            _on_thread_pause(sess_id, sess_name, event_data, variable_page, stacktrace_page)
+        end,
+        on_thread_continue = function(sess_id, sess_name)
+            ---@type loop.pages.StackTracePage|nil
+            local stacktrace_page = stacktrace_pages[sess_id]
+            _on_thread_continue(sess_id, sess_name, stacktrace_page)
+        end,
+
+        on_breakpoint_event = _on_session_breakpoints_event,
+        on_exit = function(code)
+
+        end
+    }
+    return tracker
+end
+
+--- Setup the breakpoint sign system and autocommands.
+---@param _? table Optional setup options (currently unused)
+function M.setup(_)
+    assert(not _setup_done, "setup already done")
+    _setup_done = true
+
+    require('loop.dap.breakpoints').add_tracker({
+        on_added = _on_breakpoint_added,
+        on_removed = _on_breakpoint_removed,
+        on_all_removed = _on_all_breakpoints_removed
+    })
+end
+
+return M

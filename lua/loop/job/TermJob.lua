@@ -1,7 +1,6 @@
 local Job      = require('loop.job.Job')
 local class    = require('loop.tools.class')
 local TermProc = require('loop.tools.TermProc')
-local window   = require('loop.window')
 
 ---@class loop.job.TermJob : loop.job.Job
 ---@field new fun(self: loop.job.TermJob) : loop.job.TermJob
@@ -32,15 +31,11 @@ end
 
 ---Starts a new terminal job.
 ---@param args loop.tools.TermProc.StartArgs
----@return boolean success
+---@return number bufnr
 ---@return string|nil error msg or nil
 function TermJob:start(args)
     local bufnr, err = self._proc:start(args)
-    if bufnr == -1 then
-        return false, err
-    end
-    window.add_term_task_page(args.name, bufnr)
-    return true, nil
+    return bufnr, err
 end
 
 return TermJob

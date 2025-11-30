@@ -107,6 +107,15 @@ M.setup = function(args)
 	}
 
 	_setup_user_command(_G.LoopProject)
+
+vim.keymap.set("n", "<F5>",  ":Loop debug continue<CR>")
+vim.keymap.set("n", "<F6>",  ":Loop debug step_in<CR>")
+vim.keymap.set("n", "<F7>",  ":Loop debug step_out<CR>")
+vim.keymap.set("n", "<F8>",  ":Loop debug step_over<CR>")
+vim.keymap.set("n", "<F9>",  ":Loop debug terminate<CR>")
+vim.keymap.set("n", "<F10>", ":Loop debug terminate_all<CR>")
+
+
 end
 
 return M
