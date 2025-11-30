@@ -486,19 +486,16 @@ function M.add_debug_task(task_name)
             page:assign_buf(bufnr)
             _add_tab_page(_tabs.debug_output, page)
         end,
-        on_thread_event = function(sess_id, sess_name, event, threads, thread_id, stackprovider)
+        on_thread_pause = function(sess_id, sess_name, event_data)
+            if not event_data.thread_id then return end
             -- handle current frame sign
-            if event == "pause" and thread_id then
-                stackprovider(thread_id, 1, function(err, data)
-                    local topframe = data and data.stackFrames[1] or nil
-                    if topframe and topframe.source and topframe.source.path then
-                        signs.place_file_sign(topframe.source.path, topframe.line, "currentframe", "currentframe")
-                        uitools.smart_open_file(topframe.source.path, topframe.line, topframe.column)
-                    end
-                end)
-            else
-                signs.remove_signs("currentframe")
-            end
+            event_data.stack_provider({threadId = event_data.thread_id, levels=1}, function(err, data)
+                local topframe = data and data.stackFrames[1] or nil
+                if topframe and topframe.source and topframe.source.path then
+                    signs.place_file_sign(topframe.source.path, topframe.line, "currentframe", "currentframe")
+                    uitools.smart_open_file(topframe.source.path, topframe.line, topframe.column)
+                end
+            end)
             -- handle stack trace page
             ---@type loop.pages.StackTracePage|nil
             ---@diagnostic disable-next-line: assign-type-mismatch
@@ -508,9 +505,12 @@ function M.add_debug_task(task_name)
                 _add_tab_page(_tabs.stacktrace, page)
                 stacktrace_pages[sess_id] = page
             end
-            if event == "pause" then
-                page:set_content(threads, thread_id, stackprovider)
-            else
+            page:set_content(event_data)
+        end,
+        on_thread_continue = function (sess_id, sess_name)
+            signs.remove_signs("currentframe")
+            local page = stacktrace_pages[sess_id]
+            if page then
                 page:clear_content()
             end
         end

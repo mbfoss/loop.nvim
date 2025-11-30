@@ -54,7 +54,8 @@ M.defaut_config = {
                 adapter_id = "lldb",
                 name = "lldb",
                 type = "local",
-                cmd = { "lldb-dap" }, -- or full path if needed
+                --cmd = { "lldb-dap" }, -- or full path if needed
+                cmd  = "/Library/Developer/CommandLineTools/usr/bin/lldb-dap"
             },
             request = "launch",
             default_request_args = {
@@ -70,6 +71,7 @@ M.defaut_config = {
                     --    "settings set target.input-path /dev/null",
                     --    "settings set target.output-path /dev/null",
                 },
+                terminal = "console"
             },
             terminate_debuggee = true,
         },

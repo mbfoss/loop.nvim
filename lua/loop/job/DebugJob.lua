@@ -10,8 +10,6 @@ local breakpoints = require('loop.dap.breakpoints')
 
 ---@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"|"terminate"|"terminate_all"
 
----@alias loop.job.StackTracePoviderCallback fun(err:string|nil, data: loop.dap.proto.StackTraceResponse | nil)
----@alias loop.job.StackTracePovider fun(threadid:number, maxlevels:number, callback:loop.job.StackTracePoviderCallback)
 
 ---@class loop.job.debugjob.Tracker
 ---@field on_exit fun(code : number)|nil
@@ -20,7 +18,8 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field on_sess_removed fun(id:number, name:string)|nil
 ---@field on_new_term fun(name:string, bufnr:number)|nil|nil
 ---@field on_output fun(sess_id:number, sess_name:string, category:string, output:string)|nil
----@field on_thread_event fun(sess_id:number, sess_name:string, event:"pause"|"continue", threads:loop.dap.proto.Thread[]|nil, thread_id:number|nil, stackprovider : loop.job.StackTracePovider)|nil
+---@field on_thread_pause fun(sess_id:number, sess_name:string, data:loop.dap.session.notify.ThreadData)|nil
+---@field on_thread_continue fun(sess_id:number, sess_name:string)|nil
 
 ---@class loop.job.DebugJob : loop.job.Job
 ---@field new fun(self: loop.job.DebugJob, name:string) : loop.job.DebugJob
@@ -206,11 +205,11 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
         return
     end
     if event == "threads_paused" then
-        self:_on_session_threads_event(sess_id, session, "pause", session:stopped_threads(), event_data.thread_id)
+        self:_on_session_threads_pause(sess_id, session, event_data)
         return
     end
     if event == "threads_continued" then
-        self:_on_session_threads_event(sess_id, session, "continue")
+        self._trackers:invoke("on_thread_continue", sess_id, session:name())
         return
     end
     if event == "breakpoints" then
@@ -273,28 +272,10 @@ end
 
 ---@param sess_id number
 ---@param session loop.dap.Session
----@param event "pause"|"continue"
----@param event_threads loop.dap.proto.Thread[]|nil
----@param event_thread_id number|nil
-function DebugJob:_on_session_threads_event(sess_id, session, event, event_threads, event_thread_id)
-    ---@type loop.job.StackTracePovider
-    local stacktrace_provider = function(threadid, maxlevels, callback)
-        session:request_stackTrace({
-                threadId = threadid,
-                levels = maxlevels,
-            },
-            function(err, resp)
-                if not session:thread_is_stopped(threadid) then
-                    callback("expired", nil)
-                    return
-                end
-                callback(err, resp)
-            end)
-    end
-    self._trackers:invoke("on_thread_event",
-        sess_id, session:name(),
-        event, event_threads, event_thread_id,
-        stacktrace_provider)
+---@param event_data loop.dap.session.notify.ThreadData
+function DebugJob:_on_session_threads_pause(sess_id, session, event_data)
+
+    self._trackers:invoke("on_thread_pause", sess_id, session:name(), event_data)
 end
 
 ---@param sess_id number

@@ -70,6 +70,26 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field on_success fun(resp_body:any)
 ---@field on_failure fun(reason:string)
 
+---@alias loop.dap.session.StackProvider fun(args:loop.dap.proto.StackTraceArguments, callback:fun(err:string|nil, data: loop.dap.proto.StackTraceResponse | nil))
+---@alias loop.dap.session.ScopesProvider fun(args:loop.dap.proto.ScopesArguments, callback:fun(err:string|nil, data: loop.dap.proto.ScopesResponse | nil))
+---@alias loop.dap.session.VariablesProvider fun(args:loop.dap.proto.VariablesArguments, callback:fun(err:string|nil, data: loop.dap.proto.VariablesResponse | nil))
+
+---@class loop.dap.session.DataProvidersExpiry
+---@field expired boolean
+
+---@class loop.dap.session.DataProviders
+---@field expiry_info loop.dap.session.DataProvidersExpiry
+---@field stack_provider loop.dap.session.StackProvider
+---@field scopes_provider loop.dap.session.ScopesProvider
+---@field variables_provider loop.dap.session.VariablesProvider
+
+---@class loop.dap.session.notify.ThreadData
+---@field thread_id number
+---@field threads loop.dap.proto.Thread[]
+---@field stack_provider loop.dap.session.StackProvider
+---@field scopes_provider loop.dap.session.ScopesProvider
+---@field variables_provider loop.dap.session.VariablesProvider
+
 ---@class loop.dap.Session
 ---@field new fun(self: loop.dap.Session, name:string) : loop.dap.Session
 ---@field _name string
@@ -84,7 +104,7 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field _stopped_threads loop.dap.proto.Thread[]
 ---@field _subsession_id number
 ---@field _breakpoints_tracker_id number
----@field _hanlded_debugpysockets table<string,boolean>
+---@field _data_providers loop.dap.session.DataProviders
 local Session = class()
 
 ---@param name string
@@ -149,7 +169,8 @@ function Session:start(args)
         local dap_args = { unpack(cmd_and_args, 2) }
 
         assert(dap_cmd ~= "")
-        self._base_session = BaseSession:new(self._name, {
+        self._base_session = BaseSession:new(self._name)
+        self._base_session:start({
             dap_mode = "local",
             dap_cmd = dap_cmd,   -- dap process
             dap_args = dap_args, -- dap args
@@ -162,7 +183,8 @@ function Session:start(args)
         if not dap.host or dap.host == "" or not dap.port then
             return false, "Missing remote DAP host name or port"
         end
-        self._base_session = BaseSession:new(self._name, {
+        self._base_session = BaseSession:new(self._name)
+        self._base_session:start({
             dap_mode = "remote",
             dap_host = dap.host,
             dap_port = dap.port,
@@ -208,7 +230,7 @@ function Session:start(args)
             self:_on_startDebugging_request(req_args, on_success, on_failure)
         end
     )
-    
+
     vim.schedule(function()
         self._fsm:start()
     end)
@@ -338,6 +360,9 @@ function Session:debug_continue()
                 self:_trace_notification("continue error: " .. tostring(err), "error")
                 return
             end
+            if self._data_providers then
+                self._data_providers.expiry_info.expired = true
+            end
             self._stopped_threads = {}
             self:_notify_tracker("threads_continued")
         end)
@@ -434,26 +459,35 @@ function Session:_on_stopped_event(event)
         self._log:error("unexpected stopped event")
         return
     end
+
+    self._data_providers = Session:_create_data_providers(self._base_session)
+
     assert(event)
-    if event.allThreadsStopped == false then
-        self._stopped_threads = {{id = event.threadId, name = "<noname>"}}
-        self:_notify_tracker("threads_paused", { thread_id = event.threadId })
-    else
-        self._base_session:request_threads(function(err, resp)
-            if err or not resp then
-                self._log:error("Threads query error: " .. tostring(err))
-            elseif resp.threads and type(resp.threads) == "table" and #resp.threads > 0 then
-                self._stopped_threads = resp.threads
-                self:_notify_tracker("threads_paused", { thread_id = event.threadId })
-            end
-        end)
-    end
+    self._base_session:request_threads(function(err, resp)
+        if err or not resp then
+            self._log:error("Threads query error: " .. tostring(err))
+        elseif resp.threads and type(resp.threads) == "table" and #resp.threads > 0 then
+            ---@type loop.dap.session.notify.ThreadData
+            local data = {
+                thread_id = event.threadId,
+                threads = resp.threads,
+                stack_provider = self._data_providers.stack_provider,
+                scopes_provider = self._data_providers.scopes_provider,
+                variables_provider = self._data_providers.variables_provider,
+            }
+            self._stopped_threads = resp.threads
+            self:_notify_tracker("threads_paused", data)
+        end
+    end)
 end
 
 ---@param event loop.dap.proto.ContinuedEvent|nil
 function Session:_on_continued_event(event)
     if self._fsm:curr_state() ~= "running" then
         self._log:error("unexpected continued event")
+    end
+    if self._data_providers then
+        self._data_providers.expiry_info.expired = true
     end
     self._stopped_threads = {}
 end
@@ -543,9 +577,8 @@ function Session:_send_launch(on_complete)
 end
 
 function Session:_on_initializing_state()
-
     self:_notify_about_state()
-    
+
     self:_start_tracking_breakpoints() -- must be done before _can_send_breakpoints = true
 
     local on_complete = function(success)
@@ -713,11 +746,6 @@ function Session:_on_ended_state()
     self:stop_tracking_breakpoints()
 end
 
----@return loop.dap.proto.Thread[]|nil
-function Session:stopped_threads()
-    return self._stopped_threads
-end
-
 ---@param thread_id number
 ---@return boolean
 function Session:thread_is_stopped(thread_id)
@@ -730,10 +758,60 @@ function Session:thread_is_stopped(thread_id)
     return false
 end
 
----@param args loop.dap.proto.StackTraceArguments
----@param callback fun(err: string|nil, body: loop.dap.proto.StackTraceResponse|nil)|nil
-function Session:request_stackTrace(args, callback)
-    self._base_session:request_stackTrace(args, callback)
+---@return loop.dap.session.DataProviders
+function Session:_create_data_providers(basesession)
+    ---@type loop.dap.session.DataProvidersExpiry
+    local expiry_info = { expired = false }
+
+    local stack_provider = function(req, callback)
+        if expiry_info.expired then
+            callback("stale data", nil)
+            return
+        end
+        basesession:request_stackTrace(req, function(err, body)
+            if expiry_info.expired then
+                callback("stale data", nil)
+            else
+                callback(err, body)
+            end
+        end)
+    end
+
+    local scopes_provider = function(req, callback)
+        if expiry_info.expired then
+            callback("stale data", nil)
+            return
+        end
+        basesession:request_scopes(req, function(err, body)
+            if expiry_info.expired then
+                callback("stale data", nil)
+            else
+                callback(err, body)
+            end
+        end)
+    end
+
+    local variables_provider = function(req, callback)
+        if expiry_info.expired then
+            callback("stale data", nil)
+            return
+        end
+        basesession:request_variables(req, function(err, body)
+            if expiry_info.expired then
+                callback("stale data", nil)
+            else
+                callback(err, body)
+            end
+        end)
+    end
+
+    ---@type loop.dap.session.DataProviders
+    return {
+        expiry_info = expiry_info,
+        stack_provider = stack_provider,
+        scopes_provider = scopes_provider,
+        variables_provider = variables_provider
+    }
 end
 
 return Session

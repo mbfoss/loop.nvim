@@ -19,7 +19,7 @@ local class = require('loop.tools.class')
 ---@field on_exit fun(code: number, signal: number)
 
 ---@class loop.dap.BaseSession
----@field new fun(self: loop.dap.BaseSession, name: string, opts: loop.dap.BaseSession.Opts): loop.dap.BaseSession
+---@field new fun(self: loop.dap.BaseSession, name): loop.dap.BaseSession
 ---@field log any
 ---@field request_seq integer
 ---@field callbacks table<integer, fun(response: loop.dap.proto.Response)>
@@ -29,11 +29,15 @@ local class = require('loop.tools.class')
 local BaseSession = class()
 
 ---@param name string
+function BaseSession:init(name)
+    self._name = name
+end 
+
 ---@param opts loop.dap.BaseSession.Opts
-function BaseSession:init(name, opts)
+function BaseSession:start(opts)
     assert(type(opts.on_stderr) == "function")
     assert(type(opts.on_exit) == "function")
-    self.log = require('loop.tools.Logger').create_logger("dap.basicsession[" .. name .. ']')
+    self.log = require('loop.tools.Logger').create_logger("dap.basicsession[" .. self._name .. ']')
     self.request_seq = 0
     self.callbacks = {}
     self.event_handlers = {}
@@ -63,7 +67,7 @@ function BaseSession:init(name, opts)
         on_exit    = opts.on_exit,
     }
 
-    self.channel = Channel:new(name, channel_opts)
+    self.channel = Channel:new(self._name, channel_opts)
     return self
 end
 

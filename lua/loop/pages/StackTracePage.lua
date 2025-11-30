@@ -16,7 +16,7 @@ function StackTracePage:init(name)
         on_selection = function(item)
             if item and item.data then
                 if item.id == 0 then
-                    self:_select_n_load_stacktrace(item.data.threads, item.data.stackprovider)
+                    self:_select_n_load_stacktrace(item.data)
                 else
                     ---@type loop.dap.proto.StackFrame
                     local frame = item.data
@@ -29,12 +29,11 @@ function StackTracePage:init(name)
     })
 end
 
----@param threads loop.dap.proto.Thread[]|nil,
----@param stackprovider loop.job.StackTracePovider
-function StackTracePage:_select_n_load_stacktrace(threads, stackprovider)
-    if not threads or not stackprovider then return end
+---@param data loop.dap.session.notify.ThreadData
+function StackTracePage:_select_n_load_stacktrace(data)
+    if not data.threads or not data.stack_provider then return end
     local choices = {}
-    for _, thread in ipairs(threads) do
+    for _, thread in ipairs(data.threads) do
         ---@type loop.SelectorItem
         local item = {
             label = tostring(thread.id) .. ' - ' .. thread.name,
@@ -44,34 +43,32 @@ function StackTracePage:_select_n_load_stacktrace(threads, stackprovider)
     end
     selector.select("Select a thread", choices, nil, function(thread_id)
         if thread_id and type(thread_id) == "number" then
-            self:set_content(threads, thread_id, stackprovider)
+            local newdata = vim.fn.copy(data)
+            newdata.thread_id = thread_id
+            self:set_content(newdata)
         end
     end)
 end
 
----@param threads loop.dap.proto.Thread[]|nil,
----@param thread_id number|nil,
----@param stackprovider loop.job.StackTracePovider
-function StackTracePage:set_content(threads, thread_id, stackprovider)
-    if not thread_id then
+---@param data loop.dap.session.notify.ThreadData
+function StackTracePage:set_content(data)
+    if not data.thread_id then
         return
     end
     self:set_items({ { id = 0, text = "Loading stack trace..." } })
-    stackprovider(
-        thread_id,
-        config.current.debug.stack_levels_limit or 100,
+    data.stack_provider({
+            threadId = data.thread_id,
+            levels = config.current.debug.stack_levels_limit or 100,
+        },
         function(err, resp)
-            local text = "Thread " .. tostring(thread_id)
-            if threads and #threads > 1 then
-                text = text .. string.format(" (%s paused threads)", #threads)
+            local text = "Thread " .. tostring(data.thread_id)
+            if data.threads and #data.threads > 1 then
+                text = text .. string.format(" (%s paused threads)", #data.threads)
             end
             local items = { {
                 id = 0,
                 text = text,
-                data = {
-                    threads = threads,
-                    stackprovider = stackprovider
-                }
+                data = data
             } }
             if resp then
                 for idx, frame in ipairs(resp.stackFrames) do
