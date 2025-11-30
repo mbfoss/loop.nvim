@@ -33,11 +33,11 @@ local breakpoints = require('loop.dap.breakpoints')
 
 ---@class loop.dap.session.Args.DAP
 ---@field adapter_id string
----@field type "local"|"remote"
+---@field type "executable"|"server"
 ---@field host string|nil
 ---@field port number|nil
 ---@field name string
----@field cmd string|string[]|nil
+---@field command string|string[]|nil
 ---@field env table<string,string>|nil
 ---@field cwd string|nil
 
@@ -136,6 +136,8 @@ function Session:start(args)
     assert(args.debug_args)
     assert(args.debug_args.dap)
 
+    local debuggername = args.debug_args.dap.name or "Debugger"
+
     self._log:debug("Starting - args: " .. vim.inspect(args))
 
     local dap = args.debug_args.dap
@@ -146,7 +148,7 @@ function Session:start(args)
     self._on_exit = args.exit_handler
 
     local stderr_handler = function(text)
-        self:_trace_notification("Debugger: " .. tostring(text))
+        self:_trace_notification("[" .. debuggername .. "] " .. tostring(text), "error")
     end
 
     local exit_handler = function(code, signal)
@@ -159,8 +161,8 @@ function Session:start(args)
         end
     end
 
-    if dap.type ~= "remote" then
-        local cmd_and_args = strtools.cmd_to_string_array(dap.cmd)
+    if dap.type ~= "server" then
+        local cmd_and_args = strtools.cmd_to_string_array(dap.command)
         if #cmd_and_args == 0 then
             return false, "Missing DAP process command"
         end
@@ -174,7 +176,7 @@ function Session:start(args)
         assert(dap_cmd ~= "")
         self._base_session = BaseSession:new(self._name)
         self._base_session:start({
-            dap_mode = "local",
+            dap_mode = "executable",
             dap_cmd = dap_cmd,   -- dap process
             dap_args = dap_args, -- dap args
             dap_env = dap.env,
@@ -188,7 +190,7 @@ function Session:start(args)
         end
         self._base_session = BaseSession:new(self._name)
         self._base_session:start({
-            dap_mode = "remote",
+            dap_mode = "server",
             dap_host = dap.host,
             dap_port = dap.port,
             on_stderr = stderr_handler,

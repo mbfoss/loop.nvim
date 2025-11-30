@@ -6,7 +6,7 @@ local Tcp = require("loop.dap.Tcp")
 local class = require('loop.tools.class')
 
 ---@class loop.dap.Channel.Opts
----@field dap_mode "local"|"remote"|nil
+---@field dap_mode "executable"|"server"|nil
 ---@field dap_cmd string|nil
 ---@field dap_args string[]|nil
 ---@field dap_env table<string,string>|nil
@@ -46,7 +46,7 @@ function Channel:init(name, opts)
     self.on_stderr = opts.on_stderr
     assert(type(self.on_message) == "function")
     assert(type(self.on_stderr) == "function")
-    if opts.dap_mode == nil or opts.dap_mode == "local" then
+    if opts.dap_mode == nil or opts.dap_mode == "executable" then
         assert(type(opts.dap_cmd) == "string")
         self.transport = self:_create_process(name, opts)
     else

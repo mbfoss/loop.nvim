@@ -198,7 +198,7 @@ local function _create_debug_job(task, output_handler, exit_handler)
 
     resolved_args = vim.tbl_deep_extend("force", resolved_args, task.debugger_args or {})
 
-    if dbg_config.dap.type ~= "local" and dbg_config.dap.type ~= "remote" then
+    if dbg_config.dap.type ~= "executable" and dbg_config.dap.type ~= "server" then
         return nil, ("invalid dat type '%s'"):format(dbg_config.dap.type)
     end
 

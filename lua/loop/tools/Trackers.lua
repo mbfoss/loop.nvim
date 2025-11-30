@@ -10,7 +10,6 @@ local Trackers = class()
 function Trackers:init()
     self._next_id = 0
     self._items = {}
-    self._disabled = false
 end
 
 ---Add a tracker and return its unique id
@@ -18,7 +17,6 @@ end
 ---@param callbacks T
 ---@return integer
 function Trackers:add_tracker(callbacks)
-    assert(not self._disabled)
     local id = self._next_id + 1
     self._next_id = id
     self._items[id] = callbacks
@@ -40,17 +38,12 @@ end
 ---@param callback_name string
 ---@param ... any
 function Trackers:invoke(callback_name, ...)
-    if self._disabled then return end
     for _, tracker in pairs(self._items) do
         local fn = tracker[callback_name]
         if fn then
             fn(...)
         end
     end
-end
-
-function Trackers:disable()
-      self._disabled = true
 end
 
 return Trackers

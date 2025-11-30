@@ -322,6 +322,8 @@ local function create_window()
     _on_win_new_or_close()
     vim.api.nvim_set_current_win(prev_win)
 
+    vim.wo[_loop_win].spell = false
+
     _setup_tabs()
 
     vim.api.nvim_create_autocmd("WinResized", {

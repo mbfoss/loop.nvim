@@ -129,7 +129,6 @@ function DebugJob:_session_exit_handler(session_id, code)
 
             if next(self._sessions) == nil then
                 self._trackers:invoke("on_exit", code)
-                self._trackers:disable() --don't send any more events
             end
         end
     end)

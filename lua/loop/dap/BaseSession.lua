@@ -8,7 +8,7 @@ local Channel = require("loop.dap.Channel")
 local class = require('loop.tools.class')
 
 ---@class loop.dap.BaseSession.Opts
----@field dap_mode "local"|"remote"
+---@field dap_mode "executable"|"server"
 ---@field dap_cmd string|nil
 ---@field dap_args string[]|nil
 ---@field dap_env table<string,string>|nil
