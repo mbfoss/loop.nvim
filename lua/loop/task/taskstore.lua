@@ -75,7 +75,7 @@ function M.add_task(config_dir, new_task)
         local schema_dir = vim.fs.joinpath(vim.fn.stdpath("data"), "loop.nvim")
         local schema_filepath = vim.fs.joinpath(schema_dir, 'tasksschema.json')
         vim.fn.mkdir(schema_dir, 'p')
-        filetools.write_content(schema_filepath, require("loop.task.tasksschema"))
+        jsontools.save_to_file(schema_filepath, require("loop.task.tasksschema"))
         local file_data = {}
         file_data["$schema"] = 'file://' .. schema_filepath
         file_data["tasks"] = tasks
@@ -214,10 +214,10 @@ local function _load_extension_config(config_dir, ext_name)
         return nil, { "Parsing error" }
     end
 
-    local schema_str = mod.get_config_schema()
-    assert(type(schema_str) == "string")
+    local schema = mod.get_config_schema()
+    assert(type(schema) == "table")
 
-    local errors = jsonschema.validate(schema_str, data)
+    local errors = jsonschema.validate(schema, data)
     if errors and #errors > 0 then
         return nil, errors
     end
@@ -256,25 +256,25 @@ function M.create_extension_config(config_dir, ext_name)
         return false, mod_err
     end
 
-    local schema_str = mod.get_config_schema()
-    assert(type(schema_str) == "string")
+    local schema = mod.get_config_schema()
+    assert(type(schema) == "table")
 
-    local template_str = mod.get_config_template()
-    assert(type(template_str) == "string")
+    local template = mod.get_config_template()
+    assert(type(template) == "table")
+
+    local config_order_handler = mod.get_config_order_handler()
 
     local config_filepath = vim.fs.joinpath(config_dir, 'ext.' .. ext_name .. '.json')
 
     if not filetools.file_exists(config_filepath) then
-        if schema_str then
-            local schema_dir = vim.fs.joinpath(vim.fn.stdpath("data"), "loop.nvim")
-            local schema_filepath = vim.fs.joinpath(schema_dir, 'extschema-' .. ext_name .. '.json')
-            vim.fn.mkdir(schema_dir, 'p')
-            filetools.write_content(schema_filepath, schema_str)
-            local schema_url = 'file://' .. schema_filepath
-            template_str = string.gsub(template_str, "__SCHEMA_FILE_URL__", schema_url)
-        end
+        local schema_dir = vim.fs.joinpath(vim.fn.stdpath("data"), "loop.nvim")
+        local schema_filepath = vim.fs.joinpath(schema_dir, 'extschema-' .. ext_name .. '.json')
+        vim.fn.mkdir(schema_dir, 'p')
+        jsontools.save_to_file(schema_filepath, schema)
+        local schema_url = 'file://' .. schema_filepath
+        template["$schema"] = schema_url
         vim.fn.mkdir(config_dir, "p")
-        filetools.write_content(config_filepath, template_str)
+        jsontools.save_to_file(config_filepath, template, config_order_handler)
     end
 
     uitools.smart_open_file(config_filepath)

@@ -748,6 +748,7 @@ end
 
 function Session:_on_disconnecting_state()
     local terminate_debuggee = self._args.debug_args.terminate_debuggee
+    if terminate_debuggee == nil then terminate_debuggee = true end
 
     self._can_send_breakpoints = false
     self:_notify_about_state()

@@ -25,7 +25,7 @@ end
 ---@class loop.Config.Debugger
 ---@field dap          loop.dap.session.Args.DAP
 ---@field request      "launch" | "attach"
----@field default_args  table<string,any>
+---@field request_args  table<string,any>
 ---@field terminate_debuggee boolean|nil
 
 
@@ -43,7 +43,7 @@ local debuggers = {
             --cmd  = "/Library/Developer/CommandLineTools/usr/bin/lldb-dap"
         },
         request = "launch",
-        default_args = {
+        request_args = {
             program = get_task_program,
             args = get_task_args,
             cwd = get_task_cwd,
@@ -56,7 +56,25 @@ local debuggers = {
             },
             runInTerminal = true,
         },
-        terminate_debuggee = true,
+    },
+
+    -- ──────────────────────────────────────────────────────────────
+    -- Generic “attach to any local process” (pick PID)
+    -- ──────────────────────────────────────────────────────────────
+    ["lldb:attach"] = {
+        dap = {
+            adapter_id = "lldb",
+            name = "Attach to process (PID)",
+            type = "executable",
+            command = { "lldb-dap" },
+        },
+        request = "attach",
+        request_args = {
+            program = get_task_program,
+            pid = "${select-process-pid}",
+            stopOnEntry = true,
+        },
+        terminate_debuggee = false,
     },
     -- ──────────────────────────────────────────────────────────────
     -- JavaScript / TypeScript / Node.js (pwa-node, pwa-chrome, etc.)
@@ -72,17 +90,18 @@ local debuggers = {
             cwd = os.getenv("HOME"),
         },
         request = "launch",
-        default_args = {
+        request_args = {
             type = "pwa-node",
             request = "launch",
             runtimeExecutable = "node",
             program = function(task) return task.command or nil end,
             cwd = get_task_cwd,
             stopOnEntry = false,
+            attachSimplePort = 0,
             sourceMaps = true,
             --outputCapture = "std",
         },
-        terminate_debuggee = true,
+
     },
     -- ──────────────────────────────────────────────────────────────
     -- debugpy (Python)
@@ -95,15 +114,15 @@ local debuggers = {
             command = { "python3", "-m", "debugpy.adapter" },
         },
         request = "launch",
-        default_args = {
-            program = function(task) return task.command or "${file}" end,
+        request_args = {
+            program = function(task) return task.command end,
             cwd = get_task_cwd,
             stopOnEntry = false,
             justMyCode = false,
             console = "integratedTerminal",
             env = function(task) return task.env end,
         },
-        terminate_debuggee = true,
+
     },
     -- ──────────────────────────────────────────────────────────────
     -- netcoredbg (.NET Core / .NET 5+)
@@ -116,14 +135,14 @@ local debuggers = {
             command = { "netcoredbg", "--interpreter=vscode" },
         },
         request = "launch",
-        default_args = {
+        request_args = {
             program = get_task_program,
             args = get_task_args,
             cwd = get_task_cwd,
             stopOnEntry = false,
             env = function(task) return task.env end,
         },
-        terminate_debuggee = true,
+
     },
     -- ──────────────────────────────────────────────────────────────
     -- bashdb (Bash scripts)
@@ -136,7 +155,7 @@ local debuggers = {
             command = { "bashdb", "--adapter" },
         },
         request = "launch",
-        default_args = {
+        request_args = {
             program = get_task_program,
             cwd = get_task_cwd,
             stopOnEntry = false,
@@ -153,7 +172,7 @@ local debuggers = {
             command = { "lldb-dap" },
         },
         request = "launch",
-        default_args = {
+        request_args = {
             program = get_task_program,
             args = get_task_args,
             cwd = get_task_cwd,
@@ -167,7 +186,7 @@ local debuggers = {
             sourceLanguages = { "lua" },
             runInTerminal = false,
         },
-        terminate_debuggee = true,
+
     },
     -- ──────────────────────────────────────────────────────────────
     -- Lua - local-lua-debugger-vscode (recommended for pure Lua)
@@ -183,7 +202,7 @@ local debuggers = {
             },
         },
         request = "launch",
-        default_args = {
+        request_args = {
             type = "lua",
             request = "launch",
             program = {
@@ -195,21 +214,21 @@ local debuggers = {
             env = function(task) return task.env or {} end,
             stopOnEntry = false,
         },
-        terminate_debuggee = true,
+
     },
     -- ──────────────────────────────────────────────────────────────
     -- Generic Lua Remote Debugger (works for Neovim plugins, scripts, etc.)
     -- ──────────────────────────────────────────────────────────────
-    ["lua-remote"] = {
+    ["lua:remote"] = {
         dap = {
-            adapter_id = "lua-remote",
+            adapter_id = "lua:remote",
             name = "Lua Remote Debugger",
             type = "server", -- we attach to a running adapter
             host = "127.0.0.1",
             port = 8086,     -- change if you wan
         },
         request = "attach",
-        default_args = {
+        request_args = {
             request = "attach",
             type = "lua",
             host = "127.0.0.1",
@@ -235,14 +254,14 @@ local debuggers = {
             port = 38697,
         },
         request = "launch",
-        default_args = {
+        request_args = {
             mode = "debug",
             program = "${workspaceFolder}",
             args = get_task_args,
             env = function(task) return task.env end,
             cwd = get_task_cwd,
         },
-        terminate_debuggee = true,
+
     },
 
     -- ──────────────────────────────────────────────────────────────
@@ -257,14 +276,14 @@ local debuggers = {
             port = 38690,
         },
         request = "launch",
-        default_args = {
+        request_args = {
             program = get_task_program,
             args = get_task_args,
             cwd = get_task_cwd,
             stopOnEntry = false,
             env = function(task) return task.env end,
         },
-        terminate_debuggee = true,
+
     },
 
     -- ──────────────────────────────────────────────────────────────
@@ -279,7 +298,7 @@ local debuggers = {
             args = { vim.fn.stdpath("data") .. "/mason/packages/php-debug-adapter/extension/out/phpDebug.js" },
         },
         request = "launch",
-        default_args = {
+        request_args = {
             type = "php",
             request = "launch",
             port = 9003,
@@ -307,7 +326,7 @@ local debuggers = {
             },
         },
         request = "launch",
-        default_args = {
+        request_args = {
             mainClass = function()
                 -- you can make this smarter with gradle/maven parsing
                 return vim.fn.input("Main class: ", "", "file")
@@ -317,27 +336,8 @@ local debuggers = {
             console = "integratedTerminal",
             stopOnEntry = false,
         },
-        terminate_debuggee = true,
-    },
 
-    -- ──────────────────────────────────────────────────────────────
-    -- Generic “attach to any local process” (pick PID)
-    -- ──────────────────────────────────────────────────────────────
-    ["lldb-attach-proess"] = {
-        dap = {
-            adapter_id = "lldb",
-            name = "Attach to process (PID)",
-            type = "executable",
-            command = { "lldb-dap" },
-        },
-        request = "attach",
-        default_args = {
-            program = get_task_program,
-            pid = "${select-process-pid}",
-            stopOnEntry = true,
-        },
-        terminate_debuggee = false,
-    }
+    },
 }
 
 return debuggers

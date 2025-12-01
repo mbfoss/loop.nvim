@@ -31,7 +31,7 @@ return {
         command = "${FILEROOT}.out",
         cwd = "${PROJDIR}",
         debugger = "lldb",
-        debug = {
+        debugger_args = {
             stopOnEntry = true,
             environment = {},
             sourceLanguages = { "cpp" },
@@ -40,26 +40,11 @@ return {
     },
 
     {
-        name = "Debug Node.js (js-debug)",
-        type = "debug",
-        command = nil,
-        cwd = "${PROJDIR}",
-        debugger = "js-debug",
-        debug = {
-            runtimeExecutable = "node",
-            program = "${PROJDIR}/main.js",
-            stopOnEntry = true,
-            attachSimplePort = 0,
-            sourceMaps = true,
-        },
-    },
-
-    {
-        name = "Attach to Node --inspect",
+        name = "Attach to node",
         type = "debug",
         command = nil,
         debugger = "js-debug",
-        debug = {
+        debugger_args = {
             port = 9229,
             restart = true,
         },
@@ -68,9 +53,8 @@ return {
     {
         name = "Attach to OSV (lua)",
         type = "debug",
-        command = nil,
-        debugger = "lua-remote",
-        debug = {
+        debugger = "lua:remote",
+        debugger_args = {
             port = 8086,
             restart = true,
         },
@@ -79,10 +63,9 @@ return {
     {
         name = "Debug Python",
         type = "debug",
-        command = nil,
+        command = "main.py",
         debugger = "debugpy",
-        debug = {
-            program = "${file}",
+        debugger_args = {
             stopOnEntry = true,
             justMyCode = false,
         },

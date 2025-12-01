@@ -177,23 +177,10 @@ local function validate(schema, data, path)
 end
 
 -- Public entry point
----@param schema_str string
+---@param schema table
 ---@param data any
-function M.validate(schema_str, data)
-  local ok, schema_obj = pcall(vim.fn.json_decode, schema_str)
-  if not ok then
-    return { "Failed to decode schema: " .. tostring(schema_obj) }
-  end
-
-  if type(data) ~= "table" then
-    return { "Config must be a table (object)" }
-  end
-
-  if not schema_obj or type(schema_obj) ~= "table" then
-    return { "Invalid schema object" }
-  end
-
-  local errors = validate(schema_obj, data, "")
+function M.validate(schema, data)
+  local errors = validate(schema, data, "")
   if not errors then
     return nil  -- success
   end

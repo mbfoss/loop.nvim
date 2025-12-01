@@ -20,18 +20,18 @@ M.defaut_config = {
 
     debuggers = {
         lldb = daptemplates.lldb,
+        ["lldb:attach"] = daptemplates["lldb:attach"],
         node = daptemplates.node,
         debugpy = daptemplates.debugpy,
         netcoredbg = daptemplates.netcoredbg,
         bashdb = daptemplates.bashdb,
         luajit_lldb = daptemplates.luajit_lldb,
-        ["lua-local"] = daptemplates["lua-local"],
-        ["lua-remote"] = daptemplates["lua-remote"],
+        ["lua:local"] = daptemplates["lua:local"],
+        ["lua:remote"] = daptemplates["lua:remote"],
         delve = daptemplates.delve,
         codelldb = daptemplates.codelldb,
         php = daptemplates.php,
         java = daptemplates.java,
-        ["lldb-attach-proess"] = daptemplates["lldb-attach-proess"],
     },
 }
 

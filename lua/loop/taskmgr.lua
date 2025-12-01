@@ -77,7 +77,7 @@ local function _select_task(args, task_handler)
     for _, task in ipairs(args.tasks) do
         ---@type loop.SelectorItem
         local item = {
-            label = task.name,
+            label = '[' .. tostring(task.type) .. '] ' .. tostring(task.name),
             data = task,
         }
         table.insert(choices, item)
