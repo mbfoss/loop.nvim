@@ -2,41 +2,41 @@ return {
     {
         name = "Lua check",
         type = "tool",
-        command = { "luacheck", "${PROJDIR}" },
-        cwd = "${PROJDIR}",
+        command = { "luacheck", "${projdir}" },
+        cwd = "${projdir}",
         quickfix_matcher = "luacheck",
         depends_on = {},
     },
 
     {
-        name = "Build ${FILENAME}",
+        name = "Build ${filename}",
         type = "tool",
-        command = { "g++", "-g", "-std=c++23", "${FILE}", "-o", "${FILEROOT}.out" },
-        cwd = "${PROJDIR}",
+        command = { "g++", "-g", "-std=c++23", "${file}", "-o", "${fileroot}.out" },
+        cwd = "${projdir}",
         quickfix_matcher = "gcc",
         depends_on = {},
     },
 
     {
-        name = "Run ${FILENAME}",
+        name = "Run ${filename}",
         type = "app",
-        command = "${FILEROOT}.out",
-        cwd = "${PROJDIR}",
-        depends_on = { "Build ${FILENAME}" },
+        command = "${fileroot}.out",
+        cwd = "${projdir}",
+        depends_on = { "Build ${filename}" },
     },
 
     {
-        name = "Debug ${FILENAME} (lldb)",
+        name = "Debug ${filename} (lldb)",
         type = "debug",
-        command = "${FILEROOT}.out",
-        cwd = "${PROJDIR}",
+        command = "${fileroot}.out",
+        cwd = "${projdir}",
         debugger = "lldb",
         debugger_args = {
             stopOnEntry = true,
             environment = {},
             sourceLanguages = { "cpp" },
         },
-        depends_on = { "Build ${FILENAME}" },
+        depends_on = { "Build ${filename}" },
     },
 
     {

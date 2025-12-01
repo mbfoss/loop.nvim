@@ -1,14 +1,16 @@
-local M = {}
-
 require('loop.task.taskdef')
+local builtinmacros = require('loop.tools.macros')
 local daptemplates = require('loop.daptemplates')
 
 ---@class loop.Config
 ---@field debug loop.Config.Debug
 ---@field debuggers loop.Config.Debugger[]
+---@field macros table<string,fun():any>
+
+local M = {}
 
 ---@type loop.Config
-M.defaut_config = {
+M.current = {
     debug = {
         stack_levels_limit = 100,
         auto_switch_page = true,
@@ -33,7 +35,22 @@ M.defaut_config = {
         php = daptemplates.php,
         java = daptemplates.java,
     },
+
+    macros = {
+        home      = builtinmacros.home,
+        file      = builtinmacros.file,
+        filename  = builtinmacros.filename,
+        fileext   = builtinmacros.fileext,
+        fileroot  = builtinmacros.fileroot,
+        filedir   = builtinmacros.filedir,
+        projdir   = builtinmacros.projdir,
+        cwd       = builtinmacros.cwd,
+        filetype  = builtinmacros.filetype,
+        tmpdir    = builtinmacros.tmpdir,
+        date      = builtinmacros.date,
+        time      = builtinmacros.time,
+        timestamp = builtinmacros.timestamp,
+    }
 }
 
-M.current = nil
 return M

@@ -173,7 +173,6 @@ function M.run_extension_task(config_dir, ext_name)
             window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
             return
         end
-        taskstore.save_last_chain(chain, config_dir)
         runner.start_task_chain(chain)
     end)
 end

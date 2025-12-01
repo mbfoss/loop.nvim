@@ -87,7 +87,7 @@ M.setup = function(args)
 		error("loop.nvim requires Neovim >= 0.10")
 	end
 
-	config.current = vim.tbl_deep_extend("force", config.defaut_config, args or {})
+	config.current = vim.tbl_deep_extend("force", config.current, args or {})
 	project.setup(config.current)
 
 	_G.LoopProject =

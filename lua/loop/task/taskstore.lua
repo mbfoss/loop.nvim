@@ -5,7 +5,7 @@ local jsontools = require('loop.tools.json')
 local filetools = require('loop.tools.file')
 local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
-local vartools = require('loop.tools.vars')
+local resolver = require('loop.tools.resolver')
 local jsonschema = require('loop.tools.jsonschema')
 local extensions = require('loop.ext.extensions')
 
@@ -224,9 +224,9 @@ local function _load_extension_config(config_dir, ext_name)
 
     local cmake_config = data.config
 
-    local vars_ok, var_errors = vartools.expand_strings(cmake_config)
-    if not vars_ok then
-        return nil, strtools.indent_errors(var_errors, "Failed to resolve variables in cmake config")
+    local resolved, error_msg = resolver.resolve_macros(cmake_config)
+    if not resolved then
+        return nil, { "Failed to resolve variables in cmake config", "  " .. tostring(error_msg) }
     end
 
     return data.config, nil

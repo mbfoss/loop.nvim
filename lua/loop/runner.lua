@@ -2,7 +2,7 @@ local M = {}
 
 require('loop.task.taskdef')
 local qfparsers = require("loop.task.qfparsers")
-local vartools = require('loop.tools.vars')
+local resolver = require('loop.tools.resolver')
 local strtools = require('loop.tools.strtools')
 local TermJob = require('loop.job.TermJob')
 local DebugJob = require('loop.job.DebugJob')
@@ -10,6 +10,7 @@ local VimCmdJob = require('loop.job.VimCmdJob')
 local window = require('loop.window')
 local debugui = require('loop.debugui')
 local Page = require('loop.pages.Page')
+local config = require("loop.config")
 
 ---@class loop.runner.TaskChain
 ---@field tasks loop.Task[]
@@ -158,7 +159,7 @@ local function _create_tool_job(task, output_handler, exit_handler)
         return nil, err
     end
     local page = Page:new("term", task.name)
-    page:assign_buf(bufnr)    
+    page:assign_buf(bufnr)
     window.add_page("task", page)
     return job, nil
 end
@@ -179,7 +180,7 @@ local function _create_debug_job(task, output_handler, exit_handler)
     end
 
     ---@type loop.Config.Debugger
-    local dbg_config = require("loop.config").current.debuggers[task.debugger]
+    local dbg_config = config.current.debuggers[task.debugger]
     if not dbg_config then
         return nil, ("no debugger config found for '%s'"):format(task.debugger)
     end
@@ -365,23 +366,15 @@ function M.start_task_chain(tasks, on_complete)
     --- copy to solve strings in the copy and keep the original intact
     local chain = vim.deepcopy(tasks)
 
-    local is_unresolved = false
     for _, task in ipairs(chain) do
         local name = task.name -- keep because the expand_strings may change it
-        local expand_ok, unresolved, explanation = vartools.expand_strings(task)
-        if not expand_ok then
-            is_unresolved = true
-            if explanation then
-                window.add_events({ "Failed to resolve variable(s) in task '" .. name .. "', " .. explanation }, "error")
-            else
-                window.add_events({ "Failed to resolve variable(s) in task '" .. name .. "':", '  ' ..
-                table.concat(unresolved or {}, ', ') }, "error")
-            end
+        local resolved, error_msg = resolver.resolve_macros(task)
+        if not resolved then
+            window.add_events({ "Failed to resolve variable(s) in task " .. name, tostring(error_msg) })
+            return
         end
     end
-    if is_unresolved then
-        return
-    end
+
     _start_task_chain(chain, on_complete)
 end
 

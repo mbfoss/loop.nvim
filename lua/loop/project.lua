@@ -4,7 +4,8 @@ require("loop.config")
 local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
 local uitools = require('loop.tools.uitools')
-local vartools = require('loop.tools.vars')
+local resolver = require('loop.tools.resolver')
+local macros = require('loop.tools.macros')
 local breakpoints = require('loop.dap.breakpoints')
 local extensions = require('loop.ext.extensions')
 
@@ -73,7 +74,8 @@ local function _load_project(dir)
     local proj_dir = vim.fn.fnamemodify(dir, ":p")
     _project_dir = proj_dir
 
-    vartools.set_context(proj_dir)
+    macros.project_dir = proj_dir
+
     local config_dir = _get_config_dir(proj_dir)
 
     window.load_settings(config_dir)
