@@ -49,6 +49,12 @@ return {
             restart = true,
         },
     },
+    {
+        name = "Debug lua file",
+        type = "debug",
+        command = "${file}",
+        debugger = "lua:local",
+    },
 
     {
         name = "Attach to OSV (lua)",

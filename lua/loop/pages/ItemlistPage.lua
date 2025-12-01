@@ -199,4 +199,8 @@ function ItemListPage:_refresh_buffer(buf)
     self:_highlight(1, #self._items)
 end
 
+function ItemListPage:refresh_content()
+    self:_refresh_buffer(self:get_buf())    
+end
+
 return ItemListPage

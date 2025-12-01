@@ -117,7 +117,7 @@ end
 ---@param hitCondition? string Optional hit condition
 ---@param logMessage? string Optional log message
 ---@return boolean added
-local function _add_breakpoint(file, line, condition, hitCondition, logMessage)
+local function _add_source_breakpoint(file, line, condition, hitCondition, logMessage)
     if _have_source_breakpoint(file, line) then
         return false
     end
@@ -152,7 +152,18 @@ end
 function M.toggle_breakpoint(file, lnum)
     file = _norm(file)
     if not _remove_source_breakpoint(file, lnum) then
-        _add_breakpoint(file, lnum)
+        _add_source_breakpoint(file, lnum)
+    end
+end
+
+---@param file string
+---@param lnum number
+---@param message string
+function M.set_logpoint(file, lnum, message)
+    if type(message) == "string" and #message > 0 then
+        file = _norm(file)
+        _remove_source_breakpoint(file, lnum)
+        _add_source_breakpoint(file, lnum, nil, nil, message)
     end
 end
 
@@ -185,7 +196,7 @@ function M.load_breakpoints(proj_config_dir)
     local breakpoints = data
     for _, bp in ipairs(breakpoints) do
         local file = vim.fn.fnamemodify(bp.file, ":p")
-        _add_breakpoint(file, bp.line, bp.condition, bp.hitCondition, bp.logMessage)
+        _add_source_breakpoint(file, bp.line, bp.condition, bp.hitCondition, bp.logMessage)
     end
 
     _need_saving = false
@@ -244,9 +255,8 @@ end
 function M.add_tracker(callbacks)
     local tracker_id = _trackers:add_tracker(callbacks)
     --initial snapshot
-    for id, bp in pairs(_by_id) do
-        callbacks.on_added(bp)
-        if callbacks.on_added then
+    if callbacks.on_added then
+        for _, bp in pairs(_by_id) do
             callbacks.on_added(bp)
         end
     end

@@ -3,6 +3,7 @@ local M = {}
 require("loop.config")
 local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
+local runner = require("loop.runner")
 local uitools = require('loop.tools.uitools')
 local resolver = require('loop.tools.resolver')
 local macros = require('loop.tools.macros')
@@ -48,6 +49,10 @@ local function _close_project()
     if not _project_dir then
         return
     end
+
+    runner.terminate_task_chain()
+    --window.remove_task_pages()
+
     _save_project()
 
     local have_breakpoints = breakpoints.have_breakpoints()
@@ -78,6 +83,7 @@ local function _load_project(dir)
 
     local config_dir = _get_config_dir(proj_dir)
 
+    window.set_project_dir(dir)
     window.load_settings(config_dir)
     breakpoints.load_breakpoints(config_dir)
 
@@ -216,12 +222,12 @@ end
 ---@return string[]
 function M.breakpoints_subcommands(args)
     if #args == 0 then
-        return { "toggle", "clear_file", "clear_all" }
+        return { "toggle", "logpoint", "clear_file", "clear_all" }
     end
     return {}
 end
 
----@param command nil|"toggle"|"clear_file"|"clear_all"
+---@param command nil|"toggle"|"logpoint"|"clear_file"|"clear_all"
 function M.breakpoints_command(command)
     assert(_setup_done)
     local proj_dir = _get_proj_dir_or_warn()
@@ -234,6 +240,16 @@ function M.breakpoints_command(command)
         if file and line then
             breakpoints.toggle_breakpoint(file, line)
         end
+    elseif command == "logpoint" then
+        vim.ui.input({ prompt = "Enter log message: " }, function(message)
+            if message and message ~= "" then
+                local file, line = uitools.get_current_file_and_line()
+                if file and line then
+                    breakpoints.set_logpoint(file, line, message)
+                    print("Logpoint set at " .. file .. ":" .. line)
+                end
+            end
+        end)
     elseif command == "clear_file" then
         local bufnr = vim.api.nvim_get_current_buf()
         if vim.api.nvim_buf_is_valid(bufnr) then

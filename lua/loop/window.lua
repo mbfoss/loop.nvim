@@ -19,6 +19,9 @@ local selector = require("loop.selector")
 ---@type boolean
 local setup_done = false
 
+---@type string
+local _project_dir
+
 ---@type number
 local _loop_win = -1
 ---@type number
@@ -234,7 +237,7 @@ local function get_page_keymap()
     --- set keymaps
     ---@type table<string,loop.pages.page.KeyMap>
     local keymaps = {
-        ["<c-p>"] = {
+        ["<c-[>"] = {
             callback = function()
                 if vim.api.nvim_get_current_win() == _loop_win then
                     _cycle_pages("prev")
@@ -242,7 +245,7 @@ local function get_page_keymap()
             end,
             desc = "Move to previous page",
         },
-        ["<c-n>"] = {
+        ["<c-]>"] = {
             callback = function()
                 if vim.api.nvim_get_current_win() == _loop_win then
                     _cycle_pages("next")
@@ -355,6 +358,19 @@ local function _on_window_enter()
 end
 ]] --
 
+---@param dir string
+function M.set_project_dir(dir)
+    if dir == _project_dir then return end
+    _project_dir = dir
+    for _, page in ipairs(_tabs.breakpoints.pages) do
+        assert(getmetatable(page) == BreakpointsPage)
+        ---@type loop.pages.BreakpointsPage
+        ---@diagnostic disable-next-line: assign-type-mismatch
+        local p = page
+        p:set_project_dir(dir)
+    end
+end
+
 ---@param lines string[]
 ---@param level nil|"warn"|"error"
 function M.add_events(lines, level)
@@ -378,7 +394,7 @@ local function _ensure_breakpoints_page()
     assert(setup_done)
     local page = _tabs.breakpoints.pages[1]
     if not page then
-        page = BreakpointsPage:new()
+        page = BreakpointsPage:new(_project_dir)
         _add_tab_page(_tabs.breakpoints, page)
     end
 end

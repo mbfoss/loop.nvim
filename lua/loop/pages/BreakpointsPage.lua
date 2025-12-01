@@ -4,38 +4,45 @@ local uitools = require('loop.tools.uitools')
 local breakpoints = require('loop.dap.breakpoints')
 
 ---@class loop.pages.BreakpointsPage : loop.pages.ItemListPage
----@field new fun(self: loop.pages.BreakpointsPage): loop.pages.BreakpointsPage
+---@field new fun(self: loop.pages.BreakpointsPage, proj_dir:string|nil): loop.pages.BreakpointsPage
+---@field _proj_dir string|nil
 local BreakpointsPage = class(ItemListPage)
 
 ---@param bp loop.dap.SourceBreakpoint
 ---@param verified boolean
+---@param proj_dir string
 ---@return loop.pages.ItemListPage.Item
-local function _format_item(bp, verified)
+local function _format_item(bp, verified, proj_dir)
     local symbol = verified and "●" or "○"
     if bp.logMessage and bp.logMessage ~= "" then
-        symbol = symbol .. "▶" -- logpoint
+        symbol = "▶" -- logpoint
     end
     if bp.condition and bp.condition ~= "" then
-        symbol = symbol .. "◆" -- conditional
+        symbol = "◆" -- conditional
     end
     if bp.hitCondition and bp.hitCondition ~= "" then
-        symbol = symbol .. "▲" -- hit-condition
+        symbol = "▲" -- hit-condition
+    end
+
+    local file = bp.file
+    if proj_dir then
+        file = vim.fs.relpath(proj_dir, file) or file
     end
 
     local parts = { symbol }
     table.insert(parts, " ")
-    table.insert(parts, bp.file)
+    table.insert(parts, file)
     table.insert(parts, ":")
     table.insert(parts, tostring(bp.line))
     -- 3. Optional qualifiers
     if bp.condition and bp.condition ~= "" then
-        table.insert(parts, " if " .. bp.condition)
+        table.insert(parts, " | if " .. bp.condition)
     end
     if bp.hitCondition and bp.hitCondition ~= "" then
-        table.insert(parts, " hits=" .. bp.hitCondition)
+        table.insert(parts, " | hits=" .. bp.hitCondition)
     end
     if bp.logMessage and bp.logMessage ~= "" then
-        table.insert(parts, " log: " .. bp.logMessage:gsub("\n", " "))
+        table.insert(parts, " | log: " .. bp.logMessage:gsub("\n", " "))
     end
 
     ---@type loop.pages.ItemListPage.Highlight
@@ -53,7 +60,7 @@ end
   function BreakpointsPage:_update_one(bp, verified)
     if bp.file and bp.line then
         if verified == nil then verified = true end
-        self:set_item(_format_item(bp, verified))
+        self:set_item(_format_item(bp, verified, self._proj_dir))
     end
 end
 
@@ -74,12 +81,15 @@ end
 
 ---@param bp loop.dap.SourceBreakpoint
 ---@param verified boolean|nil
-  function BreakpointsPage:_on_status_update(bp, verified)
+  function BreakpointsPage:update_verification(bp, verified)
     self:_update_one(bp, verified)
 end
 
-function BreakpointsPage:init()
+---@param proj_dir string|nil
+function BreakpointsPage:init(proj_dir)
     ItemListPage.init(self, "Breakpoints")
+
+    self._proj_dir = proj_dir
 
     self:add_tracker({
         on_selection = function (item)
@@ -95,8 +105,18 @@ function BreakpointsPage:init()
         on_added = function (bp) self:_update_one(bp) end,
         on_removed = function (bp) self:_on_removed(bp) end,
         on_all_removed = function (bpts) self:_on_all_removed(bpts) end,
-        on_status_update = function (bp, verified) self:_on_status_update(bp, verified) end,
     })    
+end
+
+---@param dir string
+function BreakpointsPage:set_project_dir(dir)
+    if dir ~= self._proj_dir then
+        self._proj_dir = dir
+        breakpoints.for_each(function (bp)
+            self:_update_one(bp)
+        end)
+        self:refresh_content()
+    end
 end
 
 return BreakpointsPage

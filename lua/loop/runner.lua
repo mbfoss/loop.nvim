@@ -270,6 +270,24 @@ local function _start_one_task(task, task_exit_handler)
     return nil, "Unhandled task type: " .. tasktype
 end
 
+
+---@param new_chain loop.runner.TaskChain|nil
+---@return boolean scheduled
+local function _kill_current_chain(new_chain)
+    if _current_task_chain then
+        if _current_task_chain.active_job and not _current_task_chain.ended then
+            window.add_events({ "Interrupting current task: " .. tostring(_current_task_name) })
+            _current_task_chain.interrupted = true
+            _current_task_chain.next_chain = new_chain
+            if _current_task_chain.active_job then
+                _current_task_chain.active_job:kill()
+            end
+            return true
+        end
+    end    
+    return false
+end
+
 ---@param tasks loop.Task[]
 ---@param on_complete fun()|nil
 local function _start_task_chain(tasks, on_complete)
@@ -343,20 +361,11 @@ local function _start_task_chain(tasks, on_complete)
         next_chain = nil,
     }
 
-    if _current_task_chain then
-        if _current_task_chain.active_job and not _current_task_chain.ended then
-            window.add_events({ "Interrupting current task: " .. tostring(_current_task_name) })
-            _current_task_chain.interrupted = true
-            _current_task_chain.next_chain = new_chain
-            if _current_task_chain.active_job then
-                _current_task_chain.active_job:kill()
-            end
-            return
-        end
+    local scheduled = _kill_current_chain(new_chain)
+    if not scheduled then
+        _current_task_chain = new_chain
+        next_job(new_chain)
     end
-
-    _current_task_chain = new_chain
-    next_job(new_chain)
 end
 
 
@@ -376,6 +385,10 @@ function M.start_task_chain(tasks, on_complete)
     end
 
     _start_task_chain(chain, on_complete)
+end
+
+function M.terminate_task_chain()
+    _kill_current_chain(nil)
 end
 
 ---@param command loop.job.DebugJob.Command|nil

@@ -371,7 +371,8 @@ function Session:debug_continue()
                 self:_trace_notification("continue error: " .. tostring(err), "error")
                 return
             end
-            self:_on_thread_continued()
+            self:_reset_stopped_threads()
+            self:_notify_tracker("threads_continued")
         end)
 end
 
@@ -470,18 +471,34 @@ function Session:_on_initialized_event(event)
     end)
 end
 
+function Session:_reset_stopped_threads()
+    if self._data_providers then
+        self._data_providers.expiry_info.expired = true
+    end
+    self._stopped_thread = nil
+    self._stopped_threads = {}
+end
+
 ---@param event loop.dap.proto.StoppedEvent|nil
 function Session:_on_stopped_event(event)
+    if not event then
+        self._log:error("stopped event with no data")     
+        return
+    end
     local cur_state = self._fsm:curr_state()
     if cur_state == "disconnecting" or cur_state == "terminating" or cur_state == "ended" then
         self._log:error("unexpected stopped event")
         return
     end
 
+    if event.threadId == self._stopped_thread then
+        self._log:debug("dropped duplicate stopped event")        
+        return
+    end
+
     self._stopped_thread = event and event.threadId or nil
     self._data_providers = Session:_create_data_providers(self._base_session)
 
-    assert(event)
     self._base_session:request_threads(function(err, resp)
         if err or not resp then
             self._log:error("Threads query error: " .. tostring(err))
@@ -500,21 +517,13 @@ function Session:_on_stopped_event(event)
     end)
 end
 
-function Session:_on_thread_continued()
+---@param event loop.dap.proto.ContinuedEvent|nil
+function Session:_on_continued_event(event)
     if self._fsm:curr_state() ~= "running" then
         self._log:error("unexpected continued event")
     end
-    if self._data_providers then
-        self._data_providers.expiry_info.expired = true
-    end
-    self._stopped_thread = nil
-    self._stopped_threads = {}
-    self:_notify_tracker("threads_continued")    
-end
-
----@param event loop.dap.proto.ContinuedEvent|nil
-function Session:_on_continued_event(event)
-    self:_on_thread_continued()
+    self:_reset_stopped_threads()
+    self:_notify_tracker("threads_continued")
 end
 
 ---@param event loop.dap.proto.BreakpointEvent|nil

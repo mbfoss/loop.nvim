@@ -21,6 +21,22 @@ local _setup_done       = false
 ---@type table<number,loop.debug_ui.Breakpointata>
 local _breakpoints_data = {}
 
+---@param bp loop.dap.SourceBreakpoint
+---@param verified boolean
+---@return loop.signs.SignName
+local function _get_breakpoint_sign(bp, verified)
+    -- Determine the sign type based on breakpoint fields
+    local sign
+    if bp.logMessage then
+        sign = verified and "logpoint" or "logpoint_inactive"
+    elseif bp.condition or bp.hitCondition then
+        sign = verified and "conditional_breakpoint" or "conditional_breakpoint_inactive"
+    else
+        sign = verified and "active_breakpoint" or "inactive_breakpoint"
+    end    
+    return sign
+end
+
 ---@param data loop.debug_ui.Breakpointata
 local function _refresh_breakpoint_sign(data)
     local verified = nil
@@ -30,7 +46,7 @@ local function _refresh_breakpoint_sign(data)
         end
     end
     if verified == nil then verified = true end
-    local sign = verified and "active_breakpoint" or "inactive_breakpoint"
+    local sign = _get_breakpoint_sign(data.breakpoint, verified)
     signs.place_file_sign(data.breakpoint.file, data.breakpoint.line, "breakpoints", sign)
 end
 
@@ -39,7 +55,8 @@ local function _on_breakpoint_added(bp)
     _breakpoints_data[bp.id] = {
         breakpoint = bp,
     }
-    signs.place_file_sign(bp.file, bp.line, "breakpoints", "active_breakpoint")
+    local sign = _get_breakpoint_sign(bp, true)
+    signs.place_file_sign(bp.file, bp.line, "breakpoints", sign)
 end
 
 ---@param bp loop.dap.SourceBreakpoint
@@ -48,11 +65,12 @@ local function _on_breakpoint_removed(bp)
     signs.remove_file_sign(bp.file, bp.line, "breakpoints")
 end
 
----@param _ loop.dap.SourceBreakpoint[]
-local function _on_all_breakpoints_removed(_)
+---@param removed loop.dap.SourceBreakpoint[]
+local function _on_all_breakpoints_removed(removed)
+    _breakpoints_data = {}
     local files = {}
-    for _, data in ipairs(_breakpoints_data) do
-        files[data.breakpoint.file] = true
+    for _, bp in ipairs(removed) do
+        files[bp.file] = true
     end
     for file, _ in pairs(files) do
         signs.remove_file_signs(file, "breakpoints")

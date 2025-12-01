@@ -191,15 +191,12 @@ local debuggers = {
     -- ──────────────────────────────────────────────────────────────
     -- Lua - local-lua-debugger-vscode (recommended for pure Lua)
     -- ──────────────────────────────────────────────────────────────
-    ["lua-local"] = {
+    ["lua:local"] = {
         dap = {
             adapter_id = "lua-local",
             name = "Local Lua Debugger",
             type = "executable",
-            command = "node",
-            args = {
-                vim.fn.stdpath("data") .. "/mason/packages/local-lua-debugger-vscode/extension/out/server.js",
-            },
+            command = { "node", "/Users/Dev/Projects/local-lua-debugger-vscode/extension/debugAdapter.js" },
         },
         request = "launch",
         request_args = {
@@ -207,7 +204,7 @@ local debuggers = {
             request = "launch",
             program = {
                 lua = "lua", -- change to "luajit" if you use LuaJIT
-                file = "${file}",
+                file = get_task_program,
             },
             args = get_task_args,
             cwd = get_task_cwd,
@@ -318,12 +315,9 @@ local debuggers = {
             adapter_id = "java",
             name = "vscode-java-debug",
             type = "executable",
-            command = "java",
-            args = {
-                "-jar",
+            command = { "java", "-jar",
                 vim.fn.stdpath("data") ..
-                "/mason/packages/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar",
-            },
+                "/mason/packages/java-debug-adapter/extension/server/com.microsoft.java.debug.plugin-*.jar" },
         },
         request = "launch",
         request_args = {

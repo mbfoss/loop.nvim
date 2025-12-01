@@ -4,7 +4,15 @@ local M = {}
 local config = require("loop.config")
 
 ---@alias loop.signs.SignGroup '"breakpoints"'|'"currentframe"'
----@alias loop.signs.SignName '"active_breakpoint"'|'"inactive_breakpoint"'|'"currentframe"'
+---@alias loop.signs.SignName
+---| '"currentframe"'
+---| '"active_breakpoint"'
+---| '"inactive_breakpoint"'
+---| '"logpoint"'
+---| '"logpoint_inactive"'
+---| '"conditional_breakpoint"'
+---| '"conditional_breakpoint_inactive"'
+---| '"rejected_breakpoint"'
 
 ---@class loop.signs.LineSigns table<loop.signs.SignName, true>        -- set-like: sign name present on this line
 ---@class loop.signs.FileSigns table<number, loop.signs.LineSigns>        -- line → signs on that line
@@ -238,9 +246,15 @@ function M.setup()
     if _setup_done then return end
     _setup_done = true
 
+    _define_sign("currentframe", "▶", "Todo")
+
     _define_sign("active_breakpoint", "●", "Debug")
     _define_sign("inactive_breakpoint", "○", "Debug")
-    _define_sign("currentframe", "▶", "Todo")
+    _define_sign("logpoint", "◆", "Debug")
+    _define_sign("logpoint_inactive", "◇", "Debug")
+    _define_sign("conditional_breakpoint", "■", "Debug")
+    _define_sign("conditional_breakpoint_inactive", "□", "Debug")
+
 
     -- Clean up signs when buffers are unloaded/deleted
     vim.api.nvim_create_autocmd({ "BufDelete", "BufUnload" }, {
