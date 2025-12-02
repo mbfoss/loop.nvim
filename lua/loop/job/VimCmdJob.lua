@@ -29,7 +29,6 @@ function VimCmdJob:start(args)
 		return false, "invalid vimcmd command value type '" .. type(args.command) .. "', must be a string"
 	end
 
-    vim.cmd()
 	-- require the module
 	local call_ok, payload = pcall(function() vim.cmd(args.command) end)
 

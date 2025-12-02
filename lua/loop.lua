@@ -94,6 +94,7 @@ M.setup = function(args)
 		create_project = project.create_project,
 		open_project = project.open_project,
 		close_project = project.close_project,
+        save_project_files = project.save_project_files,
 		toggle = project.toggle_window,
 		show = project.show_window,
 		hide = project.hide_window,

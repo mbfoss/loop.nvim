@@ -431,7 +431,7 @@ function M.start_task_chain(tasks, on_complete)
         local name = task.name -- keep because the expand_strings may change it
         local resolved, error_msg = resolver.resolve_macros(task)
         if not resolved then
-            window.add_events({ "Failed to resolve macros(s) in task " .. name, tostring(error_msg) }, "error")
+            window.add_events({ "Failed to resolve macros(s) in '" .. name .. "' ", tostring(error_msg) }, "error")
             return
         end
     end

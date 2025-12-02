@@ -1,6 +1,6 @@
 require('loop.task.taskdef')
 local builtinmacros = require('loop.tools.macros')
-local daptemplates = require('loop.daptemplates')
+local debugger_templates = require('loop.dbgtemplates')
 
 ---@class loop.Config
 ---@field debug loop.Config.Debug
@@ -20,21 +20,7 @@ M.current = {
         },
     },
 
-    debuggers = {
-        lldb = daptemplates.lldb,
-        ["lldb:attach"] = daptemplates["lldb:attach"],
-        node = daptemplates.node,
-        debugpy = daptemplates.debugpy,
-        netcoredbg = daptemplates.netcoredbg,
-        bashdb = daptemplates.bashdb,
-        luajit_lldb = daptemplates.luajit_lldb,
-        ["lua:local"] = daptemplates["lua:local"],
-        ["lua:remote"] = daptemplates["lua:remote"],
-        delve = daptemplates.delve,
-        codelldb = daptemplates.codelldb,
-        php = daptemplates.php,
-        java = daptemplates.java,
-    },
+    debuggers = debugger_templates,
 
     macros = {
         home      = builtinmacros.home,

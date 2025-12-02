@@ -237,15 +237,15 @@ local function get_page_keymap()
     --- set keymaps
     ---@type table<string,loop.pages.page.KeyMap>
     local keymaps = {
-        ["<c-[>"] = {
+        ["<c-n>"] = {
             callback = function()
                 if vim.api.nvim_get_current_win() == _loop_win then
                     _cycle_pages("prev")
                 end
             end,
-            desc = "Move to previous page",
+            desc = "Move to next page",
         },
-        ["<c-]>"] = {
+        ["<c-p"] = {
             callback = function()
                 if vim.api.nvim_get_current_win() == _loop_win then
                     _cycle_pages("next")

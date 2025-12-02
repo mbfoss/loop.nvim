@@ -24,8 +24,8 @@ end
 
 ---@class loop.Config.Debugger
 ---@field dap          loop.dap.session.Args.DAP
----@field launch_args  table<string,any>
----@field attach_args  table<string,any>
+---@field launch_args  table<string,any>|nil
+---@field attach_args  table<string,any>|nil
 ---@field server_command string|string[]|nil
 ---@field terminate_debuggee boolean|nil
 ---@field launch_post_configure boolean|nil
@@ -117,34 +117,18 @@ debuggers.go = {
 -- ==================================================================
 debuggers.python = {
     dap = {
-        adapter_id = "python",
+        adapter_id = "debugpy",
         name = "debugpy",
         type = "executable",
-        command = { mason_bin("debugpy") },
-        args = { "--listen", "5678", "--wait-for-client" },
+        command = { "python3", "-m", "debugpy.adapter" },
     },
     launch_args = {
-        type = "python",
-        request = "launch",
-        name = "Launch file",
-        program = "${file}",
-        pythonPath = function() return vim.fn.exepath("python3") or "python" end,
+        program = function(task) return task.command end,
+        cwd = get_task_cwd,
+        stopOnEntry = false,
+        justMyCode = false,
         console = "integratedTerminal",
-        justMyCode = true,
-    },
-    attach_args = {
-        type = "python",
-        request = "attach",
-        connect = {
-            host = "127.0.0.1",
-            port = 5678,
-        },
-        pathMappings = {
-            {
-                localRoot = "${projdir}",
-                remoteRoot = ".",
-            },
-        },
+        env = function(task) return task.env end,
     },
 }
 
@@ -230,7 +214,6 @@ debuggers.bash = {
         env = {},
         terminalKind = "integrated",
     },
-    attach_args = {}
 }
 
 -- ==================================================================
@@ -252,7 +235,6 @@ debuggers.php = {
             ["/var/www/html"] = "${projdir}",
         },
     },
-    attach_args = {}
 }
 
 -- ==================================================================
@@ -266,7 +248,6 @@ debuggers.java = {
         host = "127.0.0.1",
         port = 9000,
     },
-    launch_args = {},
     attach_args = {}
 }
 

@@ -148,7 +148,8 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "select", "run", "repeat", "add", "configure", "ext" }
+        return { "select", "add_tool", "add_app", "add_vimcmd", "add_debug", "configure", "run", "repeat", "terminate",
+            "ext" }
     elseif #args == 1 and args[1] == 'ext' then
         return extensions.ext_names()
     elseif #args == 2 and args[1] == 'ext' then
@@ -198,8 +199,14 @@ function M.task_command(command, arg1, arg2)
     command = command ~= "" and command or "select"
 
     local config_dir = _get_config_dir(proj_dir)
-    if command == "add" then
-        taskmgr.add_task(config_dir)
+    if command == "add_tool" then
+        taskmgr.add_tool_task(config_dir)
+    elseif command == "add_app" then
+        taskmgr.add_app_task(config_dir)
+    elseif command == "add_debug" then
+        taskmgr.add_debug_task(config_dir)
+    elseif command == "add_vimcmd" then
+        taskmgr.add_vimcmd_task(config_dir)
     elseif command == "configure" then
         taskmgr.open_task_config(config_dir)
     elseif command == "select" then
@@ -208,6 +215,8 @@ function M.task_command(command, arg1, arg2)
         taskmgr.run_task(proj_dir, config_dir, "task")
     elseif command == "repeat" then
         taskmgr.run_task(proj_dir, config_dir, "repeat")
+    elseif command == "terminate" then
+        taskmgr.terminate_task()
     elseif command == "ext" then
         _extension_command(arg1, arg2)
     else
@@ -297,6 +306,70 @@ end
 function M.toggle_window()
     assert(_setup_done)
     window.toggle_window()
+end
+
+function M.save_project_files()
+    assert(_setup_done)
+    local proj_dir = _get_proj_dir_or_warn()
+    if not proj_dir then
+        return
+    end
+    local dir = proj_dir
+
+    local silent = false
+
+    -- Normalize input directory
+    dir = vim.fs.normalize(dir or vim.fn.getcwd())
+    if not dir:match("/$") then dir = dir .. "/" end
+
+    local saved = 0
+
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        -- 1. Must be a regular buffer
+        if not uitools.is_regular_buffer(bufnr) then goto continue end
+
+        -- 2. Must be modified
+        if not vim.bo[bufnr].modified then goto continue end
+
+        -- 3. Must have a real file path
+        local path = vim.api.nvim_buf_get_name(bufnr)
+        if path == "" then goto continue end
+        path = vim.fs.normalize(path)
+
+        -- 4. Must be inside the target directory
+        if not vim.startswith(path, dir) then goto continue end
+
+        -- 5. Check: is the file itself a hidden file/folder?
+        local basename = vim.fs.basename(path)
+        if basename:match("^%.") then goto continue end -- skip .git, .env, etc.
+
+        -- 6. Check all parent directories: any hidden?
+        local has_hidden_parent = false
+        for parent in vim.fs.parents(path) do
+            local parent_name = vim.fs.basename(parent)
+            if parent_name == "" then break end -- reached root
+            if parent_name:match("^%.") then    -- .git, .cache, .venv, etc.
+                has_hidden_parent = true
+                break
+            end
+        end
+
+        if has_hidden_parent then goto continue end
+
+        -- All good → save!
+        vim.api.nvim_buf_call(bufnr, function()
+            vim.cmd("silent! write")
+        end)
+        saved = saved + 1
+
+        ::continue::
+    end
+
+    if not silent and saved > 0 then
+        vim.notify(("%d buffer(s) saved"):format(saved), vim.log.levels.INFO)
+    end
+
+    return saved
 end
 
 function M.winbar_click(id, clicks, button, mods)

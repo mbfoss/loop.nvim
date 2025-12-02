@@ -173,18 +173,18 @@ function Session:start(args)
         if dap_program == nil or dap_program == "" then
             return false, "Debugger command is missing"
         end
-        
+
         local dap_path = vim.fn.exepath(dap_program)
         if dap_path == nil then
             return false, "Debugger program is not executable: " .. tostring(dap_program)
         end
-    
+
         local dap_args = { unpack(cmd_and_args, 2) }
 
         self._base_session = BaseSession:new(self._name)
         self._base_session:start({
             dap_mode = "executable",
-            dap_cmd = dap_path,   -- dap process
+            dap_cmd = dap_path,  -- dap process
             dap_args = dap_args, -- dap args
             dap_env = dap.env,
             dap_cwd = dap.cwd,
@@ -490,7 +490,7 @@ end
 ---@param event loop.dap.proto.StoppedEvent|nil
 function Session:_on_stopped_event(event)
     if not event then
-        self._log:error("stopped event with no data")     
+        self._log:error("stopped event with no data")
         return
     end
     local cur_state = self._fsm:curr_state()
@@ -500,7 +500,7 @@ function Session:_on_stopped_event(event)
     end
 
     if event.threadId == self._stopped_thread then
-        self._log:debug("dropped duplicate stopped event")        
+        self._log:debug("dropped duplicate stopped event")
         return
     end
 
@@ -603,7 +603,14 @@ function Session:_send_attach(on_complete)
     ---@type loop.dap.proto.AttachRequestArguments
     ---@diagnostic disable-next-line: assign-type-mismatch
     local attach_args = target.request_args
-    self._base_session:request_attach(attach_args, function(err) on_complete(err == nil) end)
+    self._base_session:request_attach(attach_args, function(err)
+        if err then
+            ---@type loop.dap.session.notify.Trace
+            local data = { text = "attach request failed - " .. tostring(err), level = "error" }
+            self:_notify_tracker("trace", data)
+        end
+        on_complete(err == nil)
+    end)
 end
 
 ---@param on_complete fun(success:boolean)
@@ -615,7 +622,14 @@ function Session:_send_launch(on_complete)
     ---@type loop.dap.proto.LaunchRequestArguments
     ---@diagnostic disable-next-line: assign-type-mismatch
     local launch_args = target.request_args
-    self._base_session:request_launch(launch_args, function(err) on_complete(err == nil) end)
+    self._base_session:request_launch(launch_args, function(err)
+        if err then
+            ---@type loop.dap.session.notify.Trace
+            local data = { text = "launch request failed - " .. tostring(err), level = "error" }
+            self:_notify_tracker("trace", data)
+        end
+        on_complete(err == nil)
+    end)
 end
 
 function Session:_on_initializing_state()
@@ -759,7 +773,7 @@ function Session:_on_starting_state()
         return
     end
 
-    self._log:error("unhnalded request type: " .. tostring(target.request))
+    self._log:error("handled request type: " .. tostring(target.request))
     on_complete(false)
 end
 
@@ -791,6 +805,7 @@ function Session:_on_ended_state()
     self._can_send_breakpoints = false
     self._stopped_threads = {}
     self:stop_tracking_breakpoints()
+    self:_notify_about_state()
 end
 
 ---@param thread_id number
