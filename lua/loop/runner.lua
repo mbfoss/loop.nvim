@@ -188,18 +188,27 @@ local function _create_debug_job(task, output_handler, exit_handler)
     -- deepy copy for safety
     local task_cpy = vim.deepcopy(task)
     -- Resolve request_args using functions if needed
-    local resolved_args = vim.tbl_deep_extend("force", {}, dbg_config.request_args or {})
-    for k, v in pairs(resolved_args) do
+    local request_args = vim.tbl_deep_extend("force", {}, dbg_config.request_args or {})
+    for k, v in pairs(request_args) do
         if type(v) == "function" then
             local ok, result = pcall(v, task_cpy)
             if not ok then
                 return nil, ("failed to resolve debug.%s: %s"):format(k, result)
             end
-            resolved_args[k] = result
+            request_args[k] = result
         end
     end
 
-    resolved_args = vim.tbl_deep_extend("force", resolved_args, task.debugger_args or {})
+    request_args = vim.tbl_deep_extend("force", request_args, task.debugger_args or {})
+
+    -- resolve macros inside request args
+    do
+        local resolved, error_msg = resolver.resolve_macros(request_args)
+        if not resolved then
+            window.add_events({ "Failed to resolve macro(s) in debugger arguments ", tostring(error_msg) }, "error")
+            return
+        end
+    end
 
     if dbg_config.dap.type ~= "executable" and dbg_config.dap.type ~= "server" then
         return nil, ("invalid dat type '%s'"):format(dbg_config.dap.type)
@@ -216,7 +225,7 @@ local function _create_debug_job(task, output_handler, exit_handler)
         debug_args = {
             dap = dbg_config.dap,
             request = dbg_config.request,
-            request_args = resolved_args,
+            request_args = request_args,
             terminate_debuggee = dbg_config.terminate_debuggee,
         },
     }
@@ -284,7 +293,7 @@ local function _kill_current_chain(new_chain)
             end
             return true
         end
-    end    
+    end
     return false
 end
 
@@ -379,7 +388,7 @@ function M.start_task_chain(tasks, on_complete)
         local name = task.name -- keep because the expand_strings may change it
         local resolved, error_msg = resolver.resolve_macros(task)
         if not resolved then
-            window.add_events({ "Failed to resolve variable(s) in task " .. name, tostring(error_msg) })
+            window.add_events({ "Failed to resolve macros(s) in task " .. name, tostring(error_msg) }, "error")
             return
         end
     end
