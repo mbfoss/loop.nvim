@@ -160,7 +160,7 @@ local function _on_thread_pause(sess_id, sess_name, event_data, variables_page, 
             event_data.scopes_provider({ frameId = curframe.id }, function(_, scopes_data)
                 if scopes_data then
                     for scope_idx, scope in ipairs(scopes_data.scopes) do
-                        if scope.presentationHint ~= "globals" then
+                        if scope.presentationHint ~= "globals" and scope.name ~= "Globals" then
                             ---@type loop.pages.ItemTreePage.Item
                             local scope_item = { id = tostring(scope_idx), text = scope.name }
                             variables_page:upsert_item(scope_item, nil)

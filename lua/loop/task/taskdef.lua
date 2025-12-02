@@ -8,5 +8,6 @@
 ---@field env table<string,string>? # optional environment variables
 ---@field quickfix_matcher string|nil
 ---@field depends_on string[]? # optional list of dependent task names
----@field debugger string|nil
----@field debugger_args table<string,any>|nil
+---@field debug_adapter string|nil
+---@field debug_request "launch"|"attach"|nil
+---@field debug_args table<string,any>|nil

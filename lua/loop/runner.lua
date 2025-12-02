@@ -123,6 +123,50 @@ local function _make_output_parser(task)
     end
 end
 
+
+---@param obj table
+---@param task_cpy loop.Task
+---@return boolean success
+---@return string? error_message
+local function _resolve_functions_inplace(obj, task_cpy)
+    if type(obj) ~= "table" then
+        return false, "resolve_functions_inplace: obj must be a table"
+    end
+    local function recurse(t, path)
+        path = path or ""
+        for k, v in pairs(t) do
+            local current_path = path ~= "" and (path .. "." .. k) or tostring(k)
+
+            if type(v) == "function" then
+                local ok, result = pcall(v, task_cpy)
+                if not ok then
+                    return false, ("failed to resolve debug.%s: %s"):format(current_path, result)
+                end
+
+                -- Replace the function with its result
+                t[k] = result
+
+                -- If the result is a table, recursively resolve inside it
+                if type(result) == "table" then
+                    local deep_ok, deep_err = recurse(result, current_path)
+                    if not deep_ok then
+                        return false, deep_err
+                    end
+                end
+            elseif type(v) == "table" then
+                -- Dive into nested tables
+                local deep_ok, deep_err = recurse(v, current_path)
+                if not deep_ok then
+                    return false, deep_err
+                end
+            end
+        end
+        return true
+    end
+
+    return recurse(obj)
+end
+
 ---@param task loop.Task
 ---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
 ---@param exit_handler fun(code : number)
@@ -175,32 +219,34 @@ local function _create_debug_job(task, output_handler, exit_handler)
     if task.type ~= "debug" then
         return nil, "task.type must be 'debug'"
     end
-    if not task.debugger or task.debugger == "" then
-        return nil, "task.debugger is required for debug tasks"
+    if not task.debug_adapter or task.debug_adapter == "" then
+        return nil, "task.debug_adapter is required for debug tasks"
+    end
+
+    if task.debug_request ~= "launch" and task.debug_request ~= "attach" then
+        return nil, "task.debug_request must be launch or attach"
     end
 
     ---@type loop.Config.Debugger
-    local dbg_config = config.current.debuggers[task.debugger]
-    if not dbg_config then
-        return nil, ("no debugger config found for '%s'"):format(task.debugger)
+    local debugger = config.current.debuggers[task.debug_adapter]
+    if not debugger then
+        return nil, ("no debug_adapter config found for '%s'"):format(tostring(task.debug_adapter))
     end
 
-    -- deepy copy for safety
-    local task_cpy = vim.deepcopy(task)
+
     -- Resolve request_args using functions if needed
-    local request_args = vim.tbl_deep_extend("force", {}, dbg_config.request_args or {})
-    for k, v in pairs(request_args) do
-        if type(v) == "function" then
-            local ok, result = pcall(v, task_cpy)
-            if not ok then
-                return nil, ("failed to resolve debug.%s: %s"):format(k, result)
-            end
-            request_args[k] = result
+    local default_args = task.debug_request == "launch" and debugger.launch_args or debugger.attach_args
+    local request_args = vim.tbl_deep_extend("force", {}, default_args or {})
+    do
+        local task_cpy = vim.deepcopy(task) -- deepy copy for safety
+        local func_resolved, func_err = _resolve_functions_inplace(request_args, task_cpy)
+        if not func_resolved then
+            return nil, func_err or "failed to resolve functions"
         end
     end
 
-    request_args = vim.tbl_deep_extend("force", request_args, task.debugger_args or {})
-
+    -- merge with task args
+    request_args = vim.tbl_deep_extend("force", request_args, task.debug_args or {})
     -- resolve macros inside request args
     do
         local resolved, error_msg = resolver.resolve_macros(request_args)
@@ -210,12 +256,8 @@ local function _create_debug_job(task, output_handler, exit_handler)
         end
     end
 
-    if dbg_config.dap.type ~= "executable" and dbg_config.dap.type ~= "server" then
-        return nil, ("invalid dat type '%s'"):format(dbg_config.dap.type)
-    end
-
-    if dbg_config.request ~= "launch" and dbg_config.request ~= "attach" then
-        return nil, ("invalid request type '%s'"):format(dbg_config.request)
+    if debugger.dap.type ~= "executable" and debugger.dap.type ~= "server" then
+        return nil, ("invalid dat type '%s'"):format(debugger.dap.type)
     end
 
     -- Build DebugJob start args
@@ -223,10 +265,11 @@ local function _create_debug_job(task, output_handler, exit_handler)
     local args = {
         name = task.name,
         debug_args = {
-            dap = dbg_config.dap,
-            request = dbg_config.request,
+            dap = debugger.dap,
+            request = task.debug_request,
             request_args = request_args,
-            terminate_debuggee = dbg_config.terminate_debuggee,
+            terminate_debuggee = debugger.terminate_debuggee,
+            launch_post_configure = debugger.launch_post_configure,
         },
     }
 

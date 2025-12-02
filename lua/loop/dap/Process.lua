@@ -10,6 +10,32 @@ local class = require('loop.tools.class')
 ---@field on_output fun(data:string, is_stderr:boolean)
 ---@field on_exit fun(code:number, signal:number)
 
+-- Global registry of all active Process instances
+local dap_active_processes = {}
+
+-- Keep weak table so dead processes don't leak if somehow not cleaned up
+setmetatable(dap_active_processes, { __mode = "k" })
+
+-- Kill everything on VimLeavePre (before Neovim really shuts down)
+vim.api.nvim_create_autocmd("VimLeavePre", {
+    group = vim.api.nvim_create_augroup("LoopPluginDapProcCleanup", { clear = true }),
+    once = true,
+    callback = function()
+        for proc, _ in pairs(dap_active_processes) do
+            if proc and proc.kill and not proc.exited and not proc.killed then
+                -- 300ms graceful + force kill — fast but gives chance to exit cleanly
+                pcall(proc.kill, proc, 300)
+            end
+        end
+        dap_active_processes = {}
+    end,
+})
+
+-- Remove from registry when process exits (important!)
+local function unregister_process(proc)
+    dap_active_processes[proc] = nil
+end
+
 ---@class loop.dap.Process
 ---@field new fun(self: loop.dap.Process, name : string, opts : loop.dap.Process.Opts) : loop.dap.Process
 local Process = class()
@@ -18,6 +44,8 @@ local Process = class()
 ---@param opts loop.dap.Process.Opts
 function Process:init(name, opts)
     assert(type(opts.cmd) == "string", "cmd is required")
+
+    dap_active_processes[self] = true
 
     self.log = require('loop.tools.Logger').create_logger("dap.process[" .. name .. "]")
     self.cmd = opts.cmd
@@ -81,9 +109,11 @@ function Process:_spawn()
 
         -- Always close everything — this MUST run
         self:_close_all()
+        unregister_process(self)
     end))
 
     if not handle then
+        unregister_process(self)
         return
     end
 
@@ -141,22 +171,22 @@ function Process:running()
 end
 
 function Process:kill(timeout)
-  if self.exited or self.killed then return end
-  self.killed = true
+    if self.exited or self.killed then return end
+    self.killed = true
 
-  if self.handle and not self.handle:is_closing() then
-    self.handle:kill("sigterm")
-  end
-
-  local timer = uv.new_timer()
-  timer:start(timeout or 800, 0, vim.schedule_wrap(function()
-    timer:close()
-    if not self.exited and self.handle and not self.handle:is_closing() then
-      self.handle:kill("sigkill")
-      -- Force cleanup even if callback never fires
-      self:_close_all()
+    if self.handle and not self.handle:is_closing() then
+        self.handle:kill("sigterm")
     end
-  end))
+
+    local timer = uv.new_timer()
+    timer:start(timeout or 800, 0, vim.schedule_wrap(function()
+        timer:close()
+        if not self.exited and self.handle and not self.handle:is_closing() then
+            self.handle:kill("sigkill")
+            -- Force cleanup even if callback never fires
+            self:_close_all()
+        end
+    end))
 end
 
 -------------------------------------------------

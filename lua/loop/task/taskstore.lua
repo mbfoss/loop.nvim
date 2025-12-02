@@ -43,17 +43,18 @@ local function _load_tasks_file(filepath)
     end
     return _load_tasks_from_str(contents_or_err)
 end
+
+
+local function task_order_handler(path, attrs)
+    return { "name", "type", "command", "cwd",
+        "env", "quickfix_matcher", "debug_adapter", "debug_request", "debug_args", "depends_on" }
+end
+
 local function order_handler(path, attrs)
     if path == "/" then
         return { "$schema", "tasks" }
     end
-    return { "name", "type", "command", "cwd", "depends_on",
-        "quickfix_matcher", "debugger", "debug" }
-end
-
-local function task_order_handler(path, attrs)
-    return { "name", "type", "command", "cwd", "depends_on",
-        "quickfix_matcher", "debugger", "debug" }
+    return task_order_handler(path, attrs)
 end
 
 ---@param config_dir string
@@ -72,12 +73,10 @@ function M.add_task(config_dir, new_task)
     local new_lines = nil
     if #content == 0 then
         local tasks = { new_task }
-        local schema_dir = vim.fs.joinpath(vim.fn.stdpath("data"), "loop.nvim")
-        local schema_filepath = vim.fs.joinpath(schema_dir, 'tasksschema.json')
-        vim.fn.mkdir(schema_dir, 'p')
+        local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
         jsontools.save_to_file(schema_filepath, require("loop.task.tasksschema"))
         local file_data = {}
-        file_data["$schema"] = 'file://' .. schema_filepath
+        file_data["$schema"] = './tasksschema.json'
         file_data["tasks"] = tasks
         local new_content = jsontools.to_string(file_data, order_handler)
         new_lines = vim.split(new_content, "\n", { plain = true })
@@ -267,13 +266,11 @@ function M.create_extension_config(config_dir, ext_name)
     local config_filepath = vim.fs.joinpath(config_dir, 'ext.' .. ext_name .. '.json')
 
     if not filetools.file_exists(config_filepath) then
-        local schema_dir = vim.fs.joinpath(vim.fn.stdpath("data"), "loop.nvim")
-        local schema_filepath = vim.fs.joinpath(schema_dir, 'extschema-' .. ext_name .. '.json')
-        vim.fn.mkdir(schema_dir, 'p')
-        jsontools.save_to_file(schema_filepath, schema)
-        local schema_url = 'file://' .. schema_filepath
-        template["$schema"] = schema_url
         vim.fn.mkdir(config_dir, "p")
+        local schemafilename = 'extschema.' .. ext_name .. '.json'
+        local config_filepath = vim.fs.joinpath(config_dir, schemafilename)
+        jsontools.save_to_file(schemafilename, schema)
+        template["$schema"] = './' .. schemafilename
         jsontools.save_to_file(config_filepath, template, config_order_handler)
     end
 

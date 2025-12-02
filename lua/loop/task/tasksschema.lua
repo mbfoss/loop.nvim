@@ -57,12 +57,16 @@ return {
                         items = { type = "string", minLength = 1 },
                         description = "Optional list of dependent task names"
                     },
-                    debugger = {
+                    debug_adapter = {
                         type = { "string", "null" },
                         description = "Required for type = 'debug'. Name of the debug adapter."
                     },
-                    debugger_args = {
-                        type = "object",
+                    debug_request = {
+                        type = { "string", "null" },
+                        enum = { "launch", "attach" },
+                    },
+                    debug_args = {
+                        type = { "object", "null" },
                         additionalProperties = true
                     }
                 }

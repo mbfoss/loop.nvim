@@ -57,6 +57,7 @@ local breakpoints = require('loop.dap.breakpoints')
 ---@field dap          loop.dap.session.Args.DAP
 ---@field request      "launch" | "attach"
 ---@field request_args  loop.dap.proto.AttachRequestArguments|loop.dap.proto.LaunchRequestArguments|nil
+---@field launch_post_configure boolean|nil
 ---@field terminate_debuggee boolean|nil
 
 ---@class loop.dap.session.Args
@@ -167,18 +168,23 @@ function Session:start(args)
         if #cmd_and_args == 0 then
             return false, "Missing DAP process command"
         end
-        local dap_cmd = vim.fn.exepath(cmd_and_args[1])
-        if dap_cmd == "" then
-            return false, "Debugger command is not executable: " .. tostring(cmd_and_args[1])
-        end
 
+        local dap_program = cmd_and_args[1]
+        if dap_program == nil or dap_program == "" then
+            return false, "Debugger command is missing"
+        end
+        
+        local dap_path = vim.fn.exepath(dap_program)
+        if dap_path == nil then
+            return false, "Debugger program is not executable: " .. tostring(dap_program)
+        end
+    
         local dap_args = { unpack(cmd_and_args, 2) }
 
-        assert(dap_cmd ~= "")
         self._base_session = BaseSession:new(self._name)
         self._base_session:start({
             dap_mode = "executable",
-            dap_cmd = dap_cmd,   -- dap process
+            dap_cmd = dap_path,   -- dap process
             dap_args = dap_args, -- dap args
             dap_env = dap.env,
             dap_cwd = dap.cwd,
@@ -464,7 +470,9 @@ end
 
 function Session:_on_initialized_event(event)
     self:_send_configuration(function(success)
-        if not success then
+        if success then
+            self._fsm:trigger(fsmdata.trigger.configuration_done)
+        else
             self:_trace_notification("session initialization failed", "error")
             self._fsm:trigger(fsmdata.trigger.disconnect)
         end
@@ -616,9 +624,13 @@ function Session:_on_initializing_state()
     self:_start_tracking_breakpoints() -- must be done before _can_send_breakpoints = true
 
     local on_complete = function(success)
-        self._fsm:trigger(success and
-            fsmdata.trigger.initialize_resp_ok or
-            fsmdata.trigger.initialize_resp_err)
+        if not success then
+            self._fsm:trigger(fsmdata.trigger.initialize_resp_err)
+            return
+        end
+        if self._args.debug_args.launch_post_configure ~= true then
+            self._fsm:trigger(fsmdata.trigger.start_before_initialized)
+        end
     end
 
     self:_send_initialize(function(success)

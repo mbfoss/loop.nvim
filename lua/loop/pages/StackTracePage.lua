@@ -72,14 +72,23 @@ function StackTracePage:set_content(data)
             } }
             if resp then
                 for idx, frame in ipairs(resp.stackFrames) do
-                    if frame.source then
-                        text = string.format("%d: %s - %s:%d:%d",
-                            frame.id, frame.name, frame.source.name, frame.line, frame.column)
-                    else
-                        text = string.format("%d: %s", frame.id, frame.name)
+                    local parts = { tostring(frame.id) }
+                    table.insert(parts, ": ")
+                    table.insert(parts, tostring(frame.name))
+                    if frame.source and frame.source.name then
+                        table.insert(parts, " - ")
+                        table.insert(parts, tostring(frame.source.name))
+                        if frame.line then
+                            table.insert(parts, ":")
+                            table.insert(parts, tostring(frame.line))
+                            if frame.column then
+                                table.insert(parts, ":")
+                                table.insert(parts, tostring(frame.column))
+                            end
+                        end
                     end
                     ---@type loop.pages.ItemListPage.Item
-                    local item = { id = idx, text = text, data = frame }
+                    local item = { id = idx, text = table.concat(parts, ''), data = frame }
                     table.insert(items, item)
                 end
             end

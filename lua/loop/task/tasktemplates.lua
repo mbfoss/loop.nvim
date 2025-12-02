@@ -30,50 +30,12 @@ return {
         type = "debug",
         command = "${fileroot}.out",
         cwd = "${projdir}",
-        debugger = "lldb",
-        debugger_args = {
-            stopOnEntry = true,
-            environment = {},
-            sourceLanguages = { "cpp" },
+        debug_adapter = "lldb",
+        debug_request = "launch",
+        debug_args = {
+            stopOnEntry = false,
         },
         depends_on = { "Build ${filename}" },
     },
 
-    {
-        name = "Attach to node",
-        type = "debug",
-        command = nil,
-        debugger = "js-debug",
-        debugger_args = {
-            port = 9229,
-            restart = true,
-        },
-    },
-    {
-        name = "Debug lua file",
-        type = "debug",
-        command = "${file}",
-        debugger = "lua:local",
-    },
-
-    {
-        name = "Attach to OSV (lua)",
-        type = "debug",
-        debugger = "lua:remote",
-        debugger_args = {
-            port = 8086,
-            restart = true,
-        },
-    },
-
-    {
-        name = "Debug Python",
-        type = "debug",
-        command = "main.py",
-        debugger = "debugpy",
-        debugger_args = {
-            stopOnEntry = true,
-            justMyCode = false,
-        },
-    },
 }

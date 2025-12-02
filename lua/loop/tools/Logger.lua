@@ -89,7 +89,7 @@ end
 function Logger:log(content, level)
 	level = level or vim.log.levels.INFO
 
-	if level < self.log_level then
+	if level < log_level then
 		return
 	end
 
@@ -104,6 +104,8 @@ function Logger:log(content, level)
 
 	local timestamp = os.date("%Y-%m-%d %H:%M:%S")
 	local level_name = LEVEL_NAMES[level] or tostring(level)
+    
+    ---@diagnostic disable-next-line: undefined-field
 	local line = string.format("[%s] [%s] [%s] %s\n", timestamp, level_name, self.module, msg)
 
 	local file = open_log_file()

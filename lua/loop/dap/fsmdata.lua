@@ -4,9 +4,11 @@ require('loop.tools.FSM')
 
 M.trigger =
 {
-    initialize_resp_ok = "initialize_resp_ok",
+    --initialize_resp_ok = "initialize_resp_ok",
     initialize_resp_err = "initialize_resp_err",
     initialized = "initialized",
+    start_before_initialized = "start_before_initialized",
+    configuration_done = "configuration_done",
     launch_resp_ok = "launch_resp_ok",
     launch_resp_error = "launch_resp_error",
     disconnect = "disconnect",
@@ -35,7 +37,9 @@ function M.create_fsm_data(handlers)
             initializing = {
                 state_handler = handlers.initializing,
                 triggers = {
-                    [M.trigger.initialize_resp_ok] = "starting",
+                    --[M.trigger.initialize_resp_ok] = "starting",
+                    [M.trigger.start_before_initialized] = "starting",
+                    [M.trigger.configuration_done] = "starting",
                     [M.trigger.initialize_resp_err] = "disconnecting",
                     [M.trigger.disconnect] = 'disconnecting',
                 }
