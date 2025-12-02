@@ -148,16 +148,46 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "select", "run", "repeat", "add", "import", "configure" }
-    elseif #args == 1 and args[1] == 'import' then
+        return { "select", "run", "repeat", "add", "configure", "ext" }
+    elseif #args == 1 and args[1] == 'ext' then
         return extensions.ext_names()
+    elseif #args == 2 and args[1] == 'ext' then
+        return { "select", "configure", "import" }
     end
     return {}
 end
 
+---@param extname string|nil
+---@param extcommand string|nil
+function _extension_command(extname, extcommand)
+    assert(_setup_done)
+    local proj_dir = _get_proj_dir_or_warn()
+    if not proj_dir then
+        return
+    end
+
+    local name = extname and extname:match("^%s*(.-)%s*$") or ""
+    local cmd = extcommand and extcommand:match("^%s*(.-)%s*$") or ""
+    if name == "" then
+        return
+    end
+
+    local config_dir = _get_config_dir(proj_dir)
+    if cmd == "" or cmd == "select" then
+        taskmgr.run_extension_task(config_dir, name)
+    elseif cmd == "configure" then
+        taskmgr.create_extension_config(config_dir, name)
+    elseif cmd == "import" then
+        taskmgr.import_task(config_dir, name)
+    else
+        vim.notify('loop.nvim: Invalid extension command: ' .. extname .. ' ' .. cmd)
+    end
+end
+
 ---@param command string|nil
 ---@param arg1 string|nil
-function M.task_command(command, arg1)
+---@param arg2 string|nil
+function M.task_command(command, arg1, arg2)
     assert(_setup_done)
     local proj_dir = _get_proj_dir_or_warn()
     if not proj_dir then
@@ -170,8 +200,6 @@ function M.task_command(command, arg1)
     local config_dir = _get_config_dir(proj_dir)
     if command == "add" then
         taskmgr.add_task(config_dir)
-    elseif command == "import" then
-        taskmgr.import_task(config_dir, arg1 or "")
     elseif command == "configure" then
         taskmgr.open_task_config(config_dir)
     elseif command == "select" then
@@ -180,41 +208,10 @@ function M.task_command(command, arg1)
         taskmgr.run_task(proj_dir, config_dir, "task")
     elseif command == "repeat" then
         taskmgr.run_task(proj_dir, config_dir, "repeat")
+    elseif command == "ext" then
+        _extension_command(arg1, arg2)
     else
         vim.notify('loop.nvim: Invalid task command: ' .. command)
-    end
-end
-
----@param args string[]
----@return string[]
-function M.extension_subcommands(args)
-    if #args == 0 then
-        return extensions.ext_names()
-    elseif #args == 1 then
-        return { "configure", "task" }
-    end
-    return {}
-end
-
----@param extname string|nil
----@param extcommand string|nil
-function M.extension_command(extname, extcommand)
-    assert(_setup_done)
-    local proj_dir = _get_proj_dir_or_warn()
-    if not proj_dir then
-        return
-    end
-    
-    local name = extname and extname:match("^%s*(.-)%s*$") or ""
-    local cmd = extcommand and extcommand:match("^%s*(.-)%s*$") or ""
-
-    local config_dir = _get_config_dir(proj_dir)
-    if cmd == "" or cmd == "task" then
-        taskmgr.run_extension_task(config_dir, name)
-    elseif cmd == "configure" then
-        taskmgr.create_extension_config(config_dir, name)
-    else
-        vim.notify('loop.nvim: Invalid extension command: ' .. extname .. ' ' .. cmd)
     end
 end
 
@@ -272,7 +269,6 @@ function M.breakpoints_command(command)
         vim.notify('loop.nvim: Invalid breakpoints subcommand: ' .. tostring(command))
     end
 end
-
 
 ---@param args string[]
 ---@return string[]

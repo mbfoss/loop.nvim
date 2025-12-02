@@ -24,8 +24,6 @@ local function _loop_complete(func_names, arg_lead, cmd_line)
 		rest[#rest] = nil
 		if cmd == "task" then
 			return filter(project.task_subcommands(rest))
-		elseif cmd == "ext" then
-			return filter(project.extension_subcommands(rest))
 		elseif cmd == "breakpoint" then
 			return filter(project.breakpoints_subcommands(rest))
 		elseif cmd == "debug" then
@@ -101,19 +99,18 @@ M.setup = function(args)
 		hide = project.hide_window,
 
 		task = project.task_command,
-		ext = project.extension_command,
 		debug = project.debug_command,
 		breakpoint = project.breakpoints_command,
 	}
 
 	_setup_user_command(_G.LoopProject)
 
-vim.keymap.set("n", "<F5>",  ":Loop debug continue<CR>")
-vim.keymap.set("n", "<F6>",  ":Loop debug step_in<CR>")
-vim.keymap.set("n", "<F7>",  ":Loop debug step_out<CR>")
-vim.keymap.set("n", "<F8>",  ":Loop debug step_over<CR>")
-vim.keymap.set("n", "<F9>",  ":Loop debug terminate<CR>")
-vim.keymap.set("n", "<F10>", ":Loop debug terminate_all<CR>")
+vim.keymap.set("n", "<leader>dc",  ":Loop debug continue<CR>")
+vim.keymap.set("n", "<leader>di",  ":Loop debug step_in<CR>")
+vim.keymap.set("n", "<leader>do",  ":Loop debug step_out<CR>")
+vim.keymap.set("n", "<leader>dn",  ":Loop debug step_over<CR>")
+vim.keymap.set("n", "<leader>dT",  ":Loop debug terminate<CR>")
+vim.keymap.set("n", "<leader>dK", ":Loop debug terminate_all<CR>")
 
 
 end

@@ -261,6 +261,11 @@ function M.create_extension_config(config_dir, ext_name)
     local template = mod.get_config_template()
     assert(type(template) == "table")
 
+    if next(template) == nil then
+        -- task does not require configuration
+        return true
+    end
+
     local config_order_handler = mod.get_config_order_handler()
 
     local config_filepath = vim.fs.joinpath(config_dir, 'ext.' .. ext_name .. '.json')
@@ -268,8 +273,8 @@ function M.create_extension_config(config_dir, ext_name)
     if not filetools.file_exists(config_filepath) then
         vim.fn.mkdir(config_dir, "p")
         local schemafilename = 'extschema.' .. ext_name .. '.json'
-        local config_filepath = vim.fs.joinpath(config_dir, schemafilename)
-        jsontools.save_to_file(schemafilename, schema)
+        local schemafilepath = vim.fs.joinpath(config_dir, schemafilename)
+        jsontools.save_to_file(schemafilepath, schema)
         template["$schema"] = './' .. schemafilename
         jsontools.save_to_file(config_filepath, template, config_order_handler)
     end
