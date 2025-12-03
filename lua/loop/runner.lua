@@ -85,7 +85,7 @@ end
 ---@return function|nil
 ---@return string|nil
 local function _make_output_parser(task)
-    if task.type ~= "tool" or not task.quickfix_matcher then
+    if task.type ~= "build" or not task.quickfix_matcher then
         return nil
     end
     ---@param line string
@@ -314,7 +314,7 @@ local function _start_one_task(task, task_exit_handler)
     local tasktype = task.type
     if tasktype == "vimcmd" then
         return _create_vimcmd_job(task, output_handler, exit_handler)
-    elseif tasktype == "tool" or tasktype == "app" then
+    elseif tasktype == "build" or tasktype == "run" then
         return _create_tool_job(task, output_handler, exit_handler)
     elseif tasktype == "debug" then
         return _create_debug_job(task, output_handler, exit_handler)

@@ -149,7 +149,7 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "select", "repeat", "add_tool", "add_app", "add_vimcmd", "add_debug", "configure", "terminate",
+        return { "select", "repeat", "add_build", "add_run", "add_vimcmd", "add_debug", "configure", "terminate",
             "ext" }
     elseif #args == 1 and args[1] == 'ext' then
         return extensions.ext_names()
@@ -200,10 +200,10 @@ function M.task_command(command, arg1, arg2)
     command = command ~= "" and command or "select"
 
     local config_dir = _get_config_dir(proj_dir)
-    if command == "add_tool" then
-        taskmgr.add_tool_task(config_dir)
-    elseif command == "add_app" then
-        taskmgr.add_app_task(config_dir)
+    if command == "add_build" then
+        taskmgr.add_build_task(config_dir)
+    elseif command == "add_run" then
+        taskmgr.add_run_task(config_dir)
     elseif command == "add_debug" then
         taskmgr.add_debug_task(config_dir)
     elseif command == "add_vimcmd" then

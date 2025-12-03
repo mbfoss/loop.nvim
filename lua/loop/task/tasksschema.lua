@@ -23,7 +23,7 @@ return {
                     },
                     type = {
                         type = "string",
-                        enum = { "vimcmd", "tool", "app", "debug" },
+                        enum = { "build", "run", "debug", "vimcmd", "composite" },
                         description = "Task category"
                     },
                     command = {

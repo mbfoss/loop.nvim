@@ -1,7 +1,7 @@
 return {
     {
         name = "Lua check",
-        type = "tool",
+        type = "build",
         command = { "luacheck", "${projdir}" },
         cwd = "${projdir}",
         quickfix_matcher = "luacheck",
@@ -10,7 +10,7 @@ return {
 
     {
         name = "Build ${filename}",
-        type = "tool",
+        type = "build",
         command = { "g++", "-g", "-std=c++23", "${file}", "-o", "${fileroot}.out" },
         cwd = "${projdir}",
         quickfix_matcher = "gcc",

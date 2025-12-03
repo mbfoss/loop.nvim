@@ -66,17 +66,17 @@ local function _select_and_add_task(config_dir, templates, prompt)
 end
 
 ---@param config_dir string
-function M.add_tool_task(config_dir)
-    local templates = require('loop.task.tooltemplates')
+function M.add_build_task(config_dir)
+    local templates = require('loop.task.buildtemplates')
     _select_and_add_task(config_dir, templates, "Choose a task template")
 end
 
 ---@param config_dir string
-function M.add_app_task(config_dir)
+function M.add_run_task(config_dir)
     ---@type loop.Task
     local template = {
         name = "",
-        type = "app",
+        type = "run",
         command = "",
         depends_on = {}
     }

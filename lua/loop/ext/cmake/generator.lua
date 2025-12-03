@@ -241,8 +241,8 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
         end
         ---@type loop.Task
         local task = {
-            name = "[" .. profile_name .. "] Build All",
-            type = "tool",
+            name = "[CMake " .. profile_name .. "] Build All",
+            type = "build",
             command = cmd,
             cwd = src_root,
             quickfix_matcher = quickfix_matcher,
@@ -251,7 +251,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
     end
 
     local function build_task_name(tgt, tgt_type)
-        local name = "[" .. profile_name .. "] Build "
+        local name = "[CMake " .. profile_name .. "] Build "
         if tgt_type ~= "UTILITY" then
             name = name .. strtools.human_case(tgt_type)
         else
@@ -273,7 +273,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             ---@type loop.Task
             local task = {
                 name = build_task_name(tgt, tgt_type),
-                type = "tool",
+                type = "build",
                 command = cmd,
                 cwd = src_root,
                 quickfix_matcher = quickfix_matcher
@@ -287,7 +287,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
     for tgt, tgt_type in pairs(all_targets) do
         -- Only keep *real* executables (skip UTILITY, INTERFACE, etc.)
         if tgt_type == "EXECUTABLE" or tgt_type == "MACOSX_BUNDLE" then
-            local name = "[" .. profile_name .. "] Run: " .. tgt
+            local name = "[CMake " .. profile_name .. "] Run: " .. tgt
             local exec_path = vim.fs.joinpath(build_dir, tgt)
             local cmd = { exec_path }
             local cwd = build_dir
@@ -295,7 +295,7 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             local task =
             {
                 name = name,
-                type = "app",
+                type = "run",
                 command = cmd,
                 cwd = cwd,
                 depends_on = { build_task_name(tgt, tgt_type) }
@@ -315,8 +315,8 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             if t.name and t.command then
                 ---@type loop.Task
                 local task = {
-                    name    = "[" .. profile_name .. "] CTest: " .. t.name,
-                    type    = "tool",
+                    name    = "CMake [" .. profile_name .. "] CTest: " .. t.name,
+                    type    = "build",
                     command = t.command,
                     cwd     = build_dir
                 }
@@ -327,8 +327,8 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             -- Add a meta-task to run all tests
             ---@type loop.Task
             local all_tests_task = {
-                name    = "[" .. profile_name .. "] CTest All",
-                type    = "tool",
+                name    = "[CMake " .. profile_name .. "] CTest All",
+                type    = "build",
                 command = { "ctest", "--output-on-failure" },
                 cwd     = build_dir
             }
@@ -338,8 +338,8 @@ function M.get_profile_tasks(tasks, cmake_path, ctest_path, cfg)
             -- Add a meta-task to run all tests
             ---@type loop.Task
             local all_tests_task = {
-                name    = "[" .. profile_name .. "] CTest Rerun Failed",
-                type    = "tool",
+                name    = "[CMake " .. profile_name .. "] CTest Rerun Failed",
+                type    = "build",
                 command = { "ctest", "--rerun-failed", "--output-on-failure" },
                 cwd     = build_dir
             }

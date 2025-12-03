@@ -1,4 +1,4 @@
----@alias loop.TaskType "vimcmd"|"tool"|"app"|"debug"
+---@alias loop.TaskType "build"|"run"|"debug"|"vimcmd"|"composite"
 
 ---@class loop.Task
 ---@field name string # non-empty task name (supports ${VAR} templates)
