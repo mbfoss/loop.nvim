@@ -189,7 +189,11 @@ local function _on_thread_pause(sess_id, sess_name, event_data, variables_page, 
                     for scope_idx, scope in ipairs(scopes_data.scopes) do
                         if scope.presentationHint ~= "globals" and scope.name ~= "Globals" then
                             ---@type loop.pages.ItemTreePage.Item
-                            local scope_item = { id = tostring(scope_idx), data = { text = scope.name } }
+                            local scope_item = {
+                                id = tostring(scope_idx),
+                                expanded = true,
+                                data = { text = scope.name }
+                            }
                             variables_page:upsert_item(scope_item)
                             event_data.variables_provider({ variablesReference = scope.variablesReference },
                                 function(_, vars_data)
@@ -241,7 +245,7 @@ function _variable_node_formatter(item)
     end
     ---@type loop.dap.proto.Variable
     local var = item.data.variable
-    return tostring(var.name).. ": " .. tostring(var.value)
+    return tostring(var.name) .. ": " .. tostring(var.value)
 end
 
 ---@param item loop.pages.ItemListPage.Item
@@ -309,7 +313,7 @@ function M.track_new_debugjob(task_name)
             local stacktrace_page = stacktrace_pages[sess_id]
 
             if not variable_page then
-                variable_page = ItemTreePage:new(sess_name, { 
+                variable_page = ItemTreePage:new(sess_name, {
                     formatter = _variable_node_formatter,
                     highlighter = _variable_node_highlighter
                 })

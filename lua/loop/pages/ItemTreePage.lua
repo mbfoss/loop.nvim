@@ -38,6 +38,7 @@ function ItemTreePage:init(name, args)
 
     self._args         = args
     self._items        = {} -- flat list of all items by id
+    self._order        = {} -- <<< FIX 1: preserve insertion order
     self._roots        = {} -- ordered root items
     self._flat         = {} -- currently visible lines (in display order)
 
@@ -116,18 +117,16 @@ end
 function ItemTreePage:set_items(items)
     self._items = {}
     self._roots = {}
+    self._order = {}
     local by_id = {}
 
     -- First pass: register items
     for _, item in ipairs(items) do
         item.children = item.children or nil
 
-        if item.children and item.expanded == nil then
-            item.expanded = false
-        end
-
         self._items[item.id] = item
         by_id[item.id] = item
+        table.insert(self._order, item.id)
 
         if not item.parent then
             table.insert(self._roots, item)
@@ -150,10 +149,20 @@ function ItemTreePage:set_items(items)
 end
 
 ---@param item loop.pages.ItemTreePage.Item
-function ItemTreePage:upsert_item(item, exp)
+function ItemTreePage:upsert_item(item)
     assert(item and item.id)
     local old = self._items[item.id]
+
+    if old and old.expanded ~= nil and item.expanded == nil then
+        item.expanded = old.expanded
+    end
+
     self._items[item.id] = item
+
+    if not old then
+        -- new item → maintain insertion order
+        table.insert(self._order, item.id)
+    end
 
     if not old or old.parent ~= item.parent then
         self:set_items(self:get_all_items())
@@ -166,8 +175,8 @@ end
 ---@return loop.pages.ItemTreePage.Item[]
 function ItemTreePage:get_all_items()
     local items = {}
-    for _, item in pairs(self._items) do
-        table.insert(items, item)
+    for _, id in ipairs(self._order) do -- <<< FIX 1: use insertion order
+        table.insert(items, self._items[id])
     end
     return items
 end
