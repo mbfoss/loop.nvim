@@ -199,8 +199,8 @@ local function _on_thread_pause(sess_id, sess_name, event_data, variables_page, 
                                             local var_item = {
                                                 id = scope_item.id .. ':' .. tostring(var_idx),
                                                 parent = scope_item.id,
-                                                data = { variable = var },
                                                 expanded = true,
+                                                data = { variable = var },
                                             }
                                             variables_page:upsert_item(var_item)
                                         end

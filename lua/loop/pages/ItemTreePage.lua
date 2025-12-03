@@ -40,7 +40,7 @@ function ItemTreePage:init(name, args)
     self._items        = {} -- flat list of all items by id
     self._roots        = {} -- ordered root items
     self._flat         = {} -- currently visible lines (in display order)
-    self._expanded     = {} -- id -> true/false
+
     self._trackers     = Trackers:new()
 
     -- Configurable icons/strings
@@ -88,22 +88,17 @@ end
 function ItemTreePage:_rebuild_flat()
     local flat = {}
     local idx = 1
-    local expanded = self._expanded
     local visited = {}
 
     local function visit(item, depth)
-        -- Prevent cycles
         if visited[item] then return end
         visited[item] = true
 
-        -- Insert into flat array
         flat[idx] = { item = item, depth = depth }
         idx = idx + 1
 
-        -- Check expansion: fall back to item itself if item.id is nil
-        local key = item.id or item
-
-        if item.children and expanded[key] then
+        local has_children = item.children and #item.children > 0
+        if has_children and item.expanded then
             for _, child in ipairs(item.children) do
                 visit(child, depth + 1)
             end
@@ -123,12 +118,17 @@ function ItemTreePage:set_items(items)
     self._roots = {}
     local by_id = {}
 
-    -- First pass: register all items
+    -- First pass: register items
     for _, item in ipairs(items) do
         item.children = item.children or nil
-        item.expanded = item.expanded or false
+
+        if item.children and item.expanded == nil then
+            item.expanded = false
+        end
+
         self._items[item.id] = item
         by_id[item.id] = item
+
         if not item.parent then
             table.insert(self._roots, item)
         end
@@ -150,14 +150,13 @@ function ItemTreePage:set_items(items)
 end
 
 ---@param item loop.pages.ItemTreePage.Item
-function ItemTreePage:upsert_item(item)
+function ItemTreePage:upsert_item(item, exp)
     assert(item and item.id)
     local old = self._items[item.id]
     self._items[item.id] = item
 
-    -- Rebuild hierarchy if parent changed or new item
     if not old or old.parent ~= item.parent then
-        self:set_items(self:get_all_items()) -- simple but safe
+        self:set_items(self:get_all_items())
     else
         self:_rebuild_flat()
         self:_refresh_buffer(self:get_buf())
@@ -177,7 +176,7 @@ end
 function ItemTreePage:expand(id)
     local item = self._items[id]
     if item and item.children then
-        self._expanded[id] = true
+        item.expanded = true
         self:_rebuild_flat()
         self:_refresh_buffer(self:get_buf())
     end
@@ -187,7 +186,7 @@ end
 function ItemTreePage:collapse(id)
     local item = self._items[id]
     if item and item.children then
-        self._expanded[id] = false
+        item.expanded = false
         self:_rebuild_flat()
         self:_refresh_buffer(self:get_buf())
     end
@@ -195,10 +194,11 @@ end
 
 ---@param id any
 function ItemTreePage:toggle_expand(id)
-    if self._expanded[id] then
-        self:collapse(id)
-    else
-        self:expand(id)
+    local item = self._items[id]
+    if item and item.children then
+        item.expanded = not item.expanded
+        self:_rebuild_flat()
+        self:_refresh_buffer(self:get_buf())
     end
 end
 
@@ -234,11 +234,12 @@ function ItemTreePage:_refresh_buffer(buf)
     vim.api.nvim_buf_clear_namespace(buf, _ns_id, 0, -1)
 
     local lines = {}
+
     for _, entry in ipairs(self._flat) do
         local item = entry.item
         local depth = entry.depth
         local has_children = item.children and #item.children > 0
-        local is_expanded = has_children and self._expanded[item.id]
+        local is_expanded = has_children and item.expanded
 
         local prefix = self.indent_string:rep(depth)
         if has_children then
@@ -255,21 +256,23 @@ function ItemTreePage:_refresh_buffer(buf)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.bo[buf].modifiable = false
 
-    -- Apply highlights
-    for i, entry in ipairs(self._flat) do
-        local item = entry.item
-        local depth = entry.depth
-        if self._args.highlighter then
+    if self._args.highlighter then
+        for i, entry in ipairs(self._flat) do
+            local item       = entry.item
+            local depth      = entry.depth
             local highlights = self._args.highlighter(item, depth) or {}
-            local line_text = vim.api.nvim_buf_get_lines(buf, i - 1, i, false)[1] or ""
-            local line_len = #line_text
+
+            local line_text  = lines[i]
+            local line_len   = #line_text
+
+            local prefix_len = #self.indent_string * depth + 2
 
             for _, hl in ipairs(highlights) do
-                local start_col = (hl.start_col or 0) + #self.indent_string * depth + (item.children and 4 or 2)
-                local end_col = hl.end_col and (hl.end_col + #self.indent_string * depth + (item.children and 4 or 2)) or
-                line_len
+                local start_col = prefix_len + (hl.start_col or 0)
+                local end_col   = prefix_len + (hl.end_col or line_len)
+
                 start_col = math.max(0, start_col)
-                end_col = math.max(start_col, math.min(end_col, line_len))
+                end_col   = math.min(math.max(start_col, end_col), line_len)
 
                 if start_col < end_col then
                     vim.api.nvim_buf_set_extmark(buf, _ns_id, i - 1, start_col, {
