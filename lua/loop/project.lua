@@ -310,63 +310,80 @@ end
 
 function M.save_project_files()
     assert(_setup_done)
+
     local proj_dir = _get_proj_dir_or_warn()
-    if not proj_dir then
-        return
-    end
-    local dir = proj_dir
+    if not proj_dir then return 0 end
 
-    local silent = false
-
-    -- Normalize input directory
-    dir = vim.fs.normalize(dir or vim.fn.getcwd())
+    local dir = vim.fs.normalize(proj_dir)
     if not dir:match("/$") then dir = dir .. "/" end
 
     local saved = 0
+    local saved_paths = {} -- Collect paths for nice notification
 
     for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-        -- 1. Must be a regular buffer
         if not uitools.is_regular_buffer(bufnr) then goto continue end
-
-        -- 2. Must be modified
         if not vim.bo[bufnr].modified then goto continue end
 
-        -- 3. Must have a real file path
         local path = vim.api.nvim_buf_get_name(bufnr)
         if path == "" then goto continue end
         path = vim.fs.normalize(path)
 
-        -- 4. Must be inside the target directory
         if not vim.startswith(path, dir) then goto continue end
 
-        -- 5. Check: is the file itself a hidden file/folder?
         local basename = vim.fs.basename(path)
-        if basename:match("^%.") then goto continue end -- skip .git, .env, etc.
+        if basename:match("^%.") then goto continue end
 
-        -- 6. Check all parent directories: any hidden?
         local has_hidden_parent = false
         for parent in vim.fs.parents(path) do
-            local parent_name = vim.fs.basename(parent)
-            if parent_name == "" then break end -- reached root
-            if parent_name:match("^%.") then    -- .git, .cache, .venv, etc.
+            local name = vim.fs.basename(parent)
+            if name == "" then break end
+            if name:match("^%.") then
                 has_hidden_parent = true
                 break
             end
         end
-
         if has_hidden_parent then goto continue end
 
-        -- All good → save!
+        -- Save the buffer
         vim.api.nvim_buf_call(bufnr, function()
             vim.cmd("silent! write")
         end)
+
+        -- Store relative path for display
+        local rel = path:sub(#dir + 1)
+        table.insert(saved_paths, rel)
+
         saved = saved + 1
 
         ::continue::
     end
 
-    if not silent and saved > 0 then
-        vim.notify(("%d buffer(s) saved"):format(saved), vim.log.levels.INFO)
+    -- Beautiful notification with preview of saved files
+    if saved > 0 then
+        local max_show = 5
+        local shown = math.min(saved, max_show)
+        local lines = {}
+
+        for i = 1, shown do
+            table.insert(lines, ("  • %s"):format(saved_paths[i]))
+        end
+
+        if saved > max_show then
+            table.insert(lines, ("  … and %d more"):format(saved - max_show))
+        end
+
+        local title = ("Saved %d file%s"):format(saved, saved == 1 and "" or "s")
+
+        vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, {
+            title = title,
+            icon = "Saved",
+            timeout = 4000,
+        })
+    else
+        vim.notify("No modified project files to save", vim.log.levels.INFO, {
+            title = "Save Project",
+            icon = "None",
+        })
     end
 
     return saved
