@@ -1,7 +1,7 @@
 local M = {}
 
 local uitools = require('loop.tools.uitools')
-local project = require('loop.project')
+local projinfo = require("loop.projinfo")
 
 local _nofile_error = "No file: current buffer is not a regular saved file"
 
@@ -50,7 +50,7 @@ function M.filedir()
 end
 
 function M.projdir()
-    local proj_dir = project.get_proj_dir()
+    local proj_dir = projinfo.proj_dir
     if not proj_dir then
         return nil, "No active project"
     end

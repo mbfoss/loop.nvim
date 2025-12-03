@@ -358,19 +358,6 @@ local function _on_window_enter()
 end
 ]] --
 
----@param dir string
-function M.set_project_dir(dir)
-    if dir == _project_dir then return end
-    _project_dir = dir
-    for _, page in ipairs(_tabs.breakpoints.pages) do
-        assert(getmetatable(page) == BreakpointsPage)
-        ---@type loop.pages.BreakpointsPage
-        ---@diagnostic disable-next-line: assign-type-mismatch
-        local p = page
-        p:set_project_dir(dir)
-    end
-end
-
 ---@param lines string[]
 ---@param level nil|"warn"|"error"
 function M.add_events(lines, level)

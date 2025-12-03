@@ -3,6 +3,7 @@ local M = {}
 require("loop.config")
 local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
+local projinfo = require("loop.projinfo")
 local runner = require("loop.runner")
 local uitools = require('loop.tools.uitools')
 local breakpoints = require('loop.dap.breakpoints')
@@ -76,10 +77,10 @@ local function _load_project(dir)
 
     local proj_dir = vim.fn.fnamemodify(dir, ":p")
     _project_dir = proj_dir
+    projinfo.proj_dir = proj_dir
 
     local config_dir = _get_config_dir(proj_dir)
 
-    window.set_project_dir(dir)
     window.load_settings(config_dir)
     breakpoints.load_breakpoints(config_dir)
 

@@ -1,11 +1,10 @@
 local class = require('loop.tools.class')
 local ItemListPage = require('loop.pages.ItemListPage')
 local uitools = require('loop.tools.uitools')
-local breakpoints = require('loop.dap.breakpoints')
+local projinfo = require("loop.projinfo")
 
 ---@class loop.pages.BreakpointsPage : loop.pages.ItemListPage
 ---@field new fun(self: loop.pages.BreakpointsPage, proj_dir:string|nil): loop.pages.BreakpointsPage
----@field _proj_dir string|nil
 local BreakpointsPage = class(ItemListPage)
 
 ---@param bp loop.dap.SourceBreakpoint
@@ -60,7 +59,7 @@ end
   function BreakpointsPage:_update_one(bp, verified)
     if bp.file and bp.line then
         if verified == nil then verified = true end
-        self:set_item(_format_item(bp, verified, self._proj_dir))
+        self:set_item(_format_item(bp, verified, projinfo.proj_dir))
     end
 end
 
@@ -85,11 +84,8 @@ end
     self:_update_one(bp, verified)
 end
 
----@param proj_dir string|nil
-function BreakpointsPage:init(proj_dir)
+function BreakpointsPage:init()
     ItemListPage.init(self, "Breakpoints")
-
-    self._proj_dir = proj_dir
 
     self:add_tracker({
         on_selection = function (item)
@@ -106,17 +102,6 @@ function BreakpointsPage:init(proj_dir)
         on_removed = function (bp) self:_on_removed(bp) end,
         on_all_removed = function (bpts) self:_on_all_removed(bpts) end,
     })    
-end
-
----@param dir string
-function BreakpointsPage:set_project_dir(dir)
-    if dir ~= self._proj_dir then
-        self._proj_dir = dir
-        breakpoints.for_each(function (bp)
-            self:_update_one(bp)
-        end)
-        self:refresh_content()
-    end
 end
 
 return BreakpointsPage
