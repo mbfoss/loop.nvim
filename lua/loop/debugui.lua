@@ -170,38 +170,58 @@ end
 ---@param thread_data loop.dap.session.notify.ThreadData
 ---@param variables_page loop.pages.ItemTreePage
 local function _load_scopes(scopes, thread_data, variables_page)
-    local function load_variables(ref, parent_id)
-            thread_data.variables_provider({ variablesReference = ref },
-                function(_, vars_data)
-                    if vars_data then
-                        for var_idx, var in ipairs(vars_data.variables) do
-                            local id = parent_id .. ':' .. tostring(var_idx)
-                            ---@type loop.pages.ItemTreePage.Item
-                            local var_item = {
-                                id = id,
-                                parent = parent_id,
-                                expanded = true,
-                                data = { variable = var },
-                            }
-                            variables_page:upsert_item(var_item)
-                            ---if var.variablesReference then
-                            ---    load_variables(var.variablesReference, id)
-                            ---end
+    ---@param ref number
+    ---@param parent_id string
+    ---@param callback fun(items:loop.pages.ItemTreePage.Item[])
+    local function load_variables(ref, parent_id, callback)
+        thread_data.variables_provider({ variablesReference = ref },
+            function(_, vars_data)
+                local children = {}
+                if vars_data then
+                    for var_idx, var in ipairs(vars_data.variables) do
+                        local id = parent_id .. ':' .. tostring(var_idx)
+                        ---@type loop.pages.ItemTreePage.Item
+                        local var_item = {
+                            id = "v:" .. tostring(id),
+                            parent = parent_id,
+                            expanded = true,
+                            data = { variable = var },
+                        }
+                        if var.variablesReference and var.variablesReference > 0 then
+                            var_item.expanded = false
+                            var_item.children = function(cb)
+                                load_variables(var.variablesReference, id, cb)
+                            end
                         end
+                        table.insert(children, var_item)
                     end
-                end)
-        
+                end
+                callback(children)
+            end)
     end
+
     for scope_idx, scope in ipairs(scopes) do
-        if scope.presentationHint ~= "globals" and scope.name ~= "Globals" then
-            ---@type loop.pages.ItemTreePage.Item
-            local scope_item = {
-                id = tostring(scope_idx),
-                expanded = true,
-                data = { text = scope.name }
-            }
+        ---@type loop.pages.ItemTreePage.Item
+        local scope_item = {
+            id = "s: " .. tostring(scope_idx),
+            expanded = true,
+            data = { text = scope.name }
+        }
+        if scope.presentationHint ~= "globals" and
+            scope.name ~= "Globals" and
+            scope.presentationHint ~= "registers" then
             variables_page:upsert_item(scope_item)
-            load_variables(scope.variablesReference, scope_item.id)
+            load_variables(scope.variablesReference, scope_item.id, function(items)
+                for _, item in ipairs(items) do
+                    variables_page:upsert_item(item)
+                end
+            end)
+        else
+            scope_item.expanded = false
+            scope_item.children = function(cb)
+                load_variables(scope.variablesReference, scope_item.id, cb)
+            end
+            variables_page:upsert_item(scope_item)
         end
     end
 end
@@ -239,9 +259,13 @@ end
 
 ---@param sess_id number
 ---@param sess_name string
+---@param variables_page loop.pages.ItemTreePage|nil
 ---@param stacktrace_page loop.pages.StackTracePage|nil
-local function _on_thread_continue(sess_id, sess_name, stacktrace_page)
+local function _on_thread_continue(sess_id, sess_name, variables_page, stacktrace_page)
     signs.remove_signs("currentframe")
+    if variables_page then
+        variables_page:set_items({})
+    end
     if stacktrace_page then
         stacktrace_page:clear_content()
     end
@@ -321,7 +345,7 @@ function M.track_new_debugjob(task_name)
             page:assign_buf(bufnr)
             window.add_page("debugoutput", page)
         end,
-        on_thread_pause = function(sess_id, sess_name, event_data)
+        on_thread_pause = function(sess_id, sess_name, thread_data)
             ---@type loop.pages.ItemTreePage|nil
             local variable_page = variable_pages[sess_id]
             ---@type loop.pages.StackTracePage|nil
@@ -330,7 +354,7 @@ function M.track_new_debugjob(task_name)
             if not variable_page then
                 variable_page = ItemTreePage:new(sess_name, {
                     formatter = _variable_node_formatter,
-                    highlighter = _variable_node_highlighter
+                    highlighter = _variable_node_highlighter,
                 })
                 window.add_page("variables", variable_page)
                 variable_pages[sess_id] = variable_page
@@ -342,12 +366,14 @@ function M.track_new_debugjob(task_name)
                 stacktrace_pages[sess_id] = stacktrace_page
             end
 
-            _on_thread_pause(sess_id, sess_name, event_data, variable_page, stacktrace_page)
+            _on_thread_pause(sess_id, sess_name, thread_data, variable_page, stacktrace_page)
         end,
         on_thread_continue = function(sess_id, sess_name)
+            ---@type loop.pages.ItemTreePage|nil
+            local variables_page = variable_pages[sess_id]
             ---@type loop.pages.StackTracePage|nil
             local stacktrace_page = stacktrace_pages[sess_id]
-            _on_thread_continue(sess_id, sess_name, stacktrace_page)
+            _on_thread_continue(sess_id, sess_name, variables_page, stacktrace_page)
         end,
 
         on_breakpoint_event = _on_session_breakpoints_event,
