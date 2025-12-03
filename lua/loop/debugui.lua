@@ -166,6 +166,46 @@ local function _on_session_breakpoints_event(sess_id, session, event)
     end
 end
 
+---@param scopes loop.dap.proto.Scope[]
+---@param thread_data loop.dap.session.notify.ThreadData
+---@param variables_page loop.pages.ItemTreePage
+local function _load_scopes(scopes, thread_data, variables_page)
+    local function load_variables(ref, parent_id)
+            thread_data.variables_provider({ variablesReference = ref },
+                function(_, vars_data)
+                    if vars_data then
+                        for var_idx, var in ipairs(vars_data.variables) do
+                            local id = parent_id .. ':' .. tostring(var_idx)
+                            ---@type loop.pages.ItemTreePage.Item
+                            local var_item = {
+                                id = id,
+                                parent = parent_id,
+                                expanded = true,
+                                data = { variable = var },
+                            }
+                            variables_page:upsert_item(var_item)
+                            ---if var.variablesReference then
+                            ---    load_variables(var.variablesReference, id)
+                            ---end
+                        end
+                    end
+                end)
+        
+    end
+    for scope_idx, scope in ipairs(scopes) do
+        if scope.presentationHint ~= "globals" and scope.name ~= "Globals" then
+            ---@type loop.pages.ItemTreePage.Item
+            local scope_item = {
+                id = tostring(scope_idx),
+                expanded = true,
+                data = { text = scope.name }
+            }
+            variables_page:upsert_item(scope_item)
+            load_variables(scope.variablesReference, scope_item.id)
+        end
+    end
+end
+
 ---@param sess_id number
 ---@param sess_name string
 ---@param event_data loop.dap.session.notify.ThreadData
@@ -185,33 +225,8 @@ local function _on_thread_pause(sess_id, sess_name, event_data, variables_page, 
         -- handle scopes/variable
         if curframe then
             event_data.scopes_provider({ frameId = curframe.id }, function(_, scopes_data)
-                if scopes_data then
-                    for scope_idx, scope in ipairs(scopes_data.scopes) do
-                        if scope.presentationHint ~= "globals" and scope.name ~= "Globals" then
-                            ---@type loop.pages.ItemTreePage.Item
-                            local scope_item = {
-                                id = tostring(scope_idx),
-                                expanded = true,
-                                data = { text = scope.name }
-                            }
-                            variables_page:upsert_item(scope_item)
-                            event_data.variables_provider({ variablesReference = scope.variablesReference },
-                                function(_, vars_data)
-                                    if vars_data then
-                                        for var_idx, var in ipairs(vars_data.variables) do
-                                            ---@type loop.pages.ItemTreePage.Item
-                                            local var_item = {
-                                                id = scope_item.id .. ':' .. tostring(var_idx),
-                                                parent = scope_item.id,
-                                                expanded = true,
-                                                data = { variable = var },
-                                            }
-                                            variables_page:upsert_item(var_item)
-                                        end
-                                    end
-                                end)
-                        end
-                    end
+                if scopes_data and scopes_data.scopes then
+                    _load_scopes(scopes_data.scopes, event_data, variables_page)
                 end
             end)
         end
