@@ -363,7 +363,7 @@ function M.save_project_files()
     if saved > 0 then
         local max_show = 5
         local shown = math.min(saved, max_show)
-        local lines = {}
+        local lines = { ("Saved %d file%s"):format(saved, saved == 1 and "" or "s") }
 
         for i = 1, shown do
             table.insert(lines, ("  • %s"):format(saved_paths[i]))
@@ -373,10 +373,7 @@ function M.save_project_files()
             table.insert(lines, ("  … and %d more"):format(saved - max_show))
         end
 
-        local title = ("Saved %d file%s"):format(saved, saved == 1 and "" or "s")
-
         vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, {
-            title = title,
             icon = "Saved",
             timeout = 4000,
         })
