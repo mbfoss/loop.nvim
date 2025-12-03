@@ -8,15 +8,40 @@ local uitools = require('loop.tools.uitools')
 ---@field new fun(self: loop.pages.StackTracePage, name:string): loop.pages.StackTracePage
 local StackTracePage = class(ItemListPage)
 
+---@param item loop.pages.ItemListPage.Item
+local function _item_formatter(item)
+    if item.data.text then return item.data.text end
+    local frame = item.data.frame
+    if not frame then return "no frame data" end
+    local parts = { tostring(frame.id) }
+    table.insert(parts, ": ")
+    table.insert(parts, tostring(frame.name))
+    if frame.source and frame.source.name then
+        table.insert(parts, " - ")
+        table.insert(parts, tostring(frame.source.name))
+        if frame.line then
+            table.insert(parts, ":")
+            table.insert(parts, tostring(frame.line))
+            if frame.column then
+                table.insert(parts, ":")
+                table.insert(parts, tostring(frame.column))
+            end
+        end
+    end
+    return table.concat(parts, '')
+end
+
 ---@param name string
 function StackTracePage:init(name)
-    ItemListPage.init(self, name)
+    ItemListPage.init(self, name, {
+        formatter = _item_formatter
+    })
 
     self:add_tracker({
         on_selection = function(item)
             if item and item.data then
                 if item.id == 0 then
-                    self:_select_n_load_stacktrace(item.data)
+                    self:_select_n_load_stacktrace(item.data.thread_data)
                 else
                     ---@type loop.dap.proto.StackFrame
                     local frame = item.data
@@ -55,7 +80,7 @@ function StackTracePage:set_content(data)
     if not data.thread_id then
         return
     end
-    self:set_items({ { id = 0, text = "Loading stack trace..." } })
+    self:set_items({ { id = 0, data = { text = "Loading stack trace..." } } })
     data.stack_provider({
             threadId = data.thread_id,
             levels = config.current.debug.stack_levels_limit or 100,
@@ -67,28 +92,12 @@ function StackTracePage:set_content(data)
             end
             local items = { {
                 id = 0,
-                text = text,
-                data = data
+                data = { text = text, thread_data = data }
             } }
             if resp then
                 for idx, frame in ipairs(resp.stackFrames) do
-                    local parts = { tostring(frame.id) }
-                    table.insert(parts, ": ")
-                    table.insert(parts, tostring(frame.name))
-                    if frame.source and frame.source.name then
-                        table.insert(parts, " - ")
-                        table.insert(parts, tostring(frame.source.name))
-                        if frame.line then
-                            table.insert(parts, ":")
-                            table.insert(parts, tostring(frame.line))
-                            if frame.column then
-                                table.insert(parts, ":")
-                                table.insert(parts, tostring(frame.column))
-                            end
-                        end
-                    end
                     ---@type loop.pages.ItemListPage.Item
-                    local item = { id = idx, text = table.concat(parts, ''), data = frame }
+                    local item = { id = idx, data = { frame = frame } }
                     table.insert(items, item)
                 end
             end

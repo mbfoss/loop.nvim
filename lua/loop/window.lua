@@ -39,15 +39,13 @@ local _tabs = {
     ---@type loop.TabInfo
     tasks = { index = 3, label = "Task", pages = {}, list_prefix = "Task - " },
     ---@type loop.TabInfo
-    debug_sessions = { index = 4, label = "Debug Sessions", pages = {} },
+    debug_output = { index = 4, label = "Debug Console", pages = {}, list_prefix = "Debug Console - " },
     ---@type loop.TabInfo
-    debug_output = { index = 5, label = "Debug Console", pages = {}, list_prefix = "Debug Console - " },
+    threads = { index = 5, label = "Threads", pages = {}, list_prefix = "Threads - " },
     ---@type loop.TabInfo
-    threads = { index = 6, label = "Threads", pages = {}, list_prefix = "Threads - " },
+    stacktrace = { index = 6, label = "Call Stack", pages = {}, list_prefix = "Call Stack - " },
     ---@type loop.TabInfo
-    stacktrace = { index = 7, label = "Call Stack", pages = {}, list_prefix = "Call Stack - " },
-    ---@type loop.TabInfo
-    variables = { index = 8, label = "Variables", pages = {}, list_prefix = "Variables - " },
+    variables = { index = 7, label = "Variables", pages = {}, list_prefix = "Variables - " },
 }
 
 local _tabs_arr = (function()
@@ -429,21 +427,18 @@ end
 
 function M.remove_task_pages()
     _delete_tab_pages(_tabs.tasks)
-    _delete_tab_pages(_tabs.debug_sessions)
     _delete_tab_pages(_tabs.debug_output)
     _delete_tab_pages(_tabs.stacktrace)
     _delete_tab_pages(_tabs.variables)
 end
 
----@param type "task"|"debugsession"|"debugoutput"|"stacktrace"|"variables"
+---@param type "task"|"debugoutput"|"stacktrace"|"variables"
 ---@param page loop.pages.Page
 function M.add_page(type, page)
     assert(setup_done)
     local tab
     if type == "task" then
         tab = _tabs.tasks
-    elseif type == "debugsession" then
-        tab = _tabs.debug_sessions
     elseif type == "debugoutput" then
         tab = _tabs.debug_output
     elseif type == "stacktrace" then

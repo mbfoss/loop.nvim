@@ -7,11 +7,11 @@ local projinfo = require("loop.projinfo")
 ---@field new fun(self: loop.pages.BreakpointsPage, proj_dir:string|nil): loop.pages.BreakpointsPage
 local BreakpointsPage = class(ItemListPage)
 
----@param bp loop.dap.SourceBreakpoint
----@param verified boolean
----@param proj_dir string
----@return loop.pages.ItemListPage.Item
-local function _format_item(bp, verified, proj_dir)
+---@param item loop.pages.ItemListPage.Item
+local function _item_formatter(item)
+    ---@type loop.dap.SourceBreakpoint
+    local bp = item.data.bp
+    local verified = item.data.verified
     local symbol = verified and "●" or "○"
     if bp.logMessage and bp.logMessage ~= "" then
         symbol = "▶" -- logpoint
@@ -24,8 +24,8 @@ local function _format_item(bp, verified, proj_dir)
     end
 
     local file = bp.file
-    if proj_dir then
-        file = vim.fs.relpath(proj_dir, file) or file
+    if projinfo.proj_dir then
+        file = vim.fs.relpath(projinfo.proj_dir, file) or file
     end
 
     local parts = { symbol }
@@ -43,28 +43,50 @@ local function _format_item(bp, verified, proj_dir)
     if bp.logMessage and bp.logMessage ~= "" then
         table.insert(parts, " | log: " .. bp.logMessage:gsub("\n", " "))
     end
+    return table.concat(parts, '')
+end
 
+
+---@param item loop.pages.ItemListPage.Item
+---@return loop.pages.ItemListPage.Highlight[]
+local function _item_highlighter(item)
+    ---@type loop.dap.SourceBreakpoint
+    local bp = item.data.bp
+    local len = 1
+    if bp.logMessage and bp.logMessage ~= "" then
+        len = len + 1
+    end
+    if bp.condition and bp.condition ~= "" then
+        len = len + 1
+    end
+    if bp.hitCondition and bp.hitCondition ~= "" then
+        len = len + 1
+    end
+
+    local file = bp.file
+    if projinfo.proj_dir then
+        file = vim.fs.relpath(projinfo.proj_dir, file) or file
+    end
     ---@type loop.pages.ItemListPage.Highlight
     local highlight = {
         start_col = 0,
-        end_col = #symbol,
+        end_col = len,
         group = "Debug"
     }
-    ---@type loop.pages.ItemListPage.Item
-    return { id = bp.id, data = bp,  text = table.concat(parts, ''), highlights = {highlight} }
+    return { highlight }
 end
 
 ---@param bp loop.dap.SourceBreakpoint
 ---@param verified boolean|nil
-  function BreakpointsPage:_update_one(bp, verified)
+function BreakpointsPage:_update_one(bp, verified)
     if bp.file and bp.line then
         if verified == nil then verified = true end
-        self:set_item(_format_item(bp, verified, projinfo.proj_dir))
+        self:upsert_item({ id = bp.id, data = { bp = bp, verified = verified } })
     end
 end
 
 ---@param bp loop.dap.SourceBreakpoint
-  function BreakpointsPage:_on_added(bp)
+function BreakpointsPage:_on_added(bp)
     self:_update_one(bp)
 end
 
@@ -74,34 +96,37 @@ function BreakpointsPage:_on_removed(bp)
 end
 
 ---@param bpts loop.dap.SourceBreakpoint[]
-  function BreakpointsPage:_on_all_removed(bpts)
+function BreakpointsPage:_on_all_removed(bpts)
     self:set_items({})
 end
 
 ---@param bp loop.dap.SourceBreakpoint
 ---@param verified boolean|nil
-  function BreakpointsPage:update_verification(bp, verified)
+function BreakpointsPage:update_verification(bp, verified)
     self:_update_one(bp, verified)
 end
 
 function BreakpointsPage:init()
-    ItemListPage.init(self, "Breakpoints")
+    ItemListPage.init(self, "Breakpoints", {
+        formatter = _item_formatter,
+        highlighter = _item_highlighter,
+    })
 
     self:add_tracker({
-        on_selection = function (item)
+        on_selection = function(item)
             if item then
                 ---@type loop.dap.SourceBreakpoint
-                local bp = item.data
+                local bp = item.data.bp
                 uitools.smart_open_file(bp.file, bp.line, bp.column)
             end
         end
     })
 
     require('loop.dap.breakpoints').add_tracker({
-        on_added = function (bp) self:_update_one(bp) end,
-        on_removed = function (bp) self:_on_removed(bp) end,
-        on_all_removed = function (bpts) self:_on_all_removed(bpts) end,
-    })    
+        on_added = function(bp) self:_update_one(bp) end,
+        on_removed = function(bp) self:_on_removed(bp) end,
+        on_all_removed = function(bpts) self:_on_all_removed(bpts) end,
+    })
 end
 
 return BreakpointsPage

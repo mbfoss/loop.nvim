@@ -9,17 +9,20 @@ local Trackers = require("loop.tools.Trackers")
 
 ---@class loop.pages.ItemListPage.Item
 ---@field id any
----@field text string
 ---@field data any
----@field highlights loop.pages.ItemListPage.Highlight[]|nil
 
 ---@class loop.pages.ItemListPage.TrackerCallbacks
 ---@field on_selection fun(item:loop.pages.ItemListPage.Item|nil)
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 
+---@class loop.pages.ItemListPageInitArgs
+---@field formatter fun(item:loop.pages.ItemListPage.Item):string
+---@field highlighter nil|fun(item:loop.pages.ItemListPage.Item):loop.pages.ItemListPage.Highlight[]
+
 ---@class loop.pages.ItemListPage : loop.pages.Page
----@field new fun(self: loop.pages.ItemListPage, name:string): loop.pages.ItemListPage
+---@field new fun(self: loop.pages.ItemListPage, name:string, args:loop.pages.ItemListPageInitArgs): loop.pages.ItemListPage
+---@field _args loop.pages.ItemListPageInitArgs
 ---@field _items loop.pages.ItemListPage.Item[]
 ---@field _index table<any,number>
 ---@field _select_handler fun(item:loop.pages.ItemListPage.Item|nil)
@@ -27,8 +30,11 @@ local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 local ItemListPage = class(Page)
 
 ---@param name string
-function ItemListPage:init(name)
+---@param args loop.pages.ItemListPageInitArgs
+function ItemListPage:init(name, args)
+    assert(args.formatter)
     Page.init(self, "list", name)
+    self._args = args
     self._items = {}
     self._index = {}
     self._trackers = Trackers:new()
@@ -66,8 +72,8 @@ function ItemListPage:set_items(items)
 end
 
 ---@param item loop.pages.ItemListPage.Item
-function ItemListPage:set_item(item)
-    assert(item and item.id and item.text and type(item.text) == "string")
+function ItemListPage:upsert_item(item)
+    assert(item and item.id and item.data)
     local pos = self._index[item.id] or (#self._items + 1)
     self._items[pos] = item
     self._index[item.id] = pos
@@ -76,7 +82,7 @@ function ItemListPage:set_item(item)
     if buf == -1 then return end
 
     local lines = {}
-    lines[1] = item.text:gsub("\n", " ")
+    lines[1] = self._args.formatter(item):gsub("\n", " ")
 
     vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, pos - 1, pos, false, lines)
@@ -162,9 +168,13 @@ function ItemListPage:_highlight(from, to)
     -- set extmarks
     for idx = from, to do
         local item = self._items[idx]
-        if item.highlights then
-            for _, hl in ipairs(item.highlights) do
-                local endcol = math.min(hl.end_col, #item.text)
+        local highlights
+        if self._args.highlighter then
+            highlights = self._args.highlighter(item)
+        end
+        if highlights then
+            for _, hl in ipairs(highlights) do
+                local endcol = hl.end_col
                 vim.api.nvim_buf_set_extmark(self._buf, _ns_id, idx - 1, hl.start_col, {
                     end_col = endcol,
                     hl_group = hl.group,
@@ -188,7 +198,7 @@ function ItemListPage:_refresh_buffer(buf)
     -- build lines
     local lines = {}
     for _, item in ipairs(self._items) do
-        lines[#lines + 1] = item.text:gsub("\n", " ")
+        lines[#lines + 1] = self._args.formatter(item):gsub("\n", " ")
     end
 
     -- update buffer
@@ -200,7 +210,7 @@ function ItemListPage:_refresh_buffer(buf)
 end
 
 function ItemListPage:refresh_content()
-    self:_refresh_buffer(self:get_buf())    
+    self:_refresh_buffer(self:get_buf())
 end
 
 return ItemListPage

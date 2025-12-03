@@ -33,7 +33,7 @@ local function _get_breakpoint_sign(bp, verified)
         sign = verified and "conditional_breakpoint" or "conditional_breakpoint_inactive"
     else
         sign = verified and "active_breakpoint" or "inactive_breakpoint"
-    end    
+    end
     return sign
 end
 
@@ -80,11 +80,16 @@ end
 ---@param sess_id number
 ---@param sess_name string
 ---@param parent_id number|nil
----@param task_page loop.pages.OutputPage
----@param sessions_page loop.pages.ItemTreePage
-local function _on_session_added(sess_id, sess_name, parent_id, task_page, sessions_page)
-    sessions_page:upsert_item({ id = sess_id, text = sess_name }, parent_id)
-    task_page:add_line("[" .. sess_name .. "] debug session created")
+---@param task_page loop.pages.ItemListPage
+local function _on_session_added(sess_id, sess_name, parent_id, task_page)
+    
+    task_page:upsert_item({
+        id = sess_id,
+        data = {
+            name = sess_name,
+            state = 'starting'
+        }
+    })
 
     for _, data in pairs(_breakpoints_data) do
         data.states = data.states or {}
@@ -95,10 +100,9 @@ end
 
 ---@param sess_id number
 ---@param sess_name string
----@param task_page loop.pages.OutputPage
----@param sessions_page loop.pages.ItemTreePage
-local function _on_session_removed(sess_id, sess_name, task_page, sessions_page)
-    sessions_page:remove_item(sess_id)
+---@param task_page loop.pages.ItemListPage
+local function _on_session_removed(sess_id, sess_name, task_page)
+    task_page:remove_item(sess_id)
     for _, data in pairs(_breakpoints_data) do
         if data.states then
             data.states[sess_id] = nil
@@ -110,10 +114,13 @@ end
 ---@param sess_id number
 ---@param sess_name string
 ---@param data loop.dap.session.notify.StateData
----@param task_page loop.pages.OutputPage
+---@param task_page loop.pages.ItemListPage
 ---@param stacktrace_page loop.pages.StackTracePage|nil
 local function _on_session_state_update(sess_id, sess_name, data, task_page, stacktrace_page)
-    task_page:add_line("[" .. sess_name .. "] " .. data.state)
+    local item = task_page:get_item(sess_id)
+    if item then
+        item.data.state = data.state
+    end
     if data.state == "ended" then
         signs.remove_signs("currentframe")
         if stacktrace_page then
@@ -200,18 +207,23 @@ local function _on_thread_continue(sess_id, sess_name, stacktrace_page)
     end
 end
 
+---@param item loop.pages.ItemListPage.Item
+function _debug_session_item_formatter(item)
+    return item.data.name .. ' - ' .. item.data.state
+end
+
 ---@param task_name string -- task name
 ---@return loop.job.debugjob.Tracker
 function M.track_new_debugjob(task_name)
     assert(_setup_done)
     assert(type(task_name) == "string")
 
-    ---@type loop.pages.OutputPage
-    local task_page = OutputPage:new(task_name)
+    ---@type loop.pages.ItemListPage
+    local task_page = ItemListPage:new(task_name, {
+        formatter = _debug_session_item_formatter
+    })
     window.add_page("task", task_page)
 
-    local sessionspage = ItemTreePage:new("Debug sessions")
-    window.add_page("debugsession", sessionspage)
     created = true
 
     local output_pages = {}
@@ -220,14 +232,11 @@ function M.track_new_debugjob(task_name)
 
     ---@type loop.job.debugjob.Tracker
     local tracker = {
-        on_trace = function(text, level)
-            task_page:add_line(text, level)
-        end,
         on_sess_added = function(id, name, parent_id)
-            _on_session_added(id, name, parent_id, task_page, sessionspage)
+            _on_session_added(id, name, parent_id, task_page)
         end,
         on_sess_removed = function(id, name)
-            _on_session_removed(id, name, task_page, sessionspage)
+            _on_session_removed(id, name, task_page)
         end,
         on_sess_state = function(sess_id, name, data)
             local stacktrace_page = stacktrace_pages[sess_id]

@@ -9,7 +9,6 @@ local TermProc = require('loop.tools.TermProc')
 
 ---@class loop.job.debugjob.Tracker
 ---@field on_exit fun(code : number)|nil
----@field on_trace fun(text:string,level:"error"|"warn"|nil)|nil
 ---@field on_sess_added fun(id:number,name:string, parent_id:number)|nil
 ---@field on_sess_removed fun(id:number, name:string)|nil
 ---@field on_sess_state fun(id:number, name:string, data:loop.dap.session.notify.StateData)|nil
@@ -123,10 +122,7 @@ function DebugJob:_session_exit_handler(session_id, code)
             local session = self._sessions[session_id]
             self._trackers:invoke("on_sess_removed", session_id, session:name())
             self._sessions[session_id] = nil
-
-            self._trackers:invoke("on_trace",
-                "[" .. tostring(session:name()) .. "] debugger exited (code " .. tostring(code) .. ")")
-
+            self:add_debug_output(session_id, session:name(), "log", "Debug session ended")
             if next(self._sessions) == nil then
                 self._trackers:invoke("on_exit", code)
             end
@@ -135,11 +131,12 @@ function DebugJob:_session_exit_handler(session_id, code)
 end
 
 ---@param command loop.job.DebugJob.Command|nil
+---@return boolean,string|nil
 function DebugJob:debug_command(command)
     local active_session = 1 -- TODO: make this selectable from the UI
     local session = self._sessions[active_session]
     if not session then
-        return
+        return false, "no active sessions"
     end
     if command == 'continue' then
         for _, s in pairs(self._sessions) do
@@ -158,8 +155,9 @@ function DebugJob:debug_command(command)
             s:debug_terminate()
         end
     else
-        self._trackers:invoke("on_trace", 'loop.nvim: Invalid debug command: ' .. tostring(command), "error")
+        return false, "Invalid debug command: " .. tostring(command)
     end
+    return true
 end
 
 ---@param sess_id number
@@ -170,7 +168,9 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
     if event == "trace" then
         ---@type loop.dap.session.notify.Trace
         local trace = event_data
-        self._trackers:invoke("on_trace", "[" .. tostring(session:name()) .. "] " .. (trace.text or ""), trace.level)
+        local text = trace.text
+        if trace.level then text = trace.level .. ": " .. trace.text end
+        self:add_debug_output(sess_id, session:name(), "log", text)
         return
     end
     if event == "state" then
@@ -182,13 +182,8 @@ function DebugJob:_on_session_event(sess_id, session, event, event_data)
     if event == "output" then
         ---@type loop.dap.proto.OutputEvent
         local output = event_data
-        if output.category == "stdout" or output.category == "stderr" then
-            self:add_debug_output(sess_id, session:name(), output.category, output.output)
-        elseif output.category == "console" then
-            self._trackers:invoke("on_trace", "[" .. tostring(session:name()) .. "] " .. tostring(output.output))
-        elseif output.category ~= "telemetry" then
-            self._trackers:invoke("on_trace",
-                "[" .. tostring(session:name()) .. "] (" .. tostring(output.category) .. ") " .. tostring(output.output))
+        if output.category ~= "telemetry" then
+            self:add_debug_output(sess_id, session:name(), tostring(output.category), tostring(output.output))
         end
         return
     end

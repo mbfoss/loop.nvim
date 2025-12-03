@@ -149,7 +149,7 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "select", "add_tool", "add_app", "add_vimcmd", "add_debug", "configure", "run", "repeat", "terminate",
+        return { "select", "repeat", "add_tool", "add_app", "add_vimcmd", "add_debug", "configure", "terminate",
             "ext" }
     elseif #args == 1 and args[1] == 'ext' then
         return extensions.ext_names()
@@ -211,8 +211,6 @@ function M.task_command(command, arg1, arg2)
     elseif command == "configure" then
         taskmgr.open_task_config(config_dir)
     elseif command == "select" then
-        taskmgr.run_task(proj_dir, config_dir, "task")
-    elseif command == "run" then
         taskmgr.run_task(proj_dir, config_dir, "task")
     elseif command == "repeat" then
         taskmgr.run_task(proj_dir, config_dir, "repeat")
@@ -376,11 +374,6 @@ function M.save_project_files()
         vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, {
             icon = "Saved",
             timeout = 4000,
-        })
-    else
-        vim.notify("No modified project files to save", vim.log.levels.INFO, {
-            title = "Save Project",
-            icon = "None",
         })
     end
 
