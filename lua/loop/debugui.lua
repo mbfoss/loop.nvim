@@ -190,7 +190,7 @@ local function _on_thread_pause(sess_id, sess_name, event_data, variables_page, 
                         if scope.presentationHint ~= "globals" and scope.name ~= "Globals" then
                             ---@type loop.pages.ItemTreePage.Item
                             local scope_item = { id = tostring(scope_idx), data = { text = scope.name } }
-                            variables_page:upsert_item(scope_item, nil)
+                            variables_page:upsert_item(scope_item)
                             event_data.variables_provider({ variablesReference = scope.variablesReference },
                                 function(_, vars_data)
                                     if vars_data then
@@ -198,9 +198,11 @@ local function _on_thread_pause(sess_id, sess_name, event_data, variables_page, 
                                             ---@type loop.pages.ItemTreePage.Item
                                             local var_item = {
                                                 id = scope_item.id .. ':' .. tostring(var_idx),
-                                                data = { variable = var }
+                                                parent = scope_item.id,
+                                                data = { variable = var },
+                                                expanded = true,
                                             }
-                                            variables_page:upsert_item(var_item, scope_item.id)
+                                            variables_page:upsert_item(var_item)
                                         end
                                     end
                                 end)
@@ -248,8 +250,8 @@ function _variable_node_highlighter(item)
     if item.data.text then
         return nil
     end
-    ---@type loop.dap.proto.Variable
-    local var = item.data.variable
+    -----@type loop.dap.proto.Variable
+    --local var = item.data.variable
     return {}
 end
 
