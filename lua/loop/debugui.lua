@@ -9,10 +9,20 @@ local ItemListPage      = require('loop.pages.ItemListPage')
 local ItemTreePage      = require('loop.pages.ItemTreePage')
 local StackTracePage    = require('loop.pages.StackTracePage')
 local uitools           = require('loop.tools.uitools')
+local Trackers          = require('loop.tools.Trackers')
 
 local M                 = {}
 
 local _setup_done       = false
+
+---@class loop.debugui.TrackerCallbacks
+---@field on_bp_added fun(bp:loop.dap.SourceBreakpoint, verified:boolean)|nil
+---@field on_bp_removed fun(bp:loop.dap.SourceBreakpoint)|nil
+---@field on_all_bp_removed fun(bpts:loop.dap.SourceBreakpoint[])|nil
+---@field on_bp_state_update fun(bp:loop.dap.SourceBreakpoint, verified:boolean)
+
+---@type loop.tools.Trackers<loop.debugui.TrackerCallbacks>
+local _trackers         = Trackers:new()
 
 ---@class loop.debug_ui.Breakpointata
 ---@field breakpoint loop.dap.SourceBreakpoint
@@ -38,7 +48,8 @@ local function _get_breakpoint_sign(bp, verified)
 end
 
 ---@param data loop.debug_ui.Breakpointata
-local function _refresh_breakpoint_sign(data)
+---@@return boolean
+local function _get_breakpoint_state(data)
     local verified = nil
     if data.states then
         for _, state in ipairs(data.states) do
@@ -46,8 +57,15 @@ local function _refresh_breakpoint_sign(data)
         end
     end
     if verified == nil then verified = true end
+    return verified
+end
+
+---@param data loop.debug_ui.Breakpointata
+local function _refresh_breakpoint_sign(data)
+    local verified = _get_breakpoint_state(data)
     local sign = _get_breakpoint_sign(data.breakpoint, verified)
     signs.place_file_sign(data.breakpoint.file, data.breakpoint.line, "breakpoints", sign)
+    _trackers:invoke("on_bp_state_update", data.breakpoint, verified)
 end
 
 ---@param bp loop.dap.SourceBreakpoint
@@ -57,12 +75,14 @@ local function _on_breakpoint_added(bp)
     }
     local sign = _get_breakpoint_sign(bp, true)
     signs.place_file_sign(bp.file, bp.line, "breakpoints", sign)
+    _trackers:invoke("on_bp_added", bp, true)
 end
 
 ---@param bp loop.dap.SourceBreakpoint
 local function _on_breakpoint_removed(bp)
     _breakpoints_data[bp.id] = nil
     signs.remove_file_sign(bp.file, bp.line, "breakpoints")
+    _trackers:invoke("on_bp_removed", bp)
 end
 
 ---@param removed loop.dap.SourceBreakpoint[]
@@ -75,6 +95,7 @@ local function _on_all_breakpoints_removed(removed)
     for file, _ in pairs(files) do
         signs.remove_file_signs(file, "breakpoints")
     end
+    _trackers:invoke("on_all_bp_removed", removed)
 end
 
 ---@param sess_id number
@@ -82,7 +103,6 @@ end
 ---@param parent_id number|nil
 ---@param task_page loop.pages.ItemListPage
 local function _on_session_added(sess_id, sess_name, parent_id, task_page)
-    
     task_page:upsert_item({
         id = sess_id,
         data = {
@@ -291,6 +311,26 @@ function M.track_new_debugjob(task_name)
         end
     }
     return tracker
+end
+
+---@param callbacks loop.debugui.TrackerCallbacks
+---@return number
+function M.add_tracker(callbacks)
+    local tracker_id = _trackers:add_tracker(callbacks)
+    --initial snapshot
+    if callbacks.on_bp_added then
+        for _, data in pairs(_breakpoints_data) do
+            local verified = _get_breakpoint_state(data)
+            callbacks.on_bp_added(data.breakpoint, verified)
+        end
+    end
+    return tracker_id
+end
+
+---@param id number
+---@return boolean
+function M.remove_tracker(id)
+    return _trackers:remove_tracker(id)
 end
 
 --- Setup the breakpoint sign system and autocommands.

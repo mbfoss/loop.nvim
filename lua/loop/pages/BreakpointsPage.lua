@@ -86,8 +86,9 @@ function BreakpointsPage:_update_one(bp, verified)
 end
 
 ---@param bp loop.dap.SourceBreakpoint
-function BreakpointsPage:_on_added(bp)
-    self:_update_one(bp)
+---@param verified boolean
+function BreakpointsPage:_on_added(bp, verified)
+    self:_update_one(bp, verified)
 end
 
 --- @param bp loop.dap.SourceBreakpoint
@@ -122,10 +123,11 @@ function BreakpointsPage:init()
         end
     })
 
-    require('loop.dap.breakpoints').add_tracker({
-        on_added = function(bp) self:_update_one(bp) end,
-        on_removed = function(bp) self:_on_removed(bp) end,
-        on_all_removed = function(bpts) self:_on_all_removed(bpts) end,
+    require('loop.debugui').add_tracker({
+        on_bp_added = function(bp, verified) self:_update_one(bp, verified) end,
+        on_bp_removed = function(bp) self:_on_removed(bp) end,
+        on_all_bp_removed = function(bpts) self:_on_all_removed(bpts) end,
+        on_bp_state_update = function(bp, verified) self:update_verification(bp, verified) end,
     })
 end
 
