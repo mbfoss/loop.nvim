@@ -10,31 +10,36 @@ local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemTreePage')
 ---@field start_col number 0-based
 ---@field end_col number 0-based
 
---
 ---@class loop.pages.ItemTreePage.Item
 ---@field id any
----@field text string
 ---@field data any?
----@field highlights loop.pages.ItemTreePage.Highlight[]|nil
 ---@field children loop.pages.ItemTreePage.Item[]?
 ---@field parent loop.pages.ItemTreePage.Item?
 ---@field expanded boolean?
 ---@field depth integer?
 
+---@class loop.pages.ItemTreePage.InitArgs
+---@field formatter fun(item:loop.pages.ItemTreePage.Item):string
+---@field highlighter nil|fun(item:loop.pages.ItemTreePage.Item):loop.pages.ItemTreePage.Highlight[]
+
 ---@class loop.pages.ItemTreePage.TrackerCallbacks
 ---@field on_selection fun(item: loop.pages.ItemTreePage.Item|nil)
 
 ---@class loop.pages.ItemTreePage : loop.pages.Page
----@field new fun(self:loop.pages.ItemTreePage, name:string):loop.pages.ItemTreePage
+---@field new fun(self:loop.pages.ItemTreePage, name:string, args:loop.pages.ItemTreePage.InitArgs):loop.pages.ItemTreePage
+---@field _args loop.pages.ItemTreePage.InitArgs
 ---@field _root_items loop.pages.ItemTreePage.Item[]
 ---@field _flat_items loop.pages.ItemTreePage.Item[]     -- currently visible lines
 ---@field _index table<any, number>                      -- id → flat index
 ---@field _trackers loop.tools.Trackers<loop.pages.ItemTreePage.TrackerCallbacks>
 local ItemTreePage = class(Page)
 
-function ItemTreePage:init(name)
+---@param name string
+---@param args loop.pages.ItemTreePage.InitArgs
+function ItemTreePage:init(name, args)
     Page.init(self, "tree", name)
 
+    self._args = args
     self._root_items = {}
     self._flat_items = {}
     self._index = {}
@@ -160,16 +165,13 @@ end
 ---@param parent_id any?     -- nil = root level
 ---@return loop.pages.ItemTreePage.Item|nil
 function ItemTreePage:upsert_item(item, parent_id)
-    assert(item and item.id ~= nil and item.text ~= nil, "Invalid item: must have .id and .text")
+    assert(item and item.id ~= nil and item.data ~= nil, "Invalid item: must have .id and .data")
 
     local existing = self:get_item(item.id)
 
     if existing then
         -- UPDATE existing node in-place
-        existing.text       = item.text
-        existing.data       = item.data
-        existing.highlights = item.highlights or existing.highlights
-
+        existing.data = item.data
         -- Preserve: parent, children, expanded state, depth, etc.
         self:_refresh_buffer(self:get_buf()) -- only need to redraw highlights + text
         return existing
@@ -197,7 +199,7 @@ function ItemTreePage:upsert_item(item, parent_id)
 
         if not parent_node then
             return nil
-        end                -- parent not found
+        end -- parent not found
         parent_node.children = parent_node.children or {}
     else
         -- Adding as new root
@@ -315,7 +317,7 @@ function ItemTreePage:_refresh_buffer(buf)
     for _, item in ipairs(self._flat_items) do
         local indent = ("  "):rep(item.depth)
         local prefix = item.children and (item.expanded and "▼ " or "▶ ") or "  "
-        local line = indent .. prefix .. item.text:gsub("\n", " ")
+        local line = indent .. prefix .. self._args.formatter(item):gsub("\n", " ")
         table.insert(lines, line)
     end
 
@@ -325,9 +327,13 @@ function ItemTreePage:_refresh_buffer(buf)
 
     -- Apply highlights with correct offset
     for idx, item in ipairs(self._flat_items) do
-        if item.highlights then
+        local highlights
+        if self._args.highlighter then
+            highlights = self._args.highlighter(item)
+        end
+        if highlights then
             local offset = #(("  "):rep(item.depth) .. (item.children and "x " or "  "))
-            for _, hl in ipairs(item.highlights) do
+            for _, hl in ipairs(highlights) do
                 local start_col = hl.start_col + offset
                 local end_col
                 end_col = hl.end_col + offset

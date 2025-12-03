@@ -16,13 +16,13 @@ local Trackers = require("loop.tools.Trackers")
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 
----@class loop.pages.ItemListPageInitArgs
+---@class loop.pages.ItemListPage.InitArgs
 ---@field formatter fun(item:loop.pages.ItemListPage.Item):string
 ---@field highlighter nil|fun(item:loop.pages.ItemListPage.Item):loop.pages.ItemListPage.Highlight[]
 
 ---@class loop.pages.ItemListPage : loop.pages.Page
----@field new fun(self: loop.pages.ItemListPage, name:string, args:loop.pages.ItemListPageInitArgs): loop.pages.ItemListPage
----@field _args loop.pages.ItemListPageInitArgs
+---@field new fun(self: loop.pages.ItemListPage, name:string, args:loop.pages.ItemListPage.InitArgs): loop.pages.ItemListPage
+---@field _args loop.pages.ItemListPage.InitArgs
 ---@field _items loop.pages.ItemListPage.Item[]
 ---@field _index table<any,number>
 ---@field _select_handler fun(item:loop.pages.ItemListPage.Item|nil)
@@ -30,7 +30,7 @@ local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 local ItemListPage = class(Page)
 
 ---@param name string
----@param args loop.pages.ItemListPageInitArgs
+---@param args loop.pages.ItemListPage.InitArgs
 function ItemListPage:init(name, args)
     assert(args.formatter)
     Page.init(self, "list", name)
