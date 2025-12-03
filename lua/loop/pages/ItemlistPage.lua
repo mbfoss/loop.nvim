@@ -173,7 +173,6 @@ function ItemListPage:_highlight(from, to)
             for _, hl in ipairs(highlights) do
                 local start_col = hl.start_col or 0
                 local end_col   = hl.end_col or line_len
-
                 start_col       = math.max(0, start_col)
                 end_col         = math.max(start_col, math.min(end_col, line_len))
                 if start_col < end_col then

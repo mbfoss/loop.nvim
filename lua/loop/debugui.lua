@@ -232,6 +232,7 @@ function _debug_session_item_formatter(item)
 end
 
 ---@param item loop.pages.ItemListPage.Item
+---@return string
 function _variable_node_formatter(item)
     if item.data.text then
         return item.data.text
@@ -242,10 +243,10 @@ function _variable_node_formatter(item)
 end
 
 ---@param item loop.pages.ItemListPage.Item
----@return loop.pages.ItemTreePage.Highlight[]
+---@return loop.pages.ItemTreePage.Highlight[]|nil
 function _variable_node_highlighter(item)
     if item.data.text then
-        return item.data.text
+        return nil
     end
     ---@type loop.dap.proto.Variable
     local var = item.data.variable

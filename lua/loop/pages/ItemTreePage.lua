@@ -41,7 +41,7 @@ function ItemTreePage:init(name, args)
     self._args = args
     self._root_items = {}
     self._flat_items = {}
-    self._index = {}                    -- id → 1-based index in _flat_items
+    self._index = {} -- id → 1-based index in _flat_items
     self._trackers = Trackers:new()
 
     -- Keymaps
@@ -53,20 +53,21 @@ function ItemTreePage:init(name, args)
             self._trackers:invoke("on_selection", item)
         end
     end
-    self:add_keymap('<CR>',         { callback = on_enter, desc = "Select or toggle" })
-    self:add_keymap('<2-LeftMouse>',{ callback = on_enter, desc = "Select or toggle" })
-    self:add_keymap('zo', { callback = function() self:expand_under_cursor() end,   desc = "Expand" })
+    self:add_keymap('<CR>', { callback = on_enter, desc = "Select or toggle" })
+    self:add_keymap('<2-LeftMouse>', { callback = on_enter, desc = "Select or toggle" })
+    self:add_keymap('zo', { callback = function() self:expand_under_cursor() end, desc = "Expand" })
     self:add_keymap('zc', { callback = function() self:collapse_under_cursor() end, desc = "Collapse" })
-    self:add_keymap('za', { callback = function() self:toggle_under_cursor() end,  desc = "Toggle" })
+    self:add_keymap('za', { callback = function() self:toggle_under_cursor() end, desc = "Toggle" })
     self:add_keymap('zM', { callback = function() self:collapse_all() end, desc = "Collapse all" })
-    self:add_keymap('zR', { callback = function() self:expand_all() end,   desc = "Expand all" })
+    self:add_keymap('zR', { callback = function() self:expand_all() end, desc = "Expand all" })
 end
 
 -- ===================================================================
 -- Public API
 -- ===================================================================
 
-function ItemTreePage:add_tracker(cb)    return self._trackers:add_tracker(cb) end
+function ItemTreePage:add_tracker(cb) return self._trackers:add_tracker(cb) end
+
 function ItemTreePage:remove_tracker(id) return self._trackers:remove_tracker(id) end
 
 function ItemTreePage:set_roots(roots)
@@ -82,9 +83,12 @@ function ItemTreePage:toggle_expand(item)
     self:_refresh_item_subtree(item)
 end
 
-function ItemTreePage:expand_under_cursor()   self:_toggle_under_cursor(true)  end
+function ItemTreePage:expand_under_cursor() self:_toggle_under_cursor(true) end
+
 function ItemTreePage:collapse_under_cursor() self:_toggle_under_cursor(false) end
-function ItemTreePage:toggle_under_cursor()   self:_toggle_under_cursor(nil)   end
+
+function ItemTreePage:toggle_under_cursor() self:_toggle_under_cursor(nil) end
+
 function ItemTreePage:_toggle_under_cursor(expand_to)
     local item = self:get_cur_item()
     if item and item.children then
@@ -118,7 +122,7 @@ end
 function ItemTreePage:get_cur_item()
     local buf = self:get_buf()
     if not buf or vim.api.nvim_get_current_buf() ~= buf then return nil end
-    local row = vim.api.nvim_win_get_cursor(0)[1]  -- 1-based
+    local row = vim.api.nvim_win_get_cursor(0)[1] -- 1-based
     return self._flat_items[row]
 end
 
@@ -137,7 +141,7 @@ function ItemTreePage:upsert_item(item, parent_id)
     local existing = self:get_item(item.id)
     if existing then
         existing.data = item.data
-        self:_refresh_item_subtree(existing)   -- only affected lines
+        self:_refresh_item_subtree(existing) -- only affected lines
         return existing
     end
 
@@ -179,11 +183,15 @@ function ItemTreePage:remove_item(id, recursive)
     -- Remove from parent
     if item.parent then
         for i, c in ipairs(item.parent.children) do
-            if c == item then table.remove(item.parent.children, i); break end
+            if c == item then
+                table.remove(item.parent.children, i); break
+            end
         end
     else
         for i, r in ipairs(self._root_items) do
-            if r == item then table.remove(self._root_items, i); break end
+            if r == item then
+                table.remove(self._root_items, i); break
+            end
         end
     end
 
@@ -219,41 +227,66 @@ function ItemTreePage:_rebuild_flat()
     end
 end
 
--- Full redraw (used only when structure changes)
 function ItemTreePage:_refresh_buffer_full()
     local buf = self:get_buf()
     if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
 
     vim.api.nvim_buf_clear_namespace(buf, _ns_id, 0, -1)
+
     local lines = {}
-    for _, item in ipairs(self._flat_items) do
-        local indent = (" "):rep(item.depth or 0)
-        local prefix = item.children and (item.expanded and "Down " or "Right ") or "  "
-        local text = indent .. prefix .. self._args.formatter(item):gsub("\n", " ")
-        table.insert(lines, text)
+    local extmark_data = {} -- collect all extmarks in one pass
+
+    for idx, item in ipairs(self._flat_items) do
+        local depth     = item.depth or 0
+        local indent    = (" "):rep(depth * 2) -- 2 spaces per level (adjust as you like)
+        local prefix    = item.children and (item.expanded and "Down " or "Right ") or "  "
+        local content   = self._args.formatter(item):gsub("\n", " ")
+
+        local full_line = indent .. prefix .. content
+        table.insert(lines, full_line)
+
+        -- === Highlights (100% safe) ===
+        if self._args.highlighter then
+            local hls = self._args.highlighter(item) or {}
+            local offset = #indent + #prefix
+
+            for _, hl in ipairs(hls) do
+                local start_col = hl.start_col and ((hl.start_col or 0) + offset) or nil
+                local end_col   = hl.end_col and ((hl.end_col or #content) + offset) or nil
+
+                -- Clamp to actual line length
+                local line_len  = #full_line
+                start_col       = start_col and math.max(0, start_col) or nil
+                end_col         = end_col and math.max(start_col, math.min(end_col, line_len)) or nil
+
+                if start_col < end_col then
+                    table.insert(extmark_data, {
+                        row       = idx - 1, -- 0-based
+                        start_col = start_col,
+                        end_col   = end_col,
+                        hl_group  = hl.group,
+                    })
+                end
+            end
+        end
     end
 
+    -- Apply buffer content
     vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.bo[buf].modifiable = false
 
-    -- Apply highlights
-    for idx, item in ipairs(self._flat_items) do
-        if self._args.highlighter then
-            local hls = self._args.highlighter(item) or {}
-            local offset = #((" "):rep(item.depth or 0) .. (item.children and "x " or "  "))
-            for _, hl in ipairs(hls) do
-                vim.api.nvim_buf_set_extmark(buf, _ns_id, idx - 1, offset + hl.start_col, {
-                    end_col = offset + hl.end_col,
-                    hl_group = hl.group,
-                    priority = 200,
-                })
-            end
-        end
+    -- Apply all extmarks in one go (much faster + safe)
+    for _, em in ipairs(extmark_data) do
+        vim.api.nvim_buf_set_extmark(buf, _ns_id, em.row, em.start_col, {
+            end_col  = em.end_col,
+            hl_group = em.hl_group,
+            priority = 200,
+        })
     end
 end
 
--- Partial refresh – the star of the show
+-- -- Partial refresh – the star of the show (now 100% safe)
 function ItemTreePage:_refresh_item_subtree(root_item)
     local buf = self:get_buf()
     if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
@@ -262,27 +295,43 @@ function ItemTreePage:_refresh_item_subtree(root_item)
     if not start_idx then return end
 
     local new_lines = {}
-    local extmarks = {}
+    local extmarks  = {}
 
     local function visit(node)
-        local indent = (" "):rep(node.depth or 0)
+        local depth  = node.depth or 0
+        local indent = ("  "):rep(depth)                 -- 2 spaces per level (clean & common)
         local prefix = node.children and (node.expanded and "Down " or "Right ") or "  "
-        local text = indent .. prefix .. self._args.formatter(node):gsub("\n", " ")
-        table.insert(new_lines, text)
+        local content = self._args.formatter(node):gsub("\n", " ")
+        local full_line = indent .. prefix .. content
 
+        table.insert(new_lines, full_line)
+
+        -- === Safe highlight collection ===
         if self._args.highlighter then
             local hls = self._args.highlighter(node) or {}
             local offset = #indent + #prefix
+
             for _, hl in ipairs(hls) do
-                table.insert(extmarks, {
-                    row = #new_lines - 1,
-                    start_col = hl.start_col and offset + hl.start_col or nil,
-                    end_col   = hl.end_col and offset + hl.end_col or nil,
-                    hl_group  = hl.group,
-                })
+                local start_col = (hl.start_col or 0) + offset
+                local end_col   = (hl.end_col   or #content) + offset
+
+                -- Clamp to actual line length (defensive)
+                local line_len = #full_line
+                start_col = math.max(0, start_col)
+                end_col   = math.max(start_col, math.min(end_col, line_len))
+
+                if start_col < end_col then
+                    table.insert(extmarks, {
+                        row       = #new_lines - 1,  -- 0-based relative to subtree
+                        start_col = start_col,
+                        end_col   = end_col,
+                        hl_group  = hl.group,
+                    })
+                end
             end
         end
 
+        -- Recurse into children if expanded
         if node.expanded and node.children then
             for _, child in ipairs(node.children) do
                 visit(child)
@@ -292,17 +341,24 @@ function ItemTreePage:_refresh_item_subtree(root_item)
 
     visit(root_item)
 
-    local end_idx = start_idx + #new_lines - 1
+    -- === Safe buffer update ===
+    local start_row = start_idx - 1                    -- 0-based
+    local replace_end = start_row + #new_lines         -- exclusive end (Neovim API style)
+
     vim.bo[buf].modifiable = true
-    vim.api.nvim_buf_set_lines(buf, start_idx - 1, end_idx - 1, false, new_lines)
+    vim.api.nvim_buf_set_lines(buf, start_row, replace_end, false, new_lines)
     vim.bo[buf].modifiable = false
 
-    vim.api.nvim_buf_clear_namespace(buf, _ns_id, start_idx - 1, end_idx)
+    -- Clear exactly the region we replaced
+    vim.api.nvim_buf_clear_namespace(buf, _ns_id, start_row, replace_end)
+
+    -- Apply new extmarks (now guaranteed valid)
     for _, em in ipairs(extmarks) do
-        vim.api.nvim_buf_set_extmark(buf, _ns_id, start_idx - 1 + em.row, em.start_col, {
-            end_col = em.end_col,
-            hl_group = em.hl_group,
-            priority = 200,
+        local row = start_row + em.row
+        vim.api.nvim_buf_set_extmark(buf, _ns_id, row, em.start_col, {
+            end_col   = em.end_col,
+            hl_group  = em.hl_group,
+            priority  = 200,
         })
     end
 end
