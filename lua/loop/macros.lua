@@ -1,12 +1,7 @@
 local M = {}
 
-M.project_dir = nil
-
-local function _is_regular_file()
-    local buftype = vim.bo.buftype
-    local name = vim.fn.expand("%:p")
-    return buftype == "" and name ~= ""
-end
+local uitools = require('loop.tools.uitools')
+local project = require('loop.project')
 
 local _nofile_error = "No file: current buffer is not a regular saved file"
 
@@ -19,21 +14,21 @@ function M.home()
 end
 
 function M.file()
-    if not _is_regular_file() then
+    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
         return nil, _nofile_error
     end
     return vim.fn.expand("%:p")
 end
 
 function M.filename()
-    if not _is_regular_file() then
+    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
         return nil, _nofile_error
     end
     return vim.fn.expand("%:t")
 end
 
 function M.fileext()
-    if not _is_regular_file() then
+    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
         return nil, _nofile_error
     end
     local ext = vim.fn.expand("%:e")
@@ -41,24 +36,25 @@ function M.fileext()
 end
 
 function M.fileroot()
-    if not _is_regular_file() then
+    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
         return nil, _nofile_error
     end
     return vim.fn.expand("%:p:r")
 end
 
 function M.filedir()
-    if not _is_regular_file() then
+    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
         return nil, _nofile_error
     end
     return vim.fn.expand("%:p:h")
 end
 
 function M.projdir()
-    if not M.project_dir then
+    local proj_dir = project.get_proj_dir()
+    if not proj_dir then
         return nil, "No active project"
     end
-    return M.project_dir
+    return proj_dir
 end
 
 function M.cwd()

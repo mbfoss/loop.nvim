@@ -1,5 +1,5 @@
 require('loop.task.taskdef')
-local builtinmacros = require('loop.tools.macros')
+local builtinmacros = require('loop.macros')
 local debugger_templates = require('loop.dbgtemplates')
 
 ---@class loop.Config
@@ -21,22 +21,7 @@ M.current = {
     },
 
     debuggers = debugger_templates,
-
-    macros = {
-        home      = builtinmacros.home,
-        file      = builtinmacros.file,
-        filename  = builtinmacros.filename,
-        fileext   = builtinmacros.fileext,
-        fileroot  = builtinmacros.fileroot,
-        filedir   = builtinmacros.filedir,
-        projdir   = builtinmacros.projdir,
-        cwd       = builtinmacros.cwd,
-        filetype  = builtinmacros.filetype,
-        tmpdir    = builtinmacros.tmpdir,
-        date      = builtinmacros.date,
-        time      = builtinmacros.time,
-        timestamp = builtinmacros.timestamp,
-    }
+    macros = builtinmacros
 }
 
 return M

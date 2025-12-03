@@ -63,6 +63,47 @@ local function mason_bin(name)
 end
 
 -- ==================================================================
+-- Lua (local debugging inside Neovim or standalone scripts)
+-- ==================================================================
+debuggers.lua = {
+    dap = {
+        adapter_id = "lua",
+        name = "Local Lua Debugger",
+        type = "executable",
+        -- This is the official adapter from the Lua community
+        command = { mason_bin("local-lua-debugger-vscode") },  -- or "lua-debug"
+        -- Optional: some versions need extra args
+    },
+    -- Launch: debug current file or project
+    launch_args = {
+        type = "lua_local",
+        request = "launch",
+        name = "Debug Current Lua File",
+        program = "${file}",                    -- current file
+        cwd = "${projdir}",
+        sourceMaps = true,
+        -- Optional: enable rich printing
+        console = "integratedTerminal",
+        -- Auto-reload on save (great for config editing)
+        autoReload = true,
+        -- Optional: stop on entry
+        -- stopOnEntry = true,
+        -- Enable richer Lua inspection
+        --luaVersion = "5.4",  -- or "5.1", "5.3", "luajit"        
+    },
+
+    -- Attach: to a running Lua process (e.g. Neovim itself or external script)
+    attach_args = {
+        type = "lua_local",
+        request = "attach",
+        name = "Attach to Running Lua Process",
+        processId = "${select-process-pid}",
+        cwd = "${projdir}",
+        sourceMaps = true,
+    },
+}
+
+-- ==================================================================
 -- C / C++ / Rust / Objective-C
 -- ==================================================================
 debuggers.lldb = {
@@ -144,7 +185,6 @@ debuggers.node = {
     },
     launch_args = {
         type = "node",
-        request = "launch",
         program = "${file}",
         cwd = "${projdir}",
         runtimeExecutable = "node",
@@ -154,7 +194,6 @@ debuggers.node = {
     },
     attach_args = {
         type = "node",
-        request = "attach",
         processId = "${select-process-pid}",
     },
 }
@@ -174,7 +213,6 @@ debuggers.chrome = {
     },
     launch_args = {
         type = "chrome",
-        request = "launch",
         name = "Launch Chrome",
         url = "http://localhost:3000",
         webRoot = "${projdir}",
@@ -183,7 +221,6 @@ debuggers.chrome = {
     },
     attach_args = {
         type = "chrome",
-        request = "attach",
         program = "${file}",
         port = 9222,
         webRoot = "${projdir}",
@@ -201,7 +238,6 @@ debuggers.bash = {
         command = { mason_bin("bash-debug-adapter") },
     },
     launch_args = {
-        request = "launch",
         name = "Launch Bash Script",
         type = "bashdb",
         program = "${file}",
@@ -229,7 +265,6 @@ debuggers.php = {
     launch_args = {
         name = "Listen for Xdebug",
         type = "php",
-        request = "launch",
         port = 9003,
         pathMappings = {
             ["/var/www/html"] = "${projdir}",
@@ -265,7 +300,6 @@ debuggers.csharp = {
     launch_args = {
         type = "coreclr",
         name = "Launch .NET",
-        request = "launch",
         program = function()
             return vim.fn.input("Path to dll: ", vim.fn.getcwd() .. "/bin/Debug/", "file")
         end,
@@ -273,7 +307,6 @@ debuggers.csharp = {
     attach_args = {
         type = "coreclr",
         name = "Attach to Process",
-        request = "attach",
         processId = "${select-process-pid}",
     },
 }

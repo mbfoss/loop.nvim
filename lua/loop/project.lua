@@ -5,8 +5,6 @@ local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
 local runner = require("loop.runner")
 local uitools = require('loop.tools.uitools')
-local resolver = require('loop.tools.resolver')
-local macros = require('loop.tools.macros')
 local breakpoints = require('loop.dap.breakpoints')
 local extensions = require('loop.ext.extensions')
 
@@ -79,8 +77,6 @@ local function _load_project(dir)
     local proj_dir = vim.fn.fnamemodify(dir, ":p")
     _project_dir = proj_dir
 
-    macros.project_dir = proj_dir
-
     local config_dir = _get_config_dir(proj_dir)
 
     window.set_project_dir(dir)
@@ -142,6 +138,10 @@ end
 function M.close_project()
     assert(_setup_done)
     _close_project()
+end
+
+function M.get_proj_dir()
+    return _project_dir
 end
 
 ---@param args string[]
