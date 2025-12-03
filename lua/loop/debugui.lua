@@ -189,7 +189,7 @@ local function _on_thread_pause(sess_id, sess_name, event_data, variables_page, 
                     for scope_idx, scope in ipairs(scopes_data.scopes) do
                         if scope.presentationHint ~= "globals" and scope.name ~= "Globals" then
                             ---@type loop.pages.ItemTreePage.Item
-                            local scope_item = { id = tostring(scope_idx), text = scope.name }
+                            local scope_item = { id = tostring(scope_idx), data = { text = scope.name } }
                             variables_page:upsert_item(scope_item, nil)
                             event_data.variables_provider({ variablesReference = scope.variablesReference },
                                 function(_, vars_data)
@@ -198,8 +198,7 @@ local function _on_thread_pause(sess_id, sess_name, event_data, variables_page, 
                                             ---@type loop.pages.ItemTreePage.Item
                                             local var_item = {
                                                 id = scope_item.id .. ':' .. tostring(var_idx),
-                                                text =
-                                                    var.name .. ": " .. var.value
+                                                data = { variable = var }
                                             }
                                             variables_page:upsert_item(var_item, scope_item.id)
                                         end
@@ -230,6 +229,27 @@ end
 ---@param item loop.pages.ItemListPage.Item
 function _debug_session_item_formatter(item)
     return item.data.name .. ' - ' .. item.data.state
+end
+
+---@param item loop.pages.ItemListPage.Item
+function _variable_node_formatter(item)
+    if item.data.text then
+        return item.data.text
+    end
+    ---@type loop.dap.proto.Variable
+    local var = item.data.variable
+    return tostring(var.name).. ": " .. tostring(var.value)
+end
+
+---@param item loop.pages.ItemListPage.Item
+---@return loop.pages.ItemTreePage.Highlight[]
+function _variable_node_highlighter(item)
+    if item.data.text then
+        return item.data.text
+    end
+    ---@type loop.dap.proto.Variable
+    local var = item.data.variable
+    return {}
 end
 
 ---@param task_name string -- task name
@@ -286,7 +306,10 @@ function M.track_new_debugjob(task_name)
             local stacktrace_page = stacktrace_pages[sess_id]
 
             if not variable_page then
-                variable_page = ItemTreePage:new(sess_name)
+                variable_page = ItemTreePage:new(sess_name, { 
+                    formatter = _variable_node_formatter,
+                    highlighter = _variable_node_highlighter
+                })
                 window.add_page("variables", variable_page)
                 variable_pages[sess_id] = variable_page
             end

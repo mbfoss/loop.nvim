@@ -4,8 +4,8 @@ local Trackers = require("loop.tools.Trackers")
 
 ---@class loop.pages.ItemListPage.Highlight
 ---@field group string
----@field start_col number 0-based
----@field end_col number 0-based
+---@field start_col number|nil 0-based
+---@field end_col number|nil 0-based
 
 ---@class loop.pages.ItemListPage.Item
 ---@field id any
@@ -155,32 +155,35 @@ function ItemListPage:get_or_create_buf()
     return buf, true
 end
 
----@param from number from index 1-based
----@param to number to index 1-based
+---@param from number 1-based start index in self._items
+---@param to   number 1-based end index in self._items
 function ItemListPage:_highlight(from, to)
-    if from > to then
-        return
-    end
+    if from > to then return end
+    local buf = self._buf
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
 
-    if not self._buf or not vim.api.nvim_buf_is_valid(self._buf) then
-        return
-    end
-    -- set extmarks
     for idx = from, to do
         local item = self._items[idx]
-        local highlights
-        if self._args.highlighter then
-            highlights = self._args.highlighter(item)
-        end
+        local highlights = self._args.highlighter and self._args.highlighter(item) or nil
         if highlights then
+            -- Get the actual text of the current line (already rendered)
+            local line_text = vim.api.nvim_buf_get_lines(buf, idx - 1, idx, false)[1] or ""
+            local line_len  = #line_text
+
             for _, hl in ipairs(highlights) do
-                local endcol = hl.end_col
-                vim.api.nvim_buf_set_extmark(self._buf, _ns_id, idx - 1, hl.start_col, {
-                    end_col = endcol,
-                    hl_group = hl.group,
-                    --hl_eol = true,
-                    priority = 200,
-                })
+                local start_col = hl.start_col or 0
+                local end_col   = hl.end_col or line_len
+
+                start_col       = math.max(0, start_col)
+                end_col         = math.max(start_col, math.min(end_col, line_len))
+                if start_col < end_col then
+                    vim.api.nvim_buf_set_extmark(buf, _ns_id, idx - 1, start_col, {
+                        end_col  = end_col,
+                        hl_group = hl.group,
+                        priority = 200,
+                        -- hl_eol = true,        -- uncomment if you want highlight to extend to EOL when end_col == line_len
+                    })
+                end
             end
         end
     end

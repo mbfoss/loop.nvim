@@ -50,27 +50,10 @@ end
 ---@param item loop.pages.ItemListPage.Item
 ---@return loop.pages.ItemListPage.Highlight[]
 local function _item_highlighter(item)
-    ---@type loop.dap.SourceBreakpoint
-    local bp = item.data.bp
-    local len = 1
-    if bp.logMessage and bp.logMessage ~= "" then
-        len = len + 1
-    end
-    if bp.condition and bp.condition ~= "" then
-        len = len + 1
-    end
-    if bp.hitCondition and bp.hitCondition ~= "" then
-        len = len + 1
-    end
-
-    local file = bp.file
-    if projinfo.proj_dir then
-        file = vim.fs.relpath(projinfo.proj_dir, file) or file
-    end
     ---@type loop.pages.ItemListPage.Highlight
     local highlight = {
         start_col = 0,
-        end_col = len,
+        end_col = 1,
         group = "Debug"
     }
     return { highlight }
