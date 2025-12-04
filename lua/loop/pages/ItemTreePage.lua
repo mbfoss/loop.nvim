@@ -183,30 +183,34 @@ end
 ---------------------------------------------------------
 
 function ItemTreePage:_insert_subtree(item, depth, start_row)
-    local rows_added = 0
-
     local children = item.children
     if not children or type(children) ~= "table" or #children == 0 then
         return 0
     end
 
-    -- insert lines first
+    -- Insert N empty lines where subtree will go
     self:_insert_lines(start_row, #children)
 
-    for index, child in ipairs(children) do
-        local row = start_row + index - 1
+    local cursor = start_row -- moving pointer through inserted zone
+    local rows_added = 0
 
+    for _, child in ipairs(children) do
+        -- render this child at the current cursor
         self._nodes[child.id] = self._nodes[child.id] or { item = child }
-        self._nodes[child.id].item = child
-        self._nodes[child.id].depth = depth + 1
+        local node = self._nodes[child.id]
+        node.item = child
+        node.depth = depth + 1
 
-        self:_render_node_line(self._nodes[child.id], depth + 1, row)
-
+        self:_render_node_line(node, depth + 1, cursor)
         rows_added = rows_added + 1
 
-        -- if the child is already expanded, recursively expand its subtree
+        cursor = cursor + 1 -- move below this child
+
+        -- recursively expand its children if expanded
         if child.expanded then
-            rows_added = rows_added + self:_insert_subtree(child, depth + 1, row + 1)
+            local added = self:_insert_subtree(child, depth + 1, cursor)
+            rows_added = rows_added + added
+            cursor = cursor + added
         end
     end
 
@@ -235,10 +239,10 @@ function ItemTreePage:_delete_subtree(item)
     local row = self:_row_of(item.id)
     if not row then return end
 
-    local start = row + 1
-    local count = self:_count_subtree(item)
+    local to_delete = self:_count_subtree(item)
+    if to_delete == 0 then return end
 
-    self:_delete_lines(start, count)
+    self:_delete_lines(row + 1, to_delete)
 end
 
 ---------------------------------------------------------
@@ -246,49 +250,84 @@ end
 ---------------------------------------------------------
 
 function ItemTreePage:set_items(items)
-    -- rebuild items, parents, roots (same as your version)
+    ----------------------------------------------------------------------
+    -- 1. Rebuild maps (same as before BUT we reset children properly)
+    ----------------------------------------------------------------------
     self._items = {}
     self._order = {}
     self._roots = {}
     local by_id = {}
 
+    -- FIRST PASS:
+    -- Store all items and **reset children** so stale entries do not accumulate.
     for _, item in ipairs(items) do
         self._items[item.id] = item
         by_id[item.id] = item
         table.insert(self._order, item.id)
+
+        -- IMPORTANT FIX:
+        -- Reset children to avoid stale children from incremental updates.
+        if type(item.children) == "table" then
+            -- Replace with a fresh list, caller's original list is not reused.
+            item.children = {}
+        else
+            -- nil or loader-function -> keep as is
+            -- (function children will be triggered on expand)
+        end
+
         if not item.parent then
             table.insert(self._roots, item)
         end
     end
 
+    -- SECOND PASS:
+    -- Build the parent->children relationships using a clean state.
     for _, item in ipairs(items) do
-        if item.parent then
-            local parent = by_id[item.parent]
+        local parent_id = item.parent
+        if parent_id then
+            local parent = by_id[parent_id]
             if parent then
-                parent.children = parent.children or {}
+                if type(parent.children) ~= "table" then
+                    parent.children = {}
+                end
                 table.insert(parent.children, item)
             end
         end
     end
 
-    -- reset rendering state entirely
+    ----------------------------------------------------------------------
+    -- 2. Reset rendering state
+    ----------------------------------------------------------------------
     self._nodes = {}
 
     local buf = self:get_or_create_buf()
-    
+
     vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
     vim.bo[buf].modifiable = false
 
-    -- render roots
-    for i, root in ipairs(self._roots) do
-        self._nodes[root.id] = { item = root, depth = 0 }
-        self:_insert_lines(i - 1, 1)
-        self:_render_node_line(self._nodes[root.id], 0, i - 1)
+    ----------------------------------------------------------------------
+    -- 3. Render root nodes + expanded subtrees
+    ----------------------------------------------------------------------
+    local row = 0
 
+    for _, root in ipairs(self._roots) do
+        -- Register root node state
+        self._nodes[root.id] = {
+            item = root,
+            depth = 0,
+        }
+
+        -- Insert one line for the root
+        self:_insert_lines(row, 1)
+        self:_render_node_line(self._nodes[root.id], 0, row)
+
+        row = row + 1
+
+        -- If root is expanded, render its subtree
         if root.expanded then
-            local added = self:_insert_subtree(root, 0, i) -- insert after root
-            i = i + added
+            local added = self:_insert_subtree(root, 0, row)
+            row = row + added
         end
     end
 end
@@ -457,7 +496,7 @@ end
 -- Find current item using extmarks (instead of _flat)
 function ItemTreePage:get_cur_item()
     local buf = self:get_or_create_buf()
-    
+
     if not buf or buf ~= vim.api.nvim_get_current_buf() then return nil end
     local row = vim.api.nvim_win_get_cursor(0)[1] - 1
 
