@@ -14,6 +14,7 @@ local Trackers          = require('loop.tools.Trackers')
 local M                 = {}
 
 local _setup_done       = false
+local _last_node_id     = 0
 
 ---@class loop.debugui.TrackerCallbacks
 ---@field on_bp_added fun(bp:loop.dap.SourceBreakpoint, verified:boolean)|nil
@@ -166,12 +167,18 @@ local function _on_session_breakpoints_event(sess_id, session, event)
     end
 end
 
+local function _make_node_id()
+    local id = _last_node_id  + 1
+    _last_node_id = id
+    return id
+end
+
 ---@param scopes loop.dap.proto.Scope[]
 ---@param thread_data loop.dap.session.notify.ThreadData
 ---@param variables_page loop.pages.ItemTreePage
 local function _load_scopes(scopes, thread_data, variables_page)
     ---@param ref number
-    ---@param parent_id string
+    ---@param parent_id number
     ---@param callback fun(items:loop.pages.ItemTreePage.Item[])
     local function load_variables(ref, parent_id, callback)
         thread_data.variables_provider({ variablesReference = ref },
@@ -179,10 +186,9 @@ local function _load_scopes(scopes, thread_data, variables_page)
                 local children = {}
                 if vars_data then
                     for var_idx, var in ipairs(vars_data.variables) do
-                        local id = parent_id .. ':' .. tostring(var_idx)
                         ---@type loop.pages.ItemTreePage.Item
                         local var_item = {
-                            id = "v:" .. tostring(id),
+                            id = _make_node_id(),
                             parent = parent_id,
                             expanded = true,
                             data = { variable = var },
@@ -190,7 +196,7 @@ local function _load_scopes(scopes, thread_data, variables_page)
                         if var.variablesReference and var.variablesReference > 0 then
                             var_item.expanded = false
                             var_item.children = function(cb)
-                                load_variables(var.variablesReference, id, cb)
+                                load_variables(var.variablesReference, var_item.id, cb)
                             end
                         end
                         table.insert(children, var_item)
@@ -203,7 +209,7 @@ local function _load_scopes(scopes, thread_data, variables_page)
     for scope_idx, scope in ipairs(scopes) do
         ---@type loop.pages.ItemTreePage.Item
         local scope_item = {
-            id = "s: " .. tostring(scope_idx),
+            id = _make_node_id(),
             expanded = true,
             data = { text = scope.name }
         }

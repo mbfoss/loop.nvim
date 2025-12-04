@@ -8,9 +8,9 @@ local Trackers = require("loop.tools.Trackers")
 ---@field end_col number|nil 0-based
 
 ---@class loop.pages.ItemTreePage.Item
----@field id any
+---@field id number
 ---@field data any
----@field parent any|nil
+---@field parent number|nil
 ---@field children nil|loop.pages.ItemTreePage.Item[]|fun(cb:fun(items:loop.pages.ItemTreePage.Item[])) -- ← now also accepts function
 ---@field expanded boolean|nil
 ---@field formatter_override string|nil  -- internal temporary override for loading/error messages
@@ -18,11 +18,9 @@ local Trackers = require("loop.tools.Trackers")
 ---@class loop.pages.ItemTreePage.TrackerCallbacks
 ---@field on_selection fun(item:loop.pages.ItemTreePage.Item|nil)
 
-local NS = vim.api.nvim_create_namespace('LoopPluginItemTreePage')
-
 ---@class loop.pages.ItemTreePage.InitArgs
----@field formatter fun(item:loop.pages.ItemTreePage.Item, depth:integer, is_expanded:boolean, has_children:boolean):string
----@field highlighter nil|fun(item:loop.pages.ItemTreePage.Item, depth:integer):loop.pages.ItemTreePage.Highlight[]
+---@field formatter fun(item:loop.pages.ItemTreePage.Item):string
+---@field highlighter nil|fun(item:loop.pages.ItemTreePage.Item):loop.pages.ItemTreePage.Highlight[]
 ---@field expand_char string?
 ---@field collapse_char string?
 ---@field indent_string string?
@@ -31,6 +29,8 @@ local NS = vim.api.nvim_create_namespace('LoopPluginItemTreePage')
 ---@class loop.pages.ItemTreePage : loop.pages.Page
 ---@field new fun(self: loop.pages.ItemTreePage, name:string, args:loop.pages.ItemTreePage.InitArgs): loop.pages.ItemTreePage
 local ItemTreePage = class(Page)
+
+local NS = vim.api.nvim_create_namespace('LoopPluginItemTreePage')
 
 ---@param name string
 ---@param args loop.pages.ItemTreePage.InitArgs
@@ -74,6 +74,9 @@ function ItemTreePage:init(name, args)
     self:add_keymap('zo', { callback = on_toggle, desc = "Expand node" })
     self:add_keymap('zc', { callback = on_toggle, desc = "Collapse node" })
     self:add_keymap('za', { callback = on_toggle, desc = "Toggle expand/collapse" })
+
+    local buf = self:get_or_create_buf()
+    vim.api.nvim_buf_set_extmark(buf, NS, 0, 0, { right_gravity = true })
 end
 
 ---------------------------------------------------------
@@ -119,7 +122,7 @@ function ItemTreePage:_insert_lines(row, count)
     vim.bo[buf].modifiable = false
 end
 
--- render a single node line at a specific row (replaces flat rebuild)
+-- render a single node line at a specific row
 function ItemTreePage:_render_node_line(node, depth, row)
     local buf = self:get_or_create_buf()
     local item = node.item
@@ -141,7 +144,7 @@ function ItemTreePage:_render_node_line(node, depth, row)
     if item.formatter_override then
         text = item.formatter_override
     else
-        text = self._args.formatter(item, depth, is_expanded, has_children)
+        text = self._args.formatter(item)
     end
 
     local line = prefix .. text:gsub("\n", " ")
@@ -152,14 +155,14 @@ function ItemTreePage:_render_node_line(node, depth, row)
 
     -- ensure extmark exists
     if node.mark then
-        node.mark = vim.api.nvim_buf_set_extmark(buf, NS, row, 0, { id = node.mark })
+        node.mark = vim.api.nvim_buf_set_extmark(buf, NS, row, 0, { id = node.mark, right_gravity = true, })
     else
-        node.mark = vim.api.nvim_buf_set_extmark(buf, NS, row, 0, {})
+        node.mark = vim.api.nvim_buf_set_extmark(buf, NS, row, 0, {right_gravity = true,})
     end
 
     -- call highlighter incrementally
     if self._args.highlighter and not item.formatter_override then
-        local highlights = self._args.highlighter(item, depth) or {}
+        local highlights = self._args.highlighter(item) or {}
         local text_len = #line
         local prefix_len = #self.indent_string * depth + (has_children and 2 or 2)
         for _, hl in ipairs(highlights) do
@@ -172,6 +175,7 @@ function ItemTreePage:_render_node_line(node, depth, row)
                     end_col = e,
                     hl_group = hl.group,
                     priority = 200,
+                    gravity = false,
                 })
             end
         end
@@ -338,14 +342,12 @@ end
 
 function ItemTreePage:upsert_item(item)
     local old = self._items[item.id]
-
     ------------------------------------------------------------
     -- 1. Preserve expanded state
     ------------------------------------------------------------
     if old and old.expanded and item.expanded == nil then
         item.expanded = true
     end
-
     ------------------------------------------------------------
     -- 2. Preserve static children if caller did not supply any
     ------------------------------------------------------------
@@ -355,12 +357,10 @@ function ItemTreePage:upsert_item(item)
             item.children = old.children
         end
     end
-
     ------------------------------------------------------------
     -- 3. Replace item in the registry
     ------------------------------------------------------------
     self._items[item.id] = item
-
     ------------------------------------------------------------
     -- 4. If new item or parent changed → full rebuild
     ------------------------------------------------------------
@@ -369,12 +369,10 @@ function ItemTreePage:upsert_item(item)
         self:set_items(self:get_all_items())
         return
     end
-
     if old.parent ~= item.parent then
         self:set_items(self:get_all_items())
         return
     end
-
     ------------------------------------------------------------
     -- 5. Incremental rerender
     ------------------------------------------------------------
@@ -384,9 +382,7 @@ function ItemTreePage:upsert_item(item)
         self:set_items(self:get_all_items())
         return
     end
-
     entry.item = item
-
     local row = self:_row_of(item.id)
     if row then
         self:_render_node_line(entry, entry.depth, row)
@@ -396,7 +392,6 @@ end
 ---------------------------------------------------------
 -- PUBLIC: expand/collapse/toggle (same API)
 ---------------------------------------------------------
-
 function ItemTreePage:toggle_expand(id)
     local item = self._items[id]
     if not item or not item.children then return end
