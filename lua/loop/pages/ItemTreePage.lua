@@ -74,9 +74,6 @@ function ItemTreePage:init(name, args)
     self:add_keymap('zo', { callback = on_toggle, desc = "Expand node" })
     self:add_keymap('zc', { callback = on_toggle, desc = "Collapse node" })
     self:add_keymap('za', { callback = on_toggle, desc = "Toggle expand/collapse" })
-
-    local buf = self:get_or_create_buf()
-    vim.api.nvim_buf_set_extmark(buf, NS, 0, 0, { right_gravity = true })
 end
 
 ---------------------------------------------------------
