@@ -176,6 +176,7 @@ local function _create_vimcmd_job(task, startup_callback, _, exit_handler)
         command = task.command,
         on_exit_handler = exit_handler
     }
+    vim.notify("Starting job:\n" .. vim.inspect(args))
     local job = VimCmdJob:new()
     local ok, err = job:start(args)
     if not ok then
@@ -194,8 +195,8 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
     if not task or type(task) ~= "table" then
         return startup_callback(nil, "task is required and must be a table")
     end
-    if not task.command or type(task.command) ~= "string" then
-        return startup_callback(nil, "task.command is required and must be a string")
+    if not task.command then
+        return startup_callback(nil, "task.command is required")
     end
 
     local to_resolve = vim.deepcopy(task)
@@ -216,6 +217,7 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
             on_exit_handler = exit_handler,
         }
 
+        vim.notify("Starting job:\n" .. vim.inspect(start_args))
         local job = TermJob:new()
         local bufnr, err = job:start(start_args)
         if not bufnr or bufnr == -1 then
@@ -300,6 +302,7 @@ local function _create_debug_job(task, output_handler, exit_handler, startup_cal
             },
         }
 
+        vim.notify("Starting job:\n" .. vim.inspect(start_args))
         local job = DebugJob:new(task.name)
 
         -- Add trackers
@@ -327,6 +330,8 @@ end
 ---@param startup_callback fun(job: loop.job.DebugJob|nil, err: string|nil)
 ---@param task_exit_handler fun(exit_code : number)
 local function _start_one_task(task, startup_callback, task_exit_handler)
+    vim.notify("Starting task:\n" .. vim.inspect(task))
+
     if task.type ~= "debug" then
         if not task.command or #task.command == 0 then
             return nil, "Invalid or empty command"
