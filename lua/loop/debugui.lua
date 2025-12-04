@@ -168,7 +168,7 @@ local function _on_session_breakpoints_event(sess_id, session, event)
 end
 
 local function _make_node_id()
-    local id = _last_node_id  + 1
+    local id = _last_node_id + 1
     _last_node_id = id
     return id
 end
@@ -195,7 +195,7 @@ local function _load_scopes(scopes, thread_data, variables_page)
                         }
                         if var.variablesReference and var.variablesReference > 0 then
                             var_item.expanded = false
-                            var_item.children = function(cb)
+                            var_item.children_callback = function(cb)
                                 load_variables(var.variablesReference, var_item.id, cb)
                             end
                         end
@@ -207,27 +207,29 @@ local function _load_scopes(scopes, thread_data, variables_page)
     end
 
     for scope_idx, scope in ipairs(scopes) do
+        local suffix = scope.expensive and " ⏱" or ""
         ---@type loop.pages.ItemTreePage.Item
         local scope_item = {
             id = _make_node_id(),
             expanded = true,
-            data = { text = scope.name }
+            data = { text = scope.name .. suffix }
         }
-        if scope.presentationHint ~= "globals" and
+        if not scope.expensive and
+            scope.presentationHint ~= "globals" and
             scope.name ~= "Globals" and
             scope.presentationHint ~= "registers" then
-            variables_page:upsert_item(scope_item)
+            variables_page:insert_item(scope_item)
             load_variables(scope.variablesReference, scope_item.id, function(items)
                 for _, item in ipairs(items) do
-                    variables_page:upsert_item(item)
+                    variables_page:insert_item(item)
                 end
             end)
         else
             scope_item.expanded = false
-            scope_item.children = function(cb)
+            scope_item.children_callback = function(cb)
                 load_variables(scope.variablesReference, scope_item.id, cb)
             end
-            variables_page:upsert_item(scope_item)
+            variables_page:insert_item(scope_item)
         end
     end
 end
