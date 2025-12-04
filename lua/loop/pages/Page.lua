@@ -71,10 +71,10 @@ function Page:assign_buf(bufnr)
     self:_setup_buf(false)
 end
 
----@return number -- buffer number
+---@return number |nil -- buffer number
 function Page:get_buf()
     if self._destroyed then
-        return -1
+        return nil
     end
     return self._buf
 end

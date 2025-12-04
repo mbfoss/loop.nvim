@@ -84,9 +84,11 @@ function ItemListPage:upsert_item(item)
     local lines = {}
     lines[1] = self._args.formatter(item):gsub("\n", " ")
 
-    vim.bo[buf].modifiable = true
-    vim.api.nvim_buf_set_lines(buf, pos - 1, pos, false, lines)
-    vim.bo[buf].modifiable = false
+    if buf then
+        vim.bo[buf].modifiable = true
+        vim.api.nvim_buf_set_lines(buf, pos - 1, pos, false, lines)
+        vim.bo[buf].modifiable = false
+    end
 
     self:_highlight(pos, pos)
 end
@@ -97,7 +99,7 @@ function ItemListPage:get_cur_item()
     local page_buf = self:get_buf()
 
     -- If this page's buffer is not the current buffer, return nil
-    if current_buf ~= page_buf or page_buf == -1 then
+    if not page_buf or current_buf ~= page_buf then
         return nil
     end
     -- Get cursor position in the current window (which shows our buffer)
@@ -188,7 +190,7 @@ function ItemListPage:_highlight(from, to)
     end
 end
 
----@param buf number
+---@param buf number|nil
 function ItemListPage:_refresh_buffer(buf)
     if not buf or not vim.api.nvim_buf_is_valid(buf) then
         return
