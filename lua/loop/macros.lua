@@ -2,6 +2,8 @@ local M = {}
 
 local uitools = require('loop.tools.uitools')
 local projinfo = require("loop.projinfo")
+local systools = require("loop.tools.systools")
+local selector = require("loop.selector")
 
 local _nofile_error = "No file: current buffer is not a regular saved file"
 
@@ -80,6 +82,27 @@ end
 
 function M.timestamp()
     return os.date("%Y-%m-%dT%H:%M:%S")
+end
+
+M["select-process-pid"] = function ()
+    local procs = systools.get_running_processes()
+    if not procs or #procs == 0 then
+        return nil, "failed to load process list"
+    end
+    local choices = {}
+    for _, proc in pairs(procs) do
+        ---@type loop.SelectorItem
+        local item = {
+            label = tostring(proc.pid) .. " - " .. tostring(proc.name),
+            data = proc.pid,
+        }
+        table.insert(choices, item)
+    end
+    selector.select("Select process", choices, nil, function(pid)
+        if pid then
+        end
+    end)
+    return nil, "Async proc selection is not implemented yet"
 end
 
 return M

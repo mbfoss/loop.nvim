@@ -172,7 +172,7 @@ function ItemTreePage:_render_node_line(node, depth, row)
                     end_col = e,
                     hl_group = hl.group,
                     priority = 200,
-                    gravity = false,
+                    right_gravity = false,
                 })
             end
         end
