@@ -71,25 +71,21 @@ debuggers.lua = {
         name = "Local Lua Debugger",
         type = "executable",
         -- This is the official adapter from the Lua community
-        command = { mason_bin("local-lua-debugger-vscode") },  -- or "lua-debug"
+        command = { "node",
+            vim.fn.stdpath("data") ..
+            "/mason/packages/local-lua-debugger-vscode/extension/extension/debugAdapter.js",
+        }, -- or "lua-debug"
         -- Optional: some versions need extra args
     },
     -- Launch: debug current file or project
     launch_args = {
-        type = "lua_local",
+        type = "lua-local",
         request = "launch",
-        name = "Debug Current Lua File",
-        program = "${file}",                    -- current file
-        cwd = "${projdir}",
-        sourceMaps = true,
-        -- Optional: enable rich printing
-        console = "integratedTerminal",
-        -- Auto-reload on save (great for config editing)
-        autoReload = true,
-        -- Optional: stop on entry
-        -- stopOnEntry = true,
-        -- Enable richer Lua inspection
-        --luaVersion = "5.4",  -- or "5.1", "5.3", "luajit"        
+        name = "Debug",
+        program = {
+            lua = "lua5.1",
+            file = "main.lua"
+        }
     },
 
     -- Attach: to a running Lua process (e.g. Neovim itself or external script)

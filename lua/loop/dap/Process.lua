@@ -114,6 +114,7 @@ function Process:_spawn()
 
     if not handle then
         unregister_process(self)
+        self.on_output("failed to start debugger process: " .. tostring(self.cmd), true)
         return
     end
 

@@ -243,7 +243,7 @@ end
 ---@param startup_callback fun(job: loop.job.DebugJob|nil, err: string|nil)
 ---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
 ---@param exit_handler fun(code: number)
-local function _create_debug_job(task, output_handler, exit_handler, startup_callback)
+local function _create_debug_job(task, startup_callback, output_handler, exit_handler)
     -- Early validation
     if not task or type(task) ~= "table" then
         return startup_callback(nil, "task is required and must be a table")
@@ -431,7 +431,7 @@ local function _start_task_chain(tasks, on_complete)
             end
             , function(exit_code)
                 if type(exit_code) ~= "number" then
-                    window.add_events({ "Invalid task status for " .. task.name })
+                    window.add_events({ "Invalid task status for " .. task.name }, "error")
                     chain.interrupted = true
                 elseif exit_code == 0 then
                     window.add_events({ "Task ended: " .. task.name })

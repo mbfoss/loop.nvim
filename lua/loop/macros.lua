@@ -97,34 +97,18 @@ M["select-process-pid"] = function(cb)
     local choices = {}
     for _, proc in ipairs(procs) do
         table.insert(choices, {
-            label = ("%6d | %s"):format(proc.pid, proc.name or "unknown"),
+            label = ("%8d | %s - %s"):format(proc.pid, proc.user or "unknown", proc.name or "unknown"),
             data = proc.pid,
         })
     end
 
     selector.select("Select process to attach", choices, nil, function(selected_pid)
         if selected_pid then
-            cb(tostring(selected_pid)) -- return as string (common in DAP)
+            cb(selected_pid)
         else
             cb(nil, "Process selection cancelled")
         end
     end)
 end
-
--- Optional: sync fallback for macros that are always fast
--- (your resolver supports both sync and async!)
-local function make_sync_macro(fn)
-    return function(cb)
-        local ok, result = pcall(fn)
-        if ok then
-            cb(result)
-        else
-            cb(nil, "macro error: " .. tostring(result))
-        end
-    end
-end
-
--- Example: if you want cwd to be sync (it's instant)
--- M.cwd = make_sync_macro(vim.fn.getcwd)
 
 return M

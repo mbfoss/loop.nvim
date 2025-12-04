@@ -175,7 +175,7 @@ function Session:start(args)
         end
 
         local dap_path = vim.fn.exepath(dap_program)
-        if dap_path == nil then
+        if dap_path == nil or dap_path == "" then
             return false, "Debugger program is not executable: " .. tostring(dap_program)
         end
 
