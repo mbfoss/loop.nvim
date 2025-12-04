@@ -338,26 +338,49 @@ end
 
 function ItemTreePage:upsert_item(item)
     local old = self._items[item.id]
-    self._items[item.id] = item
 
-    -- preserve expanded flag
+    ------------------------------------------------------------
+    -- 1. Preserve expanded state
+    ------------------------------------------------------------
     if old and old.expanded and item.expanded == nil then
         item.expanded = true
     end
 
-    if not old then
-        table.insert(self._order, item.id)
+    ------------------------------------------------------------
+    -- 2. Preserve static children if caller did not supply any
+    ------------------------------------------------------------
+    if old then
+        if old.children and item.children == nil then
+            -- Keep static subtree
+            item.children = old.children
+        end
     end
 
-    if not old or old.parent ~= item.parent then
+    ------------------------------------------------------------
+    -- 3. Replace item in the registry
+    ------------------------------------------------------------
+    self._items[item.id] = item
+
+    ------------------------------------------------------------
+    -- 4. If new item or parent changed → full rebuild
+    ------------------------------------------------------------
+    if not old then
+        table.insert(self._order, item.id)
         self:set_items(self:get_all_items())
         return
     end
 
-    -- incremental update: only rerender the node line
+    if old.parent ~= item.parent then
+        self:set_items(self:get_all_items())
+        return
+    end
+
+    ------------------------------------------------------------
+    -- 5. Incremental rerender
+    ------------------------------------------------------------
     local entry = self._nodes[item.id]
     if not entry then
-        -- Item might be new in the subtree
+        -- This item is not visible → safe full rebuild
         self:set_items(self:get_all_items())
         return
     end
