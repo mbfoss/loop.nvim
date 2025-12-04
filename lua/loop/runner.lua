@@ -168,9 +168,9 @@ local function _resolve_functions_inplace(obj, task_cpy)
 end
 
 ---@param task loop.Task
----@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
+---@param startup_callback fun(job: loop.job.VimCmdJob|nil, err: string|nil)
 ---@param exit_handler fun(code : number)
-local function _create_vimcmd_job(task, output_handler, exit_handler)
+local function _create_vimcmd_job(task, startup_callback, _, exit_handler)
     ---@type loop.VimCmdJob.StartArgs
     local args = {
         command = task.command,
@@ -179,116 +179,154 @@ local function _create_vimcmd_job(task, output_handler, exit_handler)
     local job = VimCmdJob:new()
     local ok, err = job:start(args)
     if not ok then
-        return nil, err
+        return startup_callback(nil, err or "failed to start vimcmd job")
     end
-    return job, nil
+    startup_callback(job, nil)
+    exit_handler(0)
 end
 
 ---@param task loop.Task
+---@param startup_callback fun(job: loop.job.TermJob|nil, err: string|nil)
 ---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
----@param exit_handler fun(code : number)
-local function _create_tool_job(task, output_handler, exit_handler)
-    ---@type loop.tools.TermProc.StartArgs
-    local args = {
-        name = task.name,
-        command = task.command,
-        command_env = task.env,
-        command_cwd = task.cwd,
-        output_handler = output_handler,
-        on_exit_handler = exit_handler,
-    }
-    local job = TermJob:new()
-    local bufnr, err = job:start(args)
-    if bufnr == -1 then
-        return nil, err
-    end
-    local page = Page:new("term", task.name)
-    page:assign_buf(bufnr)
-    window.add_page("task", page)
-    return job, nil
-end
-
----@param task loop.Task
----@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
----@param exit_handler fun(code : number)
-local function _create_debug_job(task, output_handler, exit_handler)
-    -- Validate task
+---@param exit_handler fun(code: number, signal?: number)
+local function _create_tool_job(task, startup_callback, output_handler, exit_handler)
+    -- Basic validation
     if not task or type(task) ~= "table" then
-        return nil, "task is required and must be a table"
+        return startup_callback(nil, "task is required and must be a table")
+    end
+    if not task.command or type(task.command) ~= "string" then
+        return startup_callback(nil, "task.command is required and must be a string")
+    end
+
+    local to_resolve = vim.deepcopy(task)
+
+    resolver.resolve_macros(to_resolve, function(ok, resolved, resolve_err)
+        if not ok or not resolved then
+            return startup_callback(nil, "macro resolution failed: " .. tostring(resolve_err))
+        end
+
+        -- Your original args — unchanged, just using the resolved values
+        ---@type loop.tools.TermProc.StartArgs
+        local start_args = {
+            name = task.name or "Unnamed Tool Task",
+            command = resolved.command,
+            command_env = resolved.env,
+            command_cwd = resolved.cwd,
+            output_handler = output_handler,
+            on_exit_handler = exit_handler,
+        }
+
+        local job = TermJob:new()
+        local bufnr, err = job:start(start_args)
+        if not bufnr or bufnr == -1 then
+            return startup_callback(nil, err or "failed to start terminal job")
+        end
+
+        -- Create and register the page
+        local page = Page:new("term", task.name or "Tool Task")
+        page:assign_buf(bufnr)
+
+        -- Optional: only add to window if it's visible or desired
+        local success = pcall(window.add_page, "task", page)
+        if not success then
+            vim.api.nvim_buf_delete(bufnr, { force = true })
+            return startup_callback(nil, "failed to add page to window manager")
+        end
+
+        startup_callback(job, nil)
+    end)
+end
+
+---@param task loop.Task
+---@param startup_callback fun(job: loop.job.DebugJob|nil, err: string|nil)
+---@param output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
+---@param exit_handler fun(code: number)
+local function _create_debug_job(task, output_handler, exit_handler, startup_callback)
+    -- Early validation
+    if not task or type(task) ~= "table" then
+        return startup_callback(nil, "task is required and must be a table")
     end
     if task.type ~= "debug" then
-        return nil, "task.type must be 'debug'"
+        return startup_callback(nil, "task.type must be 'debug'")
     end
     if not task.debug_adapter or task.debug_adapter == "" then
-        return nil, "task.debug_adapter is required for debug tasks"
+        return startup_callback(nil, "task.debug_adapter is required for debug tasks")
     end
-
     if task.debug_request ~= "launch" and task.debug_request ~= "attach" then
-        return nil, "task.debug_request must be launch or attach"
+        return startup_callback(nil, "task.debug_request must be 'launch' or 'attach'")
     end
 
-    ---@type loop.Config.Debugger
     local debugger = config.current.debuggers[task.debug_adapter]
     if not debugger then
-        return nil, ("no debug_adapter config found for '%s'"):format(tostring(task.debug_adapter))
+        return startup_callback(nil, ("no debug_adapter config found for '%s'"):format(tostring(task.debug_adapter)))
     end
 
+    -- Resolve default args based on request type
+    local default_args = (task.debug_request == "launch") and debugger.launch_args or debugger.attach_args or {}
+    local request_args = vim.tbl_deep_extend("force", {}, default_args)
 
-    -- Resolve request_args using functions if needed
-    local default_args = task.debug_request == "launch" and debugger.launch_args or debugger.attach_args
-    local request_args = vim.tbl_deep_extend("force", {}, default_args or {})
-    do
-        local task_cpy = vim.deepcopy(task) -- deepy copy for safety
-        local func_resolved, func_err = _resolve_functions_inplace(request_args, task_cpy)
-        if not func_resolved then
-            return nil, func_err or "failed to resolve functions"
-        end
+    -- Resolve functions first
+    local task_copy = vim.deepcopy(task)
+    local func_ok, func_err = _resolve_functions_inplace(request_args, task_copy)
+    if not func_ok then
+        return startup_callback(nil, func_err or "failed to resolve functions in debug args")
     end
 
-    -- merge with task args
+    -- Merge task-specific args (override defaults)
     request_args = vim.tbl_deep_extend("force", request_args, task.debug_args or {})
-    -- resolve macros inside request args
-    do
-        local resolved, error_msg = resolver.resolve_macros(request_args)
-        if not resolved then
-            window.add_events({ "Failed to resolve macro(s) in debugger arguments ", tostring(error_msg) }, "error")
-            return
+
+    -- Now resolve macros asynchronously
+    resolver.resolve_macros(request_args, function(success, resolved_args, macro_err)
+        if not success then
+            return startup_callback(nil, "Failed to resolve macro(s) in debugger arguments: " .. tostring(macro_err))
         end
-    end
 
-    if debugger.dap.type ~= "executable" and debugger.dap.type ~= "server" then
-        return nil, ("invalid dat type '%s'"):format(debugger.dap.type)
-    end
+        -- Final DAP type validation
+        if debugger.dap.type ~= "executable" and debugger.dap.type ~= "server" then
+            return startup_callback(nil,
+                ("invalid dap.type '%s' — must be 'executable' or 'server'"):format(tostring(debugger.dap.type)))
+        end
 
-    -- Build DebugJob start args
-    ---@type loop.DebugJob.StartArgs
-    local args = {
-        name = task.name,
-        debug_args = {
-            dap = debugger.dap,
-            request = task.debug_request,
-            request_args = request_args,
-            terminate_debuggee = debugger.terminate_debuggee,
-            launch_post_configure = debugger.launch_post_configure,
-        },
-    }
+        -- Build final start args
+        ---@type loop.DebugJob.StartArgs
+        local start_args = {
+            name = task.name,
+            debug_args = {
+                dap = debugger.dap,
+                request = task.debug_request,
+                request_args = resolved_args,
+                terminate_debuggee = debugger.terminate_debuggee,
+                launch_post_configure = debugger.launch_post_configure,
+            },
+        }
 
-    local job = DebugJob:new(task.name)
+        local job = DebugJob:new(task.name)
 
-    job:add_tracker(debugui.track_new_debugjob(task.name))
-    job:add_tracker({ on_exit = exit_handler })
+        -- Add trackers
+        job:add_tracker(debugui.track_new_debugjob(task.name))
+        job:add_tracker({ on_exit = exit_handler })
 
-    local ok, err = job:start(args)
-    if not ok then
-        return nil, err
-    end
-    return job, nil
+        if output_handler then
+            job:add_tracker({ on_stdout = function(data) output_handler("stdout", data) end })
+            job:add_tracker({ on_stderr = function(data) output_handler("stderr", data) end })
+        end
+
+        -- Start the debug job
+        local ok, err = job:start(start_args)
+        if not ok then
+            return startup_callback(nil, err or "failed to start debug job")
+        end
+
+        -- Success!
+        startup_callback(job, nil)
+    end)
 end
 
 ---@param task loop.Task
 ---@return loop.job.Job|nil, string|nil
+---@param startup_callback fun(job: loop.job.DebugJob|nil, err: string|nil)
 ---@param task_exit_handler fun(exit_code : number)
-local function _start_one_task(task, task_exit_handler)
+local function _start_one_task(task, startup_callback, task_exit_handler)
     if task.type ~= "debug" then
         if not task.command or #task.command == 0 then
             return nil, "Invalid or empty command"
@@ -313,11 +351,11 @@ local function _start_one_task(task, task_exit_handler)
 
     local tasktype = task.type
     if tasktype == "vimcmd" then
-        return _create_vimcmd_job(task, output_handler, exit_handler)
+        return _create_vimcmd_job(task, startup_callback, output_handler, exit_handler)
     elseif tasktype == "build" or tasktype == "run" then
-        return _create_tool_job(task, output_handler, exit_handler)
+        return _create_tool_job(task, startup_callback, output_handler, exit_handler)
     elseif tasktype == "debug" then
-        return _create_debug_job(task, output_handler, exit_handler)
+        return _create_debug_job(task, startup_callback, output_handler, exit_handler)
     end
     return nil, "Unhandled task type: " .. tasktype
 end
@@ -369,37 +407,39 @@ local function _start_task_chain(tasks, on_complete)
 
         local task = table.remove(chain.tasks, 1)
         _current_task_name = task.name
-        local job, job_err = _start_one_task(task, function(exit_code)
-            if type(exit_code) ~= "number" then
-                window.add_events({ "Invalid task status for " .. task.name })
-                chain.interrupted = true
-            elseif exit_code == 0 then
-                window.add_events({ "Task ended: " .. task.name })
-            else
-                chain.interrupted = true
-                window.add_events({ "Task ended: " .. task.name .. ', exit code: ' .. tostring(exit_code) })
+        _start_one_task(task,
+            function(job, err)
+                if job then
+                    chain.active_job = job
+                    local cmd_descr = table.concat(strtools.cmd_to_string_array(task.command), ' ')
+                    window.add_events({ "Running " .. task.type .. " task", "  " .. cmd_descr })
+                    window.show_task_output()
+                else
+                    window.add_events({ "Task creation failed: " .. task.name, "  " .. tostring(err) }, "error")
+                    chain.interrupted = true
+                    vim.schedule(function()
+                        if chain == _current_task_chain then
+                            next_job(chain)
+                        end
+                    end)
+                end
             end
-            vim.schedule(function()
-                if chain == _current_task_chain then
-                    next_job(chain)
+            , function(exit_code)
+                if type(exit_code) ~= "number" then
+                    window.add_events({ "Invalid task status for " .. task.name })
+                    chain.interrupted = true
+                elseif exit_code == 0 then
+                    window.add_events({ "Task ended: " .. task.name })
+                else
+                    chain.interrupted = true
+                    window.add_events({ "Task ended: " .. task.name .. ', exit code: ' .. tostring(exit_code) })
                 end
+                vim.schedule(function()
+                    if chain == _current_task_chain then
+                        next_job(chain)
+                    end
+                end)
             end)
-        end)
-
-        if job then
-            chain.active_job = job
-            local cmd_descr = table.concat(strtools.cmd_to_string_array(task.command), ' ')
-            window.add_events({ "Running " .. task.type .. " task", "  " .. cmd_descr })
-            window.show_task_output()
-        else
-            window.add_events({ "Task creation failed: " .. task.name, "  " .. tostring(job_err) }, "error")
-            chain.interrupted = true
-            vim.schedule(function()
-                if chain == _current_task_chain then
-                    next_job(chain)
-                end
-            end)
-        end
     end
 
     ---@type loop.runner.TaskChain
@@ -424,19 +464,50 @@ end
 ---@param tasks loop.Task[]
 ---@param on_complete fun()|nil
 function M.start_task_chain(tasks, on_complete)
-    --- copy to solve strings in the copy and keep the original intact
-    local chain = vim.deepcopy(tasks)
-
-    for _, task in ipairs(chain) do
-        local name = task.name -- keep because the expand_strings may change it
-        local resolved, error_msg = resolver.resolve_macros(task)
-        if not resolved then
-            window.add_events({ "Failed to resolve macros(s) in '" .. name .. "' ", tostring(error_msg) }, "error")
-            return
-        end
+    if not tasks or #tasks == 0 then
+        if on_complete then vim.schedule(on_complete) end
+        return
     end
 
-    _start_task_chain(chain, on_complete)
+    -- Work on a deep copy so original config stays clean
+    local chain = vim.deepcopy(tasks)
+
+    local pending = #chain
+    local had_error = false
+
+    for i, task in ipairs(tasks) do
+        local original_name = task.name or ("task#" .. i)
+
+        resolver.resolve_macros(task, function(success, resolved_task, err)
+            if had_error then
+                pending = pending - 1
+                return
+            end
+
+            if not success then
+                had_error = true
+                window.add_events({
+                    "Failed to resolve macro(s) in task '" .. original_name .. "'",
+                    tostring(err)
+                }, "error")
+                pending = pending - 1
+                if pending == 0 and on_complete then
+                    vim.schedule(on_complete)
+                end
+                return
+            end
+
+            -- Replace the task with the fully resolved one
+            chain[i] = resolved_task
+
+            pending = pending - 1
+            if pending == 0 then
+                if not had_error then
+                    _start_task_chain(chain, on_complete)
+                end
+            end
+        end)
+    end
 end
 
 function M.terminate_task_chain()

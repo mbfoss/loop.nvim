@@ -7,102 +7,124 @@ local selector = require("loop.selector")
 
 local _nofile_error = "No file: current buffer is not a regular saved file"
 
-function M.home()
+-- Fully async macros — each takes a callback: cb(value, err)
+-- Return nothing directly — only call cb!
+
+function M.home(cb)
     local home = os.getenv("HOME")
     if not home then
-        return nil, "Environment variable $HOME is not set"
+        return cb(nil, "Environment variable $HOME is not set")
     end
-    return home
+    cb(home)
 end
 
-function M.file()
+function M.file(cb)
     if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
-        return nil, _nofile_error
+        return cb(nil, _nofile_error)
     end
-    return vim.fn.expand("%:p")
+    cb(vim.fn.expand("%:p"))
 end
 
-function M.filename()
+function M.filename(cb)
     if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
-        return nil, _nofile_error
+        return cb(nil, _nofile_error)
     end
-    return vim.fn.expand("%:t")
+    cb(vim.fn.expand("%:t"))
 end
 
-function M.fileext()
+function M.fileext(cb)
     if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
-        return nil, _nofile_error
+        return cb(nil, _nofile_error)
     end
     local ext = vim.fn.expand("%:e")
-    return ext ~= "" and ext or nil -- return nil if no extension
+    cb(ext ~= "" and ext or nil)
 end
 
-function M.fileroot()
+function M.fileroot(cb)
     if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
-        return nil, _nofile_error
+        return cb(nil, _nofile_error)
     end
-    return vim.fn.expand("%:p:r")
+    cb(vim.fn.expand("%:p:r"))
 end
 
-function M.filedir()
+function M.filedir(cb)
     if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
-        return nil, _nofile_error
+        return cb(nil, _nofile_error)
     end
-    return vim.fn.expand("%:p:h")
+    cb(vim.fn.expand("%:p:h"))
 end
 
-function M.projdir()
+function M.projdir(cb)
     local proj_dir = projinfo.proj_dir
     if not proj_dir then
-        return nil, "No active project"
+        return cb(nil, "No active project")
     end
-    return proj_dir
+    cb(proj_dir)
 end
 
-function M.cwd()
-    return vim.fn.getcwd()
+function M.cwd(cb)
+    cb(vim.fn.getcwd())
 end
 
-function M.filetype()
-    return vim.bo.filetype
+function M.filetype(cb)
+    cb(vim.bo.filetype)
 end
 
-function M.tmpdir()
+function M.tmpdir(cb)
     local tmp = os.getenv("TMPDIR") or os.getenv("TEMP") or os.getenv("TMP") or "/tmp"
-    return tmp
+    cb(tmp)
 end
 
-function M.date()
-    return os.date("%F") -- YYYY-MM-DD
+function M.date(cb)
+    cb(os.date("%F")) -- YYYY-MM-DD
 end
 
-function M.time()
-    return os.date("%T") -- HH:MM:SS
+function M.time(cb)
+    cb(os.date("%T")) -- HH:MM:SS
 end
 
-function M.timestamp()
-    return os.date("%Y-%m-%dT%H:%M:%S")
+function M.timestamp(cb)
+    cb(os.date("%Y-%m-%dT%H:%M:%S"))
 end
 
-M["select-process-pid"] = function ()
+-- Async process selector (now works!)
+M["select-process-pid"] = function(cb)
     local procs = systools.get_running_processes()
     if not procs or #procs == 0 then
-        return nil, "failed to load process list"
+        return cb(nil, "No processes found")
     end
+
     local choices = {}
-    for _, proc in pairs(procs) do
-        ---@type loop.SelectorItem
-        local item = {
-            label = tostring(proc.pid) .. " - " .. tostring(proc.name),
+    for _, proc in ipairs(procs) do
+        table.insert(choices, {
+            label = ("%6d | %s"):format(proc.pid, proc.name or "unknown"),
             data = proc.pid,
-        }
-        table.insert(choices, item)
+        })
     end
-    selector.select("Select process", choices, nil, function(pid)
-        if pid then
+
+    selector.select("Select process to attach", choices, nil, function(selected_pid)
+        if selected_pid then
+            cb(tostring(selected_pid)) -- return as string (common in DAP)
+        else
+            cb(nil, "Process selection cancelled")
         end
     end)
-    return nil, "Async proc selection is not implemented yet"
 end
+
+-- Optional: sync fallback for macros that are always fast
+-- (your resolver supports both sync and async!)
+local function make_sync_macro(fn)
+    return function(cb)
+        local ok, result = pcall(fn)
+        if ok then
+            cb(result)
+        else
+            cb(nil, "macro error: " .. tostring(result))
+        end
+    end
+end
+
+-- Example: if you want cwd to be sync (it's instant)
+-- M.cwd = make_sync_macro(vim.fn.getcwd)
 
 return M

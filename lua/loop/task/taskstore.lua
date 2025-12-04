@@ -186,31 +186,31 @@ end
 
 ---@param config_dir string
 ---@param ext_name string
----@return table|nil,string[]|nil
-local function _load_extension_config(config_dir, ext_name)
+---@param callback fun(config:table|nil,err:string[]|nil)
+local function _load_extension_config(config_dir, ext_name, callback)
     local mod, mod_err = _get_extension_mod(ext_name)
     if not mod then
-        return nil, { mod_err }
+        return callback(nil, { mod_err })
     end
 
     local filepath = vim.fs.joinpath(config_dir, "ext." .. ext_name .. ".json")
     if not filetools.file_exists(filepath) then
-        return nil, { "Config file does not exist:", filepath } -- not an error
+        return callback(nil, { "Config file does not exist:", filepath }) -- not an error
     end
 
     local loaded, contents_or_err = uitools.smart_read_file(filepath)
     if not loaded then
-        return nil, { contents_or_err }
+        return callback(nil, { contents_or_err })
     end
 
     local decoded, data_or_err = jsontools.from_string(contents_or_err)
     if not decoded then
-        return nil, { data_or_err }
+        return callback(nil, { data_or_err })
     end
 
     local data = data_or_err
     if not data then
-        return nil, { "Parsing error" }
+        return callback(nil, { "Parsing error" })
     end
 
     local schema = mod.get_config_schema()
@@ -218,32 +218,35 @@ local function _load_extension_config(config_dir, ext_name)
 
     local errors = jsonschema.validate(schema, data)
     if errors and #errors > 0 then
-        return nil, errors
+        return callback(nil, errors)
     end
 
     local cmake_config = data.config
 
-    local resolved, error_msg = resolver.resolve_macros(cmake_config)
-    if not resolved then
-        return nil, { "Failed to resolve variables in cmake config", "  " .. tostring(error_msg) }
-    end
-
-    return data.config, nil
+    resolver.resolve_macros(cmake_config, function (success, result_table, err)
+        if not success or not result_table then
+            callback(nil, {err or "failed to resolve macros"})
+        else
+            callback(result_table, nil)
+        end
+    end)
 end
 
 ---@param config_dir string
 ---@param ext_name string
----@return loop.Task[]|nil,string[]|nil
-function M.get_extension_tasks(config_dir, ext_name)
+---@param callback fun(tasks:loop.Task[]|nil,errors:string[]|nil)
+function M.get_extension_tasks(config_dir, ext_name, callback)
     local mod, mod_err = _get_extension_mod(ext_name)
     if not mod then
         return nil, { mod_err }
     end
-    local config, config_err = _load_extension_config(config_dir, ext_name)
-    if not config then
-        return nil, config_err
-    end
-    return mod.get_tasks(config)
+    _load_extension_config(config_dir, ext_name, function (config, err)
+        if not config then
+            callback(nil, err)
+        else
+            callback(mod.get_tasks(config))
+        end        
+    end)
 end
 
 ---@param config_dir string

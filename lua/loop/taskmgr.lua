@@ -10,25 +10,25 @@ local config = require("loop.config")
 
 
 local function _strip_functions(t, _seen)
-  if type(t) ~= "table" then
-    return t
-  end
-
-  _seen = _seen or {}
-  if _seen[t] then
-    return t  -- Avoid infinite loop on cyclic references
-  end
-  _seen[t] = true
-
-  for k, v in pairs(t) do
-    if type(v) == "function" then
-      t[k] = nil
-    elseif type(v) == "table" then
-      _strip_functions(v, _seen)
+    if type(t) ~= "table" then
+        return t
     end
-  end
 
-  return t
+    _seen = _seen or {}
+    if _seen[t] then
+        return t -- Avoid infinite loop on cyclic references
+    end
+    _seen[t] = true
+
+    for k, v in pairs(t) do
+        if type(v) == "function" then
+            t[k] = nil
+        elseif type(v) == "table" then
+            _strip_functions(v, _seen)
+        end
+    end
+
+    return t
 end
 
 ---@params task loop.Task
@@ -160,12 +160,13 @@ end
 ---@param config_dir string
 ---@param source string
 function M.import_task(config_dir, source)
-    local tasks, errors = taskstore.get_extension_tasks(config_dir, source)
-    if not tasks then
-        window.add_events(strtools.indent_errors(errors, "Failed to import tasks"), "error")
-        return
-    end
-    _select_and_add_task(config_dir, tasks, "Choose a task to import")
+    taskstore.get_extension_tasks(config_dir, source, function(tasks, errors)
+        if not tasks then
+            window.add_events(strtools.indent_errors(errors, "Failed to import tasks"), "error")
+            return
+        end
+        _select_and_add_task(config_dir, tasks, "Choose a task to import")
+    end)
 end
 
 ---@class loop.SelectTaskArgs
@@ -264,25 +265,26 @@ end
 ---@param config_dir string
 ---@param ext_name string
 function M.run_extension_task(config_dir, ext_name)
-    local tasks, task_errors = taskstore.get_extension_tasks(config_dir, ext_name or "")
-    if not tasks or task_errors then
-        window.add_events(strtools.indent_errors(task_errors, "Errors while loading tasks"), "error")
-    end
-    if not tasks then
-        return
-    end
-    ---@type loop.SelectTaskArgs
-    local select_args = {
-        tasks = tasks,
-        prompt = "Select task"
-    }
-    _select_task(select_args, function(task)
-        local chain, err = runner.get_deps_chain(tasks, task)
-        if not chain then
-            window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
+    taskstore.get_extension_tasks(config_dir, ext_name or "", function(tasks, errors)
+        if not tasks or errors then
+            window.add_events(strtools.indent_errors(errors, "Errors while loading tasks"), "error")
+        end
+        if not tasks then
             return
         end
-        runner.start_task_chain(chain)
+        ---@type loop.SelectTaskArgs
+        local select_args = {
+            tasks = tasks,
+            prompt = "Select task"
+        }
+        _select_task(select_args, function(task)
+            local chain, err = runner.get_deps_chain(tasks, task)
+            if not chain then
+                window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
+                return
+            end
+            runner.start_task_chain(chain)
+        end)
     end)
 end
 
