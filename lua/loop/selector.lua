@@ -2,7 +2,7 @@
 ---@field label string
 ---@field data any
 
----@alias loop.SelectorCallback fun(data: any)
+---@alias loop.SelectorCallback fun(data: any?)
 
 local M = {}
 
@@ -34,106 +34,79 @@ local function apply_filter(items, query)
   return result
 end
 
---- Native floating selector with live filtering and preview
+--- Native floating selector with live filtering + preview
 ---@param prompt string
 ---@param items loop.SelectorItem[]
----@param formatter? fun(data:any):string
+---@param formatter? fun(data:any):string   -- defaults to vim.inspect / tostring
 ---@param callback loop.SelectorCallback
 function M.select(prompt, items, formatter, callback)
-  if #items == 0 then
-    callback(nil)
-    return
-  end
+  if #items == 0 then return callback(nil) end
 
   formatter = formatter or function(data)
-    if type(data) == "table" then
-      return vim.inspect(data)
-    end
-    return tostring(data)
+    return type(data) == "table" and vim.inspect(data) or tostring(data)
   end
 
   -- Layout
-  local editor_width = vim.o.columns
-  local editor_height = vim.o.lines
-  local width = math.floor(editor_width * 0.7)
-  local height = math.floor(editor_height * 0.7)
-  local list_width = math.floor(width * 0.4)
-  local preview_width = width - list_width - 1
+  local width  = math.floor(vim.o.columns * 0.7)
+  local height = math.floor(vim.o.lines    * 0.7)
+  local list_w = math.floor(width * 0.4)
+  local prev_w = width - list_w - 1
 
-  local row = math.floor((editor_height - height) / 2)
-  local col = math.floor((editor_width - width) / 2)
+  local row = math.floor((vim.o.lines - height) / 2)
+  local col = math.floor((vim.o.columns - width) / 2)
 
   -- State
-  local query = ""
+  local query    = ""
   local filtered = vim.deepcopy(items)
-  local cursor = 1
+  local cursor   = 1
 
-  -- Windows & buffers
-  local list_buf, list_win = create_win {
-    row = row,
-    col = col,
-    width = list_width,
-    height = height,
-  }
-
-  local prev_buf, prev_win = create_win {
-    row = row,
-    col = col + list_width + 1,
-    width = preview_width,
-    height = height,
-  }
+  -- Windows
+  local list_buf, list_win = create_win { row = row, col = col,           width = list_w, height = height }
+  local prev_buf, prev_win = create_win { row = row, col = col + list_w + 1, width = prev_w, height = height }
 
   vim.bo[list_buf].filetype = "loop-selector-list"
   vim.bo[prev_buf].filetype = "loop-selector-preview"
-  vim.bo[prev_buf].buftype = "nofile"
-
-  -- Syntax highlight preview if possible
-  vim.api.nvim_win_set_option(prev_win, "winhl", "Normal:FloatBorder,FloatBorder:FloatBorder")
+  vim.bo[prev_buf].buftype  = "nofile"
 
   local function update_list()
-    local lines = { prompt .. (query ~= "" and (" > " .. query) or "") }
+    local header = prompt .. (query ~= "" and (" > " .. query) or "")
+    local lines = { header }
     for i, item in ipairs(filtered) do
-      local prefix = i == cursor and "▶ " or "  "
-      table.insert(lines, prefix .. item.label)
+      table.insert(lines, (i == cursor and "▶ " or "  ") .. item.label)
     end
     vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, lines)
-    vim.api.nvim_buf_add_highlight(list_buf, -1, "Title", 0, 0, -1)
+    vim.api.nvim_buf_add_highlight(list_buf, -1, "Title", 0, 0, -1) -- highlight prompt
   end
 
   local function update_preview()
-    if not filtered[cursor] then
-      vim.api.nvim_buf_set_lines(prev_buf, 0, -1, false, { "" })
+    local item = filtered[cursor]
+    if not item then
+      vim.api.nvim_buf_set_lines(prev_buf, 0, -1, false, {""})
       return
     end
 
-    local ok, text = pcall(formatter, filtered[cursor].data)
-    if not ok then text = "<error formatting data>" end
+    local ok, text = pcall(formatter, item.data)
+    if not ok then text = "<formatter error>" end
 
-    local lines = vim.split(text, "\n", { trimempty = false })
+    local lines = vim.split(text, "\n")
     vim.api.nvim_buf_set_lines(prev_buf, 0, -1, false, lines)
 
-    -- Try to set filetype for syntax highlighting in preview
-    if type(filtered[cursor].data) == "table" and filtered[cursor].data.__filetype then
-      vim.bo[prev_buf].filetype = filtered[cursor].data.__filetype
-    else
-      vim.bo[prev_buf].syntax = "lua" -- fallback
+    -- Optional: guess filetype for syntax highlighting
+    if type(item.data) == "table" and item.data.__filetype then
+      vim.bo[prev_buf].filetype = item.data.__filetype
     end
   end
 
   local function rerender()
     filtered = apply_filter(items, query)
-    if #filtered == 0 then
-      cursor = 1
-    else
-      cursor = math.max(1, math.min(cursor, #filtered))
-    end
+    cursor = #filtered > 0 and math.min(cursor, #filtered) or 1
     update_list()
     update_preview()
   end
 
   local function close(result)
-    if vim.api.nvim_win_is_valid(list_win) then vim.api.nvim_win_close(list_win, true) end
-    if vim.api.nvim_win_is_valid(prev_win) then vim.api.nvim_win_close(prev_win, true) end
+    pcall(vim.api.nvim_win_close, list_win, true)
+    pcall(vim.api.nvim_win_close, prev_win, true)
     callback(result)
   end
 
@@ -147,24 +120,24 @@ function M.select(prompt, items, formatter, callback)
   -- Initial render
   rerender()
 
-  -- Keymaps (buffer-local)
+  -- Keymaps (only in the list buffer)
   local opts = { buffer = list_buf, nowait = true, silent = true }
 
+  -- Cancel
   vim.keymap.set("n", "<Esc>", function() close(nil) end, opts)
   vim.keymap.set("n", "q",     function() close(nil) end, opts)
   vim.keymap.set("n", "<C-c>", function() close(nil) end, opts)
 
+  -- Confirm
   vim.keymap.set("n", "<CR>", function()
     close(filtered[cursor] and filtered[cursor].data or nil)
   end, opts)
 
-  vim.keymap.set("n", "<C-n>", function() move(1) end, opts)
-  vim.keymap.set("n", "<Down>", function() move(1) end, opts)
-  vim.keymap.set("n", "j", function() move(1) end, opts)
-
-  vim.keymap.set("n", "<C-p>", function() move(-1) end, opts)
-  vim.keymap.set("n", "<Up>", function() move(-1) end, opts)
-  vim.keymap.set("n", "k", function() move(-1) end, opts)
+  -- Navigation – ONLY Ctrl-n / Ctrl-p (and arrows as bonus)
+  vim.keymap.set("n", "<C-n>",     function() move(1)  end, opts)
+  vim.keymap.set("n", "<C-p>",     function() move(-1) end, opts)
+  vim.keymap.set("n", "<Down>",    function() move(1)  end, opts)
+  vim.keymap.set("n", "<Up>",      function() move(-1) end, opts)
 
   -- Backspace
   vim.keymap.set("n", "<BS>", function()
@@ -174,18 +147,16 @@ function M.select(prompt, items, formatter, callback)
     end
   end, opts)
 
-  -- Printable characters → filter
+  -- All printable characters → add to query (including j, k, etc.)
   for code = 32, 126 do
     local char = string.char(code)
-    if not vim.tbl_contains({ "q", "j", "k" }, char) then -- avoid conflicts
-      vim.keymap.set("n", char, function()
-        query = query .. char
-        rerender()
-      end, opts)
-    end
+    vim.keymap.set("n", char, function()
+      query = query .. char
+      rerender()
+    end, opts)
   end
 
-  -- Make list window active
+  -- Start in the list window
   vim.api.nvim_set_current_win(list_win)
 end
 
