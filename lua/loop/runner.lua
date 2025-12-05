@@ -176,7 +176,7 @@ local function _create_vimcmd_job(task, startup_callback, _, exit_handler)
         command = task.command,
         on_exit_handler = exit_handler
     }
-    vim.notify("Starting job:\n" .. vim.inspect(args))
+    --vim.notify("Starting job:\n" .. vim.inspect(args))
     local job = VimCmdJob:new()
     local ok, err = job:start(args)
     if not ok then
@@ -217,7 +217,7 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
             on_exit_handler = exit_handler,
         }
 
-        vim.notify("Starting job:\n" .. vim.inspect(start_args))
+        --vim.notify("Starting job:\n" .. vim.inspect(start_args))
         local job = TermJob:new()
         local bufnr, err = job:start(start_args)
         if not bufnr or bufnr == -1 then
@@ -302,7 +302,7 @@ local function _create_debug_job(task, startup_callback, output_handler, exit_ha
             },
         }
 
-        vim.notify("Starting job:\n" .. vim.inspect(start_args))
+        --vim.notify("Starting job:\n" .. vim.inspect(start_args))
         local job = DebugJob:new(task.name)
 
         -- Add trackers
@@ -330,7 +330,7 @@ end
 ---@param startup_callback fun(job: loop.job.DebugJob|nil, err: string|nil)
 ---@param task_exit_handler fun(exit_code : number)
 local function _start_one_task(task, startup_callback, task_exit_handler)
-    vim.notify("Starting task:\n" .. vim.inspect(task))
+    --vim.notify("Starting task:\n" .. vim.inspect(task))
 
     if task.type ~= "debug" then
         if not task.command or #task.command == 0 then

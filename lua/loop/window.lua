@@ -268,8 +268,7 @@ end
 ---@param tab loop.TabInfo
 local function _delete_tab_pages(tab)
     assert(tab ~= _tabs.events)
-    _setup_tabs()
-    for _, page in ipairs(tab) do
+    for _, page in ipairs(tab.pages) do
         page:destroy()
     end
     tab.pages = {}
@@ -351,19 +350,17 @@ local function create_window()
     })
 end
 
--- do not allow our buffers in another window
---[[
+-- remove winbar after split
 local function _on_window_enter()
-    local win = vim.api.nvim_get_current_win()
-    if win ~= _loop_win then
-        local buf = vim.api.nvim_win_get_buf(win)
-        if Page.is_page(buf) then
-            local bufnr = vim.api.nvim_create_buf(true, true)
-            vim.api.nvim_win_set_buf(win, bufnr)
+    local winid = vim.api.nvim_get_current_win()
+    local buf = vim.api.nvim_win_get_buf(winid)
+    if winid ~= _loop_win and Page.is_page(buf) then
+        local winbar = vim.wo[winid].winbar
+        if type(winbar) == 'string' and winbar:match('v:lua.LoopProject._winbar_click') then
+            vim.wo[winid].winbar = nil
         end
     end
 end
-]] --
 
 ---@param lines string[]
 ---@param level nil|"warn"|"error"
@@ -497,7 +494,7 @@ function M.setup(_)
         vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "ErrorMsg" })
     end
 
-    --vim.api.nvim_create_autocmd("WinEnter", { callback = _on_window_enter })
+    vim.api.nvim_create_autocmd("WinEnter", { callback = _on_window_enter })
 
     vim.api.nvim_create_autocmd("WinNew", {
         callback = function(_)
@@ -512,19 +509,6 @@ function M.setup(_)
                 _loop_win = -1
             else
                 _on_win_new_or_close()
-            end
-        end,
-    })
-
-    vim.api.nvim_create_autocmd("WinEnter", {
-        callback = function(args)
-            local winid = vim.api.nvim_get_current_win()
-            local buf = vim.api.nvim_win_get_buf(winid)
-            if winid ~= _loop_win and Page.is_page(buf) then
-                local winbar = vim.wo[winid].winbar
-                if type(winbar) == 'string' and winbar:match('v:lua.LoopProject._winbar_click') then
-                    vim.wo[winid].winbar = nil
-                end
             end
         end,
     })

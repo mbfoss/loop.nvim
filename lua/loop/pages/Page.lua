@@ -29,7 +29,7 @@ end
 function Page:destroy()
     self._destroyed = true
     if self._buf > 0 then
-        --vim.notify('deleting buffer')
+        --vim.notify("deleting buffer " .. tostring(self._buf))
         vim.api.nvim_buf_delete(self._buf, { force = true })
         assert(self._buf == -1)
     end
@@ -92,6 +92,7 @@ function Page:get_or_create_buf()
     end
 
     self._buf = vim.api.nvim_create_buf(false, true)
+    --vim.notify("created buffer " .. tostring(self._buf))
     self:_setup_buf(true)
     return self._buf, true
 end
