@@ -207,13 +207,15 @@ function M.select(prompt, items, formatter, callback)
             error(string.format("selector_menu.select: item %d must have .label (string) and .data (non-nil)", i))
         end
     end
-    if load_telescope() then
-        telescope_select(prompt, items, formatter, callback)
-    elseif load_snacks() then
-        snacks_select(prompt, items, formatter, callback)
-    else
-        default_select(prompt, items, callback)
-    end
+    vim.schedule(function()
+        if load_telescope() then
+            telescope_select(prompt, items, formatter, callback)
+        elseif load_snacks() then
+            snacks_select(prompt, items, formatter, callback)
+        else
+            default_select(prompt, items, callback)
+        end
+    end)
 end
 
 return M

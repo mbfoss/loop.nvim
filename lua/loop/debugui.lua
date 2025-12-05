@@ -211,26 +211,20 @@ local function _load_scopes(scopes, thread_data, variables_page)
         ---@type loop.pages.ItemTreePage.Item
         local scope_item = {
             id = _make_node_id(),
-            expanded = true,
+            expanded = false,
             data = { text = scope.name .. suffix }
         }
-        if not scope.expensive and
-            scope.presentationHint ~= "globals" and
-            scope.name ~= "Globals" and
-            scope.presentationHint ~= "registers" then
-            variables_page:insert_item(scope_item)
-            load_variables(scope.variablesReference, scope_item.id, function(items)
-                for _, item in ipairs(items) do
-                    variables_page:insert_item(item)
-                end
-            end)
-        else
-            scope_item.expanded = false
-            scope_item.children_callback = function(cb)
-                load_variables(scope.variablesReference, scope_item.id, cb)
-            end
-            variables_page:insert_item(scope_item)
+        if not scope.expensive
+            and scope.presentationHint ~= "globals"
+            and scope.name ~= "Globals"
+            and scope.presentationHint ~= "registers"
+        then
+            scope_item.expanded = true
         end
+        scope_item.children_callback = function(cb)
+            load_variables(scope.variablesReference, scope_item.id, cb)
+        end
+        variables_page:insert_item(scope_item)
     end
 end
 
