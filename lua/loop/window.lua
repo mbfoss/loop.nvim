@@ -99,15 +99,6 @@ local function _on_win_new_or_close()
     if count <= 2 then
         vim.schedule(_quit_if_last_window)
     end
-    if count <= 1 then
-        return
-    end
-    vim.api.nvim_set_option_value('winfixheight', true, { scope = 'local', win = winid })
-    if _loop_win_height_ratio then
-        vim.api.nvim_win_set_height(winid, math.floor(vim.o.lines * _loop_win_height_ratio))
-    else
-        vim.api.nvim_win_set_height(winid, math.floor(vim.o.lines * 0.17))
-    end
 end
 
 local function _setup_tabs()
@@ -327,22 +318,25 @@ local function create_window()
     -- Open a bottom split.
     vim.cmd('bot split')
     -- Get the new window ID.
-    _loop_win = vim.api.nvim_get_current_win()
-    _on_win_new_or_close()
+    _loop_win = vim.api.nvim_get_current_win()    
+    if _loop_win_height_ratio then
+        vim.api.nvim_win_set_height(_loop_win, math.floor(vim.o.lines * _loop_win_height_ratio))
+    else
+        vim.api.nvim_win_set_height(_loop_win, math.floor(vim.o.lines * 0.17))
+    end
+    vim.api.nvim_set_option_value('winfixheight', true, { scope = 'local', win = _loop_win })
     vim.api.nvim_set_current_win(prev_win)
-
     vim.wo[_loop_win].spell = false
 
     _setup_tabs()
 
     vim.api.nvim_create_autocmd("WinResized", {
-        --pattern = tostring(_loop_win), -- Only trigger for window ID 1001
         callback = function()
             if _loop_win ~= -1 then
                 local height = vim.api.nvim_win_get_height(_loop_win)
                 local ratio = height / vim.o.lines
-                -- protect againt the case our window is the only one open
-                if ratio < 0.5 then
+                -- only save of we are not the only window vertically
+                if ratio < 0.7 then
                     _loop_win_height_ratio = ratio
                 end
             end

@@ -4,6 +4,9 @@
 ---@alias loop.SelectorCallback fun(data: any|nil)
 local M = {}
 
+-- One single namespace for the whole module
+local _ns_prompt = vim.api.nvim_create_namespace("LoopPluginItemSelectPrompt")
+
 local function fuzzy_filter(items, query)
     if query == "" then return vim.deepcopy(items) end
     local q = query:lower()
@@ -17,9 +20,16 @@ end
 local function _update_prompt(prompt_prefix, query, pbuf, pwin)
     local full_text = prompt_prefix .. query
     vim.api.nvim_buf_set_lines(pbuf, 0, -1, false, { full_text })
-    -- Clear and highlight only the static part
-    vim.api.nvim_buf_clear_namespace(pbuf, -1, 0, -1)
-    vim.api.nvim_buf_add_highlight(pbuf, -1, "Title", 0, 0, #prompt_prefix)
+
+    -- Clear previous highlights/extmarks in this namespace
+    pcall(vim.api.nvim_buf_clear_namespace, pbuf, _ns_prompt, 0, -1)
+
+    -- Apply the new highlight via extmark (non-deprecated)
+    vim.api.nvim_buf_set_extmark(pbuf, _ns_prompt, 0, 0, {
+        end_col = #prompt_prefix,
+        hl_group = "Title",
+    })
+
     -- Force cursor position *after* the text is set
     vim.schedule(function()
         pcall(vim.api.nvim_win_set_cursor, pwin, { 1, #full_text })
@@ -96,32 +106,32 @@ function M.select(prompt, items, formatter, callback)
     local lbuf = vim.api.nvim_create_buf(false, true)
     local vbuf = has_preview and vim.api.nvim_create_buf(false, true) or nil
     local pwin = vim.api.nvim_open_win(pbuf, true, {
-            relative = "editor",
-            style = "minimal",
-            border = "rounded",
-            width = width,
-            height = 1,
-            row = row - 2,
-            col = col,
-        })
+        relative = "editor",
+        style = "minimal",
+        border = "rounded",
+        width = width,
+        height = 1,
+        row = row - 2,
+        col = col,
+    })
     local lwin = vim.api.nvim_open_win(lbuf, false, {
-            relative = "editor",
-            style = "minimal",
-            border = "rounded",
-            width = list_w,
-            height = height,
-            row = row,
-            col = col,
-        })
+        relative = "editor",
+        style = "minimal",
+        border = "rounded",
+        width = list_w,
+        height = height,
+        row = row,
+        col = col,
+    })
     local vwin = has_preview and vim.api.nvim_open_win(vbuf, false, {
-            relative = "editor",
-            style = "minimal",
-            border = "rounded",
-            width = prev_w,
-            height = height,
-            row = row,
-            col = col + list_w,
-        }) or nil
+        relative = "editor",
+        style = "minimal",
+        border = "rounded",
+        width = prev_w,
+        height = height,
+        row = row,
+        col = col + list_w,
+    }) or nil
     vim.bo[lbuf].filetype = ""
     if has_preview then vim.bo[vbuf].filetype = "json" end
     local prompt_prefix = prompt .. " > "
@@ -145,12 +155,12 @@ function M.select(prompt, items, formatter, callback)
     redraw()
     -- Auto-close on focus loss
     vim.api.nvim_create_autocmd({ "WinLeave", "BufLeave" }, {
-            buffer = pbuf,
-            once = true,
-            callback = function()
-                close(nil)
-            end,
-        })
+        buffer = pbuf,
+        once = true,
+        callback = function()
+            close(nil)
+        end,
+    })
     local opts = { buffer = pbuf, nowait = true, silent = true }
     vim.keymap.set("i", "<CR>", function() close(filtered[cur] and filtered[cur].data or nil) end, opts)
     vim.keymap.set("i", "<Esc>", function() close(nil) end, opts)
