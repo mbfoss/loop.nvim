@@ -7,6 +7,14 @@ local selector = require("loop.selector")
 
 local _nofile_error = "No file: current buffer is not a regular saved file"
 
+local function _is_file()
+    local buf = vim.api.nvim_get_current_buf()
+    if not uitools.is_regular_buffer(buf) then
+        return false
+    end
+    return vim.api.nvim_buf_get_name(buf) ~= ""
+end
+
 -- Fully async macros — each takes a callback: cb(value, err)
 -- Return nothing directly — only call cb!
 
@@ -19,21 +27,21 @@ function M.home(cb)
 end
 
 function M.file(cb)
-    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
+    if not _is_file() then
         return cb(nil, _nofile_error)
     end
     cb(vim.fn.expand("%:p"))
 end
 
 function M.filename(cb)
-    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
+    if not _is_file() then
         return cb(nil, _nofile_error)
     end
     cb(vim.fn.expand("%:t"))
 end
 
 function M.fileext(cb)
-    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
+    if not _is_file() then
         return cb(nil, _nofile_error)
     end
     local ext = vim.fn.expand("%:e")
@@ -41,14 +49,14 @@ function M.fileext(cb)
 end
 
 function M.fileroot(cb)
-    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
+    if not _is_file() then
         return cb(nil, _nofile_error)
     end
     cb(vim.fn.expand("%:p:r"))
 end
 
 function M.filedir(cb)
-    if not uitools.is_regular_buffer(vim.api.nvim_get_current_buf()) then
+    if not _is_file() then
         return cb(nil, _nofile_error)
     end
     cb(vim.fn.expand("%:p:h"))

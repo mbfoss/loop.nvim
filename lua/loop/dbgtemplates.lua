@@ -75,6 +75,10 @@ debuggers.lua = {
             vim.fn.stdpath("data") ..
             "/mason/packages/local-lua-debugger-vscode/extension/extension/debugAdapter.js",
         }, -- or "lua-debug"
+        env = {
+            LUA_PATH = vim.fn.stdpath("data")
+                .. "/mason/packages/local-lua-debugger-vscode/extension/debugger/?.lua;;"
+        },
         -- Optional: some versions need extra args
     },
     -- Launch: debug current file or project
@@ -82,9 +86,11 @@ debuggers.lua = {
         type = "lua-local",
         request = "launch",
         name = "Debug",
+        cwd = "${projdir}",
         program = {
-            lua = "lua5.1",
-            file = "main.lua"
+            lua = vim.fn.exepath("lua"),
+            file = "${file}",
+            communication = 'stdio',
         }
     },
 
@@ -97,6 +103,25 @@ debuggers.lua = {
         cwd = "${projdir}",
         sourceMaps = true,
     },
+}
+
+
+debuggers["lua:remote"] = {
+    dap = {
+        adapter_id = "lua:remote",
+        name = "Lua Remote Debugger",
+        type = "server",
+        host = "127.0.0.1",
+        port = 8086,
+    },
+    attach_args = {
+        request = "attach",
+        type = "lua",
+        host = "127.0.0.1",
+        cwd = "${projdir}",
+        stopOnEntry = false,
+    },
+    terminate_debuggee = false,     -- NEVER kill the process we attached to
 }
 
 -- ==================================================================

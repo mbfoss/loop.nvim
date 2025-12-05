@@ -141,6 +141,7 @@ local function _on_session_state_update(sess_id, sess_name, data, task_page, sta
     local item = task_page:get_item(sess_id)
     if item then
         item.data.state = data.state
+        task_page:refresh_content()
     end
     if data.state == "ended" then
         signs.remove_signs("currentframe")
