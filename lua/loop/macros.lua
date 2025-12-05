@@ -88,7 +88,7 @@ function M.timestamp(cb)
 end
 
 -- Async process selector (now works!)
-M["select-process-pid"] = function(cb)
+M["select-pid"] = function(cb)
     local procs = systools.get_running_processes()
     if not procs or #procs == 0 then
         return cb(nil, "No processes found")

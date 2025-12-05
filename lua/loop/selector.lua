@@ -1,221 +1,192 @@
 ---@class loop.SelectorItem
----@field label string The display label in the picker
----@field data any The data associated with the item
+---@field label string
+---@field data any
 
----@alias loop.SelectorCallback fun(data:any): nil
+---@alias loop.SelectorCallback fun(data: any)
 
 local M = {}
 
-local pickers = nil
-local finders = nil
-local previewers = nil
-local conf = nil
-local actions = nil
-local action_state = nil
+local function create_win(opts)
+  local buf = vim.api.nvim_create_buf(false, true)
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "editor",
+    style = "minimal",
+    border = "single",
+    width = opts.width,
+    height = opts.height,
+    row = opts.row,
+    col = opts.col,
+  })
+  vim.wo[win].wrap = false
+  vim.wo[win].scrolloff = 0
+  return buf, win
+end
 
---- Fallback native selector using vim.ui.select (Neovim 0.6+)
+local function apply_filter(items, query)
+  if query == "" then return vim.deepcopy(items) end
+  local q = query:lower()
+  local result = {}
+  for _, item in ipairs(items) do
+    if item.label:lower():find(q, 1, true) then
+      table.insert(result, item)
+    end
+  end
+  return result
+end
+
+--- Native floating selector with live filtering and preview
 ---@param prompt string
 ---@param items loop.SelectorItem[]
----@param callback fun(item: loop.SelectorItem|nil)
-local function default_select(prompt, items, callback)
-    local labels = {}
-    for _, item in ipairs(items) do
-        table.insert(labels, item.label)
-    end
-    vim.ui.select(labels, {
-        prompt = prompt,
-    }, function(selected_label)
-        if not selected_label then
-            callback(nil)
-            return
-        end
-        for _, item in ipairs(items) do
-            if item.label == selected_label then
-                callback(item.data)
-                return
-            end
-        end
-        callback(nil)
-    end)
-end
--- Load Telescope modules only if available
-local function load_telescope()
-    local ok1, p = pcall(require, "telescope.pickers")
-    local ok2, f = pcall(require, "telescope.finders")
-    local ok3, pr = pcall(require, "telescope.previewers")
-    local ok4, c = pcall(require, "telescope.config")
-    local ok5, a = pcall(require, "telescope.actions")
-    local ok6, ast = pcall(require, "telescope.actions.state")
-    if ok1 and ok2 and ok3 and ok4 and ok5 and ok6 then
-        pickers = p
-        finders = f
-        previewers = pr
-        conf = c.values
-        actions = a
-        action_state = ast
-        return true
-    end
-    return false
-end
---- Use Telescope to show the selector
----@param prompt string The prompt title
----@param items loop.SelectorItem[] List of items
----@param formatter (fun(data:any):string)|nil Convert the data into text for display in the preview
----@param callback fun(data:any|nil) Called with selected item or nil
-local function telescope_select(prompt, items, formatter, callback)
-    -- Ensure Telescope is loaded
-    if not (pickers and finders and previewers and conf and actions and action_state) then
-        return
-    end
-    local previewer
-    if formatter then
-        previewer = previewers.new_buffer_previewer({
-            title = "Details",
-            ---@param self table
-            ---@param entry table
-            ---@param status table
-            define_preview = function(self, entry, status)
-                -- Format and split data into lines
-                local formatted = formatter(entry.value.data)
-                local lines = vim.split(formatted, "\n")
-                -- Set lines in the preview buffer
-                vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
-                -- Set JSON filetype for syntax highlighting
-                vim.bo[self.state.bufnr].filetype = "json"
-                -- Enable line wrapping in this buffer's window
-                local win = self.state.winid
-                assert(win and win > 0)
-                vim.wo[win].wrap = true
-                vim.wo[win].linebreak = true
-                vim.wo[win].foldmethod = "indent"
-                vim.wo[win].spell = false
-            end,
-        })
-    end
-    pickers.new({}, {
-        prompt_title = prompt,
-        finder = finders.new_table({
-            results = items,
-            ---@param entry loop.SelectorItem
-            entry_maker = function(entry)
-                return {
-                    value = entry,
-                    display = entry.label,
-                    ordinal = entry.label,
-                }
-            end,
-        }),
-        previewer = previewer,
-        sorter = conf.generic_sorter({}),
-        attach_mappings = function(prompt_bufnr, map)
-            -- Replace default select action
-            actions.select_default:replace(function()
-                actions.close(prompt_bufnr)
-                local selection = action_state.get_selected_entry()
-                local item = selection and selection.value or nil
-                if item and callback then
-                    callback(item.data)
-                end
-            end)
-            -- Optional: allow <C-c> to cancel
-            map("i", "<C-c>", function()
-                actions.close(prompt_bufnr)
-                if callback then callback(nil) end
-            end)
-            return true
-        end,
-    }):find()
-end
-
--- Load Snacks.nvim picker if available
-local function load_snacks()
-    local ok, snacks = pcall(require, "snacks")
-    if ok and snacks and snacks.picker then
-        return true
-    end
-    return false
-end
-
--- Use Snacks.nvim picker as fallback
----@param prompt string
----@param items loop.SelectorItem[]
----@param formatter (fun(data:any):string)|nil Convert the data into text for display in the preview
+---@param formatter? fun(data:any):string
 ---@param callback loop.SelectorCallback
-local function snacks_select(prompt, items, formatter, callback)
-    local snacks = require("snacks")
-
-    -- Map items for Snacks.nvim
-    local snack_items = {}
-    for _, item in ipairs(items) do
-        table.insert(snack_items, {
-            text = item.label,
-            value = item,
-            file = ""
-        })
-    end
-
-    local previewer
-    if formatter then
-        previewer = function(ctx)
-            local jsonstr = formatter(ctx.item.value.data)
-            vim.bo[ctx.buf].modifiable = true
-            vim.api.nvim_buf_set_lines(ctx.buf, 0, -1, false, vim.split(jsonstr, "\n"))
-            vim.bo[ctx.buf].modifiable = false
-            vim.bo[ctx.buf].filetype = "json"
-            return true
-        end
-    end
-
-    -- Show the picker
-    snacks.picker({
-        title = prompt,
-        items = snack_items,
-        format = "text",
-        preview = previewer,
-        confirm = function(picker, item)
-            vim.schedule(function()
-                picker:close()
-                if callback and item and item.value then
-                    callback(item.value.data)
-                end
-            end)
-        end
-    })
-end
-
---- Select an item from a list with label and data preview.
---- Uses Telescope if available; otherwise falls back to a simple native picker.
----@param prompt string The prompt/title to display
----@param items loop.SelectorItem[] List of items with label and data table
----@param formatter (fun(data:any):string)|nil Convert the data into text for display in the preview
----@param callback loop.SelectorCallback Called with selected item or nil if cancelled
 function M.select(prompt, items, formatter, callback)
-    -- Input validation
-    if type(prompt) ~= "string" or prompt == "" then
-        prompt = "Select an item"
+  if #items == 0 then
+    callback(nil)
+    return
+  end
+
+  formatter = formatter or function(data)
+    if type(data) == "table" then
+      return vim.inspect(data)
     end
-    if not items or #items == 0 then
-        if callback then callback(nil) end
-        return
+    return tostring(data)
+  end
+
+  -- Layout
+  local editor_width = vim.o.columns
+  local editor_height = vim.o.lines
+  local width = math.floor(editor_width * 0.7)
+  local height = math.floor(editor_height * 0.7)
+  local list_width = math.floor(width * 0.4)
+  local preview_width = width - list_width - 1
+
+  local row = math.floor((editor_height - height) / 2)
+  local col = math.floor((editor_width - width) / 2)
+
+  -- State
+  local query = ""
+  local filtered = vim.deepcopy(items)
+  local cursor = 1
+
+  -- Windows & buffers
+  local list_buf, list_win = create_win {
+    row = row,
+    col = col,
+    width = list_width,
+    height = height,
+  }
+
+  local prev_buf, prev_win = create_win {
+    row = row,
+    col = col + list_width + 1,
+    width = preview_width,
+    height = height,
+  }
+
+  vim.bo[list_buf].filetype = "loop-selector-list"
+  vim.bo[prev_buf].filetype = "loop-selector-preview"
+  vim.bo[prev_buf].buftype = "nofile"
+
+  -- Syntax highlight preview if possible
+  vim.api.nvim_win_set_option(prev_win, "winhl", "Normal:FloatBorder,FloatBorder:FloatBorder")
+
+  local function update_list()
+    local lines = { prompt .. (query ~= "" and (" > " .. query) or "") }
+    for i, item in ipairs(filtered) do
+      local prefix = i == cursor and "▶ " or "  "
+      table.insert(lines, prefix .. item.label)
     end
-    if type(callback) ~= "function" then
-        error("selector_menu.select: callback must be a function")
+    vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, lines)
+    vim.api.nvim_buf_add_highlight(list_buf, -1, "Title", 0, 0, -1)
+  end
+
+  local function update_preview()
+    if not filtered[cursor] then
+      vim.api.nvim_buf_set_lines(prev_buf, 0, -1, false, { "" })
+      return
     end
-    -- Validate item structure
-    for i, item in ipairs(items) do
-        if type(item) ~= "table" or type(item.label) ~= "string" or type(item.data) == "nil" then
-            error(string.format("selector_menu.select: item %d must have .label (string) and .data (non-nil)", i))
-        end
+
+    local ok, text = pcall(formatter, filtered[cursor].data)
+    if not ok then text = "<error formatting data>" end
+
+    local lines = vim.split(text, "\n", { trimempty = false })
+    vim.api.nvim_buf_set_lines(prev_buf, 0, -1, false, lines)
+
+    -- Try to set filetype for syntax highlighting in preview
+    if type(filtered[cursor].data) == "table" and filtered[cursor].data.__filetype then
+      vim.bo[prev_buf].filetype = filtered[cursor].data.__filetype
+    else
+      vim.bo[prev_buf].syntax = "lua" -- fallback
     end
-    vim.schedule(function()
-        if load_telescope() then
-            telescope_select(prompt, items, formatter, callback)
-        elseif load_snacks() then
-            snacks_select(prompt, items, formatter, callback)
-        else
-            default_select(prompt, items, callback)
-        end
-    end)
+  end
+
+  local function rerender()
+    filtered = apply_filter(items, query)
+    if #filtered == 0 then
+      cursor = 1
+    else
+      cursor = math.max(1, math.min(cursor, #filtered))
+    end
+    update_list()
+    update_preview()
+  end
+
+  local function close(result)
+    if vim.api.nvim_win_is_valid(list_win) then vim.api.nvim_win_close(list_win, true) end
+    if vim.api.nvim_win_is_valid(prev_win) then vim.api.nvim_win_close(prev_win, true) end
+    callback(result)
+  end
+
+  local function move(delta)
+    if #filtered == 0 then return end
+    cursor = ((cursor - 1 + delta) % #filtered) + 1
+    update_list()
+    update_preview()
+  end
+
+  -- Initial render
+  rerender()
+
+  -- Keymaps (buffer-local)
+  local opts = { buffer = list_buf, nowait = true, silent = true }
+
+  vim.keymap.set("n", "<Esc>", function() close(nil) end, opts)
+  vim.keymap.set("n", "q",     function() close(nil) end, opts)
+  vim.keymap.set("n", "<C-c>", function() close(nil) end, opts)
+
+  vim.keymap.set("n", "<CR>", function()
+    close(filtered[cursor] and filtered[cursor].data or nil)
+  end, opts)
+
+  vim.keymap.set("n", "<C-n>", function() move(1) end, opts)
+  vim.keymap.set("n", "<Down>", function() move(1) end, opts)
+  vim.keymap.set("n", "j", function() move(1) end, opts)
+
+  vim.keymap.set("n", "<C-p>", function() move(-1) end, opts)
+  vim.keymap.set("n", "<Up>", function() move(-1) end, opts)
+  vim.keymap.set("n", "k", function() move(-1) end, opts)
+
+  -- Backspace
+  vim.keymap.set("n", "<BS>", function()
+    if #query > 0 then
+      query = query:sub(1, -2)
+      rerender()
+    end
+  end, opts)
+
+  -- Printable characters → filter
+  for code = 32, 126 do
+    local char = string.char(code)
+    if not vim.tbl_contains({ "q", "j", "k" }, char) then -- avoid conflicts
+      vim.keymap.set("n", char, function()
+        query = query .. char
+        rerender()
+      end, opts)
+    end
+  end
+
+  -- Make list window active
+  vim.api.nvim_set_current_win(list_win)
 end
 
 return M

@@ -39,7 +39,7 @@
         request = "attach",
         request_args = {
             program = get_task_program,
-            pid = "${select-process-pid}",
+            pid = "${select-pid}",
             stopOnEntry = true,
         },
         terminate_debuggee = false,

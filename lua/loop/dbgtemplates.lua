@@ -93,7 +93,7 @@ debuggers.lua = {
         type = "lua_local",
         request = "attach",
         name = "Attach to Running Lua Process",
-        processId = "${select-process-pid}",
+        processId = "${select-pid}",
         cwd = "${projdir}",
         sourceMaps = true,
     },
@@ -122,7 +122,7 @@ debuggers.lldb = {
         },
     },
     attach_args = {
-        pid = "${select-process-pid}",
+        pid = "${select-pid}",
         program = get_task_program,
     },
 }
@@ -145,7 +145,7 @@ debuggers.go = {
     },
     attach_args = {
         mode = "local",
-        processId = "${select-process-pid}",
+        processId = "${select-pid}",
     },
 }
 
@@ -190,7 +190,7 @@ debuggers.node = {
     },
     attach_args = {
         type = "node",
-        processId = "${select-process-pid}",
+        processId = "${select-pid}",
     },
 }
 
@@ -303,7 +303,7 @@ debuggers.csharp = {
     attach_args = {
         type = "coreclr",
         name = "Attach to Process",
-        processId = "${select-process-pid}",
+        processId = "${select-pid}",
     },
 }
 
