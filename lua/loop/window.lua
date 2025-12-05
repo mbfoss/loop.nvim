@@ -138,23 +138,25 @@ local function _setup_tabs()
         if #tab.pages > 0 then
             tabidx = tabidx + 1
             if tabidx ~= 1 then table.insert(winbar_parts, '|') end
+        end
+        if #tab.pages == 1 then
+            local str = (" %s "):format(tab.label)
             if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-            local labelparts = { ' ' }
-            table.insert(labelparts, tab.label)
-            if #tab.pages > 1 then
-                if not active then
-                    vim.list_extend(labelparts, { ' (', tostring(#tab.pages), ')' })
-                else
-                    vim.list_extend(labelparts,
-                        { ' (', tostring(tab.active_page_idx), '/', tostring(#tab.pages), ')' })
-                end
+            table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx * 1000, str))
+            if active then table.insert(winbar_parts, "%#LoopPluginInactiveTab#") end
+        end
+        if #tab.pages > 1 then
+            local str = (" %s "):format(tab.label)
+            table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx * 1000, str))
+            for idx, page in ipairs(tab.pages) do
+                local active_page = active and idx == page_idx
+                local str2 = '[' .. tostring(idx) .. ']'
+                if active_page then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
+                table.insert(winbar_parts,
+                    string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx * 1000 + idx, str2))
+                if active_page then table.insert(winbar_parts, "%#LoopPluginInactiveTab#") end
             end
-            table.insert(labelparts, ' ')
-            local label = table.concat(labelparts, '')
-            table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx, label))
-            if active then
-                table.insert(winbar_parts, "%#LoopPluginInactiveTab#")
-            end
+            table.insert(winbar_parts, ' ')
         end
     end
     -- add right aligned current page/buffer info
@@ -235,7 +237,7 @@ local function get_page_keymap()
     --- set keymaps
     ---@type table<string,loop.pages.page.KeyMap>
     local keymaps = {
-        ["<c-n>"] = {
+        ["<c-p>"] = {
             callback = function()
                 if vim.api.nvim_get_current_win() == _loop_win then
                     _cycle_pages("prev")
@@ -243,7 +245,7 @@ local function get_page_keymap()
             end,
             desc = "Move to next page",
         },
-        ["<c-p"] = {
+        ["<c-n>"] = {
             callback = function()
                 if vim.api.nvim_get_current_win() == _loop_win then
                     _cycle_pages("next")
@@ -298,14 +300,21 @@ local function protect_split_window_buffer(buf)
 end
 
 function M.winbar_click(id, clicks, button, mods)
-    if _active_tab_idx ~= id then
-        _set_active_tab(id, nil)
+    local tab_idx = math.floor(id / 1000)
+    local page_idx = id % 1000
+
+    if _active_tab_idx ~= tab_idx then
+        _set_active_tab(tab_idx, nil)
     else
-        local tab = _tabs_arr[id]
+        local tab = _tabs_arr[tab_idx]
         if tab then
-            local pageidx = tab.active_page_idx + 1
-            if pageidx > #tab.pages then pageidx = 1 end
-            _set_active_tab(id, pageidx)
+            if page_idx and page_idx > 0 then
+                _set_active_tab(tab_idx, page_idx)
+            else
+                local pageidx = tab.active_page_idx + 1
+                if pageidx > #tab.pages then pageidx = 1 end
+                _set_active_tab(tab_idx, pageidx)
+            end
         end
     end
 end
@@ -317,7 +326,7 @@ local function create_window()
 
     local prev_win = vim.api.nvim_get_current_win()
     -- Open a bottom split.
-    vim.cmd('botright split')
+    vim.cmd('bot split')
     -- Get the new window ID.
     _loop_win = vim.api.nvim_get_current_win()
     _on_win_new_or_close()
@@ -503,6 +512,19 @@ function M.setup(_)
                 _loop_win = -1
             else
                 _on_win_new_or_close()
+            end
+        end,
+    })
+
+    vim.api.nvim_create_autocmd("WinEnter", {
+        callback = function(args)
+            local winid = vim.api.nvim_get_current_win()
+            local buf = vim.api.nvim_win_get_buf(winid)
+            if winid ~= _loop_win and Page.is_page(buf) then
+                local winbar = vim.wo[winid].winbar
+                if type(winbar) == 'string' and winbar:match('v:lua.LoopProject._winbar_click') then
+                    vim.wo[winid].winbar = nil
+                end
             end
         end,
     })

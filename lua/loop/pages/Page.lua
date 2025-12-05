@@ -84,7 +84,11 @@ end
 function Page:get_or_create_buf()
     assert(not self._destroyed)
     if self._buf ~= -1 then
-        return self._buf, false
+        local unloaded = not vim.api.nvim_buf_is_loaded(self._buf)
+        if unloaded then
+            self:_setup_buf(true)
+        end
+        return self._buf, unloaded
     end
 
     self._buf = vim.api.nvim_create_buf(false, true)
@@ -124,7 +128,7 @@ function Page:_setup_buf(own_buf)
         once = true,
         callback = function(ev)
             assert(ev.buf == buf)
-            buf = -1
+            self._buf = -1
         end,
     })
 
@@ -142,7 +146,7 @@ function Page:_setup_buf(own_buf)
             assert(ev.buf == buf)
             self:_on_buf_leave()
         end
-    })    
+    })
 end
 
 ---@param key string

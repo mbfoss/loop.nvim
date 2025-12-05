@@ -149,8 +149,8 @@ function ItemListPage:remove_item(id)
 end
 
 function ItemListPage:get_or_create_buf()
-    local buf, created = Page.get_or_create_buf(self)
-    if not created then
+    local buf, refresh = Page.get_or_create_buf(self)
+    if not refresh then
         return buf, false
     end
     self:_refresh_buffer(buf)

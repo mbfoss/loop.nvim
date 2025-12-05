@@ -258,8 +258,8 @@ function ItemTreePage:render()
 end
 
 function ItemTreePage:get_or_create_buf()
-    local buf, created = Page.get_or_create_buf(self)
-    if not created then
+    local buf, refresh = Page.get_or_create_buf(self)
+    if not refresh then
         return buf, false
     end
     self:render()
