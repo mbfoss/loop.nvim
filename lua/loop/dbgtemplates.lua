@@ -65,7 +65,7 @@ end
 -- ==================================================================
 -- Lua (local debugging inside Neovim or standalone scripts)
 -- ==================================================================
-debuggers.lua = {
+debuggers.lua = { -- tested
     dap = {
         adapter_id = "lua",
         name = "Local Lua Debugger",
@@ -106,7 +106,7 @@ debuggers.lua = {
 }
 
 
-debuggers["lua:remote"] = {
+debuggers["lua:remote"] = { -- tested
     dap = {
         adapter_id = "lua:remote",
         name = "Lua Remote Debugger",
@@ -121,13 +121,13 @@ debuggers["lua:remote"] = {
         cwd = "${projdir}",
         stopOnEntry = false,
     },
-    terminate_debuggee = false,     -- NEVER kill the process we attached to
+    terminate_debuggee = false, -- NEVER kill the process we attached to
 }
 
 -- ==================================================================
 -- C / C++ / Rust / Objective-C
 -- ==================================================================
-debuggers.lldb = {
+debuggers.lldb = { -- tested
     dap = {
         adapter_id = "lldb",
         name = "LLDB (via lldb-dap)",
@@ -149,6 +149,41 @@ debuggers.lldb = {
     attach_args = {
         pid = "${select-pid}",
         program = get_task_program,
+    },
+}
+
+-- ──────────────────────────────────────────────────────────────
+-- JavaScript / TypeScript / Node.js (pwa-node, pwa-chrome, etc.)
+-- server command: node dapDebugServer.js
+-- ──────────────────────────────────────────────────────────────
+debuggers.node = {
+    dap = {
+        adapter_id = "js-debug",
+        name = "js-debug",
+        type = "server",
+        host = "::1",
+        port = 8123,
+        cwd = os.getenv("HOME"),
+    },
+    launch_args = {
+        type = "pwa-node",
+        request = "launch",
+        runtimeExecutable = "node",
+        program = function(task) return task.command or nil end,
+        cwd = get_task_cwd,
+        stopOnEntry = false,
+        attachSimplePort = 0,
+        sourceMaps = true,
+        --outputCapture = "std",
+    },
+    attach_args = {
+        port = 9229,
+        host = "127.0.0.1",
+        restart = false,
+        timeout = 10000,
+        protocol = "inspector",
+        localRoot = "/path/to/local/code",
+        remoteRoot = "/path/in/remote/process"
     },
 }
 
@@ -191,31 +226,6 @@ debuggers.python = {
         justMyCode = false,
         console = "integratedTerminal",
         env = function(task) return task.env end,
-    },
-}
-
--- ==================================================================
--- Node.js / TypeScript / JavaScript
--- ==================================================================
-debuggers.node = {
-    dap = {
-        adapter_id = "node",
-        name = "Node.js (node-debug2)",
-        type = "executable",
-        command = { mason_bin("node-debug2-adapter") },
-    },
-    launch_args = {
-        type = "node",
-        program = "${file}",
-        cwd = "${projdir}",
-        runtimeExecutable = "node",
-        sourceMaps = true,
-        protocol = "inspector",
-        console = "integratedTerminal",
-    },
-    attach_args = {
-        type = "node",
-        processId = "${select-pid}",
     },
 }
 
