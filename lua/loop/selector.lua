@@ -2,7 +2,7 @@
 ---@field label string
 ---@field data any
 
----@alias loop.SelectorCallback fun(data: any?)
+---@alias loop.SelectorCallback fun(data: any|nil)
 
 local M = {}
 
@@ -65,7 +65,7 @@ function M.select(prompt, items, formatter, callback)
   local prev_buf, prev_win = create_win { row = row, col = col + list_w + 1, width = prev_w, height = height }
 
   vim.bo[list_buf].filetype = "loop-selector-list"
-  vim.bo[prev_buf].filetype = "loop-selector-preview"
+  vim.bo[prev_buf].filetype = "json"
   vim.bo[prev_buf].buftype  = "nofile"
 
   local function update_list()
