@@ -7,147 +7,117 @@ local M = {}
 
 local function fuzzy_filter(items, query)
   if query == "" then return vim.deepcopy(items) end
-  local lowered = query:lower()
-  local result = {}
+  local q = query:lower()
+  local res = {}
   for _, item in ipairs(items) do
-    if item.label:lower():find(lowered, 1, true) then
-      table.insert(result, item)
-    end
+    if item.label:lower():find(q, 1, true) then table.insert(res, item) end
   end
-  return result
+  return res
 end
 
---- Native selector with live filtering + preview (Telescope-style)
----@param prompt string
----@param items loop.SelectorItem[]
----@param formatter? fun(data:any):string
----@param callback loop.SelectorCallback
+--- Native selector – preview optional (pass formatter = nil to hide it)
 function M.select(prompt, items, formatter, callback)
   if #items == 0 then return callback(nil) end
 
-  formatter = formatter or function(v)
-    return type(v) == "table" and vim.inspect(v) or tostring(v)
-  end
+  local has_preview = type(formatter) == "function"
+  formatter = formatter or function(v) return type(v)=="table" and vim.inspect(v) or tostring(v) end
 
-  -- Layout
-  local width  = math.floor(vim.o.columns * 0.8)
+  local width  = math.floor(vim.o.columns * (has_preview and 0.8 or 0.5))
   local height = math.floor(vim.o.lines * 0.8)
-  local list_w = math.floor(width * 0.5)
-  local prev_w = width - list_w - 2
-  local row    = math.floor((vim.o.lines - height) / 2)
-  local col    = math.floor((vim.o.columns - width) / 2)
+  local list_w = has_preview and math.floor(width * 0.5) or width
+  local prev_w = has_preview and (width - list_w) or 0
 
-  -- State
+  local row = math.floor((vim.o.lines - height) / 2)
+  local col = math.floor((vim.o.columns - width) / 2)
+
   local query = ""
   local filtered = vim.deepcopy(items)
-  local cursor_idx = 1
+  local cur = 1
 
-  -- Create buffers
-  local prompt_buf = vim.api.nvim_create_buf(false, true)
-  local list_buf   = vim.api.nvim_create_buf(false, true)
-  local prev_buf   = vim.api.nvim_create_buf(false, true)
+  local pbuf = vim.api.nvim_create_buf(false, true)
+  local lbuf = vim.api.nvim_create_buf(false, true)
+  local vbuf = has_preview and vim.api.nvim_create_buf(false, true) or nil
 
-  -- Create windows
-  local prompt_win = vim.api.nvim_open_win(prompt_buf, true, {
-    relative = "editor", style = "minimal", border = "single",
-    width = width, height = 1, row = row - 2, col = col,
+  local pwin = vim.api.nvim_open_win(pbuf, true, {
+    relative="editor", style="minimal", border="rounded",
+    width=width, height=1, row=row-2, col=col,
   })
 
-  local list_win = vim.api.nvim_open_win(list_buf, false, {
-    relative = "editor", style = "minimal", border = "single",
-    width = list_w, height = height, row = row, col = col,
+  local lwin = vim.api.nvim_open_win(lbuf, false, {
+    relative="editor", style="minimal", border="rounded",
+    width=list_w, height=height, row=row, col=col,
   })
 
-  local prev_win = vim.api.nvim_open_win(prev_buf, false, {
-    relative = "editor", style = "minimal", border = "single",
-    width = prev_w, height = height, row = row, col = col + list_w + 2,
-  })
+  local vwin = has_preview and vim.api.nvim_open_win(vbuf, false, {
+    relative="editor", style="minimal", border="rounded",
+    width=prev_w, height=height, row=row, col=col + list_w,
+  }) or nil
 
-  vim.bo[list_buf].filetype = "loop-selector-list"
-  vim.bo[prev_buf].filetype = "json"
+  vim.bo[lbuf].filetype = "loop-selector-list"
+  if has_preview then vim.bo[vbuf].filetype = "json" end
 
-  local function update_prompt()
-    local text = query == "" and prompt or (prompt .. " > " .. query)
-    vim.api.nvim_buf_set_lines(prompt_buf, 0, -1, false, { text })
-    vim.api.nvim_buf_add_highlight(prompt_buf, -1, "Title", 0, 0, -1)
-    pcall(vim.api.nvim_win_set_cursor, prompt_win, { 1, #text })
-  end
+  local function redraw()
+    filtered = fuzzy_filter(items, query)
+    cur = #filtered > 0 and math.min(cur, #filtered) or 1
 
-  local function update_list()
+    -- Prompt
+    local ptext = prompt .. " > " .. query
+    vim.api.nvim_buf_set_lines(pbuf, 0, -1, false, { ptext })
+    vim.api.nvim_buf_add_highlight(pbuf, -1, "Title", 0, 0, -1)
+    pcall(vim.api.nvim_win_set_cursor, pwin, {1, #ptext})
+
+    -- List
     local lines = {}
     for i, item in ipairs(filtered) do
-      lines[i] = (i == cursor_idx and "> " or "  ") .. item.label
+      lines[i] = (i == cur and "> " or "  ") .. item.label
     end
-    vim.api.nvim_buf_set_lines(list_buf, 0, -1, false, lines)
-    pcall(vim.api.nvim_win_set_cursor, list_win, { cursor_idx, 0 })
-  end
+    vim.api.nvim_buf_set_lines(lbuf, 0, -1, false, lines)
+    pcall(vim.api.nvim_win_set_cursor, lwin, {cur, 0})
 
-  local function update_preview()
-    local item = filtered[cursor_idx]
-    if not item then
-      vim.api.nvim_buf_set_lines(prev_buf, 0, -1, false, { "" })
-      return
+    -- Preview (only if enabled)
+    if has_preview and filtered[cur] then
+      local ok, txt = pcall(formatter, filtered[cur].data)
+      vim.api.nvim_buf_set_lines(vbuf, 0, -1, false,
+        vim.split(ok and txt or "<error>", "\n"))
     end
-    local ok, text = pcall(formatter, item.data)
-    local lines = vim.split(ok and text or "<formatter error>", "\n")
-    vim.api.nvim_buf_set_lines(prev_buf, 0, -1, false, lines)
   end
 
-  local function rerender()
-    filtered = fuzzy_filter(items, query)
-    cursor_idx = #filtered > 0 and math.min(cursor_idx, #filtered) or 1
-    update_prompt()
-    update_list()
-    update_preview()
-  end
-
-  local function close(result)
-    for _, w in ipairs({ prompt_win, list_win, prev_win }) do
-      if vim.api.nvim_win_is_valid(w) then
+  local function close(res)
+    for _, w in ipairs({pwin, lwin, vwin}) do
+      if w and vim.api.nvim_win_is_valid(w) then
         pcall(vim.api.nvim_win_close, w, true)
       end
     end
-    callback(result)
+    callback(res)
   end
 
-  local function move(delta)
+  local function move(d)
     if #filtered == 0 then return end
-    cursor_idx = (cursor_idx - 1 + delta) % #filtered + 1
-    rerender()
+    cur = (cur - 1 + d) % #filtered + 1
+    redraw()
   end
 
-  -- Initial render
-  rerender()
+  redraw()
 
-  -- Keymaps (only in prompt buffer, insert mode)
-  local opts = { buffer = prompt_buf, nowait = true, silent = true }
+  local opts = {buffer = pbuf, nowait = true, silent = true}
 
-  vim.keymap.set("i", "<CR>",   function() close(filtered[cursor_idx] and filtered[cursor_idx].data or nil) end, opts)
+  vim.keymap.set("i", "<CR>",   function() close(filtered[cur] and filtered[cur].data or nil) end, opts)
   vim.keymap.set("i", "<Esc>",  function() close(nil) end, opts)
   vim.keymap.set("i", "<C-c>",  function() close(nil) end, opts)
-
   vim.keymap.set("i", "<C-n>",  function() move(1)  end, opts)
   vim.keymap.set("i", "<C-p>",  function() move(-1) end, opts)
   vim.keymap.set("i", "<Down>", function() move(1)  end, opts)
   vim.keymap.set("i", "<Up>",   function() move(-1) end, opts)
 
   vim.keymap.set("i", "<BS>", function()
-    if #query > 0 then
-      query = query:sub(1, -2)
-      rerender()
-    end
+    if #query > 0 then query = query:sub(1,-2); redraw() end
   end, opts)
 
-  -- All printable characters
   for i = 32, 126 do
-    local char = string.char(i)
-    vim.keymap.set("i", char, function()
-      query = query .. char
-      rerender()
-    end, opts)
+    local c = string.char(i)
+    vim.keymap.set("i", c, function() query = query .. c; redraw() end, opts)
   end
 
-  -- Start in insert mode with blinking cursor
   vim.cmd("startinsert")
 end
 
