@@ -125,7 +125,7 @@ end
 local function _on_session_removed(sess_id, sess_name, task_page)
     vim.defer_fn(function ()
         task_page:remove_item(sess_id)        
-    end, 10000)
+    end, 3000)
     for _, data in pairs(_breakpoints_data) do
         if data.states then
             data.states[sess_id] = nil
@@ -277,13 +277,13 @@ local function _on_thread_continue(sess_id, sess_name, variables_page, stacktrac
 end
 
 ---@param item loop.pages.ItemListPage.Item
-function _debug_session_item_formatter(item)
+local function _debug_session_item_formatter(item)
     return item.data.name .. ' - ' .. item.data.state
 end
 
 ---@param item loop.pages.ItemListPage.Item
 ---@return string
-function _variable_node_formatter(item)
+local function _variable_node_formatter(item)
     if item.data.text then
         return item.data.text
     end
@@ -294,7 +294,7 @@ end
 
 ---@param item loop.pages.ItemListPage.Item
 ---@return loop.pages.ItemTreePage.Highlight[]|nil
-function _variable_node_highlighter(item)
+local function _variable_node_highlighter(item)
     if item.data.text then
         return nil
     end
@@ -314,8 +314,6 @@ function M.track_new_debugjob(task_name)
         formatter = _debug_session_item_formatter
     })
     window.add_page("task", task_page)
-
-    created = true
 
     local output_pages = {}
     local stacktrace_pages = {}

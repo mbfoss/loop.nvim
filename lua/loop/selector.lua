@@ -39,7 +39,7 @@ end
 local function _update_list(filtered, cur, lbuf, lwin)
     local lines = {}
     for i, item in ipairs(filtered) do
-        lines[i] = (i == cur and "> " or "  ") .. item.label
+        lines[i] = (i == cur and "> " or "  ") .. tostring(item.label)
     end
     vim.api.nvim_buf_set_lines(lbuf, 0, -1, false, lines)
     pcall(vim.api.nvim_win_set_cursor, lwin, { cur, 0 })
@@ -123,7 +123,7 @@ function M.select(prompt, items, formatter, callback)
         row = row,
         col = col,
     })
-    local vwin = has_preview and vim.api.nvim_open_win(vbuf, false, {
+    local vwin = vbuf and vim.api.nvim_open_win(vbuf, false, {
         relative = "editor",
         style = "minimal",
         border = "rounded",

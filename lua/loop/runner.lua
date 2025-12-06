@@ -495,7 +495,7 @@ function M.start_task_chain(tasks, on_complete)
                 notifications.notify({
                     "Failed to resolve macro(s) in task '" .. original_name .. "'",
                     tostring(err)
-                }, vim.log.levels.ERROR)
+                }, vim.log.levels.WARN)
                 pending = pending - 1
                 if pending == 0 and on_complete then
                     vim.schedule(on_complete)

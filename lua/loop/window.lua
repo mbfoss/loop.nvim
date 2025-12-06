@@ -18,9 +18,6 @@ local selector = require("loop.selector")
 ---@type boolean
 local setup_done = false
 
----@type string
-local _project_dir
-
 ---@type number
 local _loop_win = -1
 ---@type number
@@ -374,7 +371,7 @@ local function _ensure_breakpoints_page()
     assert(setup_done)
     local page = _tabs.breakpoints.pages[1]
     if not page then
-        page = BreakpointsPage:new(_project_dir)
+        page = BreakpointsPage:new()
         _add_tab_page(_tabs.breakpoints, page)
     end
 end

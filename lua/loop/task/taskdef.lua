@@ -11,3 +11,7 @@
 ---@field debug_adapter string|nil
 ---@field debug_request "launch"|"attach"|nil
 ---@field debug_args table<string,any>|nil
+
+---@class loop.taskTemplate
+---@field name string
+---@field task loop.Task

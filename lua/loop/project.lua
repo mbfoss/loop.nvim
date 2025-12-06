@@ -160,7 +160,7 @@ end
 
 ---@param extname string|nil
 ---@param extcommand string|nil
-function _extension_command(extname, extcommand)
+local function _extension_command(extname, extcommand)
     assert(_setup_done)
     local proj_dir = _get_proj_dir_or_warn()
     if not proj_dir then

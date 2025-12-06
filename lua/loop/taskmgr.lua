@@ -18,7 +18,7 @@ local function _task_as_json(task)
 end
 
 ---@param config_dir string
----@param templates loop.Task[]
+---@param templates loop.taskTemplate[]
 ---@param prompt string
 local function _select_and_add_task(config_dir, templates, prompt)
     local choices = {}
@@ -26,13 +26,13 @@ local function _select_and_add_task(config_dir, templates, prompt)
         ---@type loop.SelectorItem
         local item = {
             label = template.name,
-            data = template,
+            data = template.task,
         }
         table.insert(choices, item)
     end
-    selector.select(prompt, choices, _task_as_json, function(template)
-        if template then
-            local ok, errors = taskstore.add_task(config_dir, template)
+    selector.select(prompt, choices, _task_as_json, function(task)
+        if task then
+            local ok, errors = taskstore.add_task(config_dir, task)
             if not ok then
                 notifications.notify(strtools.indent_errors(errors, "Failed to add task"), vim.log.levels.ERROR)
                 return
@@ -139,7 +139,7 @@ function M.run_task(proj_dir, config_dir, mode, task_name)
 
     local tasks, task_errors = taskstore.load_tasks(config_dir)
     if not tasks or task_errors then
-        notifications.notify(strtools.indent_errors(task_errors, "Errors while loading tasks"), vim.log.levels.ERROR)
+        notifications.notify(strtools.indent_errors(task_errors, "Error while loading tasks"), vim.log.levels.ERROR)
     end
 
     if not tasks then
@@ -162,7 +162,7 @@ function M.run_task(proj_dir, config_dir, mode, task_name)
     end
 
     if #tasks == 0 then
-        notifications.notify({ "No tasks found" }, "warn")
+        notifications.notify({ "No tasks found" }, vim.log.levels.WARN)
         return
     end
 
@@ -200,7 +200,7 @@ end
 function M.run_extension_task(config_dir, ext_name)
     taskstore.get_extension_tasks(config_dir, ext_name or "", function(tasks, errors)
         if not tasks or errors then
-            notifications.notify(strtools.indent_errors(errors, "Errors while loading tasks"), vim.log.levels.ERROR)
+            notifications.notify(strtools.indent_errors(errors, "Error while loading tasks"), vim.log.levels.ERROR)
         end
         if not tasks then
             return
