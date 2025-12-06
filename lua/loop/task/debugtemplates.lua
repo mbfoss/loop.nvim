@@ -75,6 +75,7 @@ return {
             debug_adapter = "js-debug",
             debug_request = "launch",
             debug_args = {
+                runInTerminal = true, -- most people want this
                 sourceMaps = true,
                 stopOnEntry = false,
             },

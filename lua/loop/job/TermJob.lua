@@ -30,12 +30,12 @@ end
 ---@field on_exit_handler fun(code : number)
 
 ---Starts a new terminal job.
+---@param bufnr number
 ---@param args loop.tools.TermProc.StartArgs
----@return number bufnr
+---@return boolean success
 ---@return string|nil error msg or nil
-function TermJob:start(args)
-    local bufnr, err = self._proc:start(args)
-    return bufnr, err
+function TermJob:start(bufnr, args)
+    return  self._proc:start(bufnr, args)
 end
 
 return TermJob

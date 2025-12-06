@@ -161,9 +161,10 @@ debuggers["js-debug"] = {
         runtimeExecutable = "node",
         program = function(task) return task.command or nil end,
         cwd = get_task_cwd,
+        runInTerminal = true,
         stopOnEntry = false,
         attachSimplePort = 0,
-        sourceMaps = true,
+        sourceMaps = true,  
         --outputCapture = "std",
     },
     attach_args = {

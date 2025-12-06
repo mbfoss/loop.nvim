@@ -4,7 +4,7 @@ local Job      = require('loop.job.Job')
 local Session  = require('loop.dap.Session')
 local TermProc = require('loop.tools.TermProc')
 
----@alias loop.job.DebugJob.Command 
+---@alias loop.job.DebugJob.Command
 ---| "continue"
 ---|"step_in"
 ---|"step_out"
@@ -25,7 +25,7 @@ local TermProc = require('loop.tools.TermProc')
 ---@field on_sess_added fun(id:number,name:string, parent_id:number,ctrl:loop.job.DebugJob.SessionController)|nil
 ---@field on_sess_removed fun(id:number, name:string)|nil
 ---@field on_sess_state fun(id:number, name:string, data:loop.dap.session.notify.StateData)|nil
----@field on_new_term fun(name:string, bufnr:number)|nil|nil
+---@field on_new_term fun(name:string,args:loop.dap.proto.RunInTerminalRequestArguments,callback:fun(pid:number|nil,err:string|nil))|nil
 ---@field on_output fun(sess_id:number, sess_name:string, category:string, output:string)|nil
 ---@field on_thread_pause fun(sess_id:number, sess_name:string, data:loop.dap.session.notify.ThreadData)|nil
 ---@field on_thread_continue fun(sess_id:number, sess_name:string)|nil
@@ -232,23 +232,13 @@ function DebugJob:add_debug_term(name, args, on_success, on_failure)
     assert(type(on_success) == "function")
     assert(type(on_failure) == "function")
 
-    local proc = TermProc:new()
-    local bufnr, proc_err = proc:start({
-        name = name,
-        command = args.args,
-        env = args.env,
-        cwd = args.cwd,
-        on_exit_handler = function(code)
+    self._trackers:invoke("on_new_term", name, args, function(pid, err)
+        if err then
+            on_failure(err)
+        else
+            on_success(pid)
         end
-    })
-    if bufnr <= 0 then
-        on_failure(proc_err or "target startup error")
-        return
-    end
-
-    self._trackers:invoke("on_new_term", name, bufnr)
-    local pid = proc:get_pid()
-    on_success(pid)
+    end)
 end
 
 ---@param sess_id number

@@ -218,23 +218,18 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
             on_exit_handler = exit_handler,
         }
 
+        -- Create and register the page
+        local page = Page:new("term", task.name or "Tool Task")
+
         --notifications.notify("Starting job:\n" .. vim.inspect(start_args))
         local job = TermJob:new()
-        local bufnr, err = job:start(start_args)
+        local bufnr, err = job:start(page:get_or_create_buf(), start_args)
         if not bufnr or bufnr == -1 then
             return startup_callback(nil, err or "failed to start terminal job")
         end
 
-        -- Create and register the page
-        local page = Page:new("term", task.name or "Tool Task")
-        page:assign_buf(bufnr)
-
-        -- Optional: only add to window if it's visible or desired
-        local success = pcall(window.add_page, "task", page)
-        if not success then
-            vim.api.nvim_buf_delete(bufnr, { force = true })
-            return startup_callback(nil, "failed to add page to window manager")
-        end
+        local tabtype = task.type == "run" and "run" or "build"
+        window.add_page(tabtype, page)
 
         startup_callback(job, nil)
     end)
@@ -372,7 +367,7 @@ end
 local function _kill_current_chain(new_chain)
     if _current_task_chain then
         if _current_task_chain.active_job and not _current_task_chain.ended then
-            notifications.trace({ "Interrupting current task: " .. tostring(_current_task_name)})
+            notifications.trace({ "Interrupting current task: " .. tostring(_current_task_name) })
             _current_task_chain.interrupted = true
             _current_task_chain.next_chain = new_chain
             if _current_task_chain.active_job then
@@ -419,9 +414,9 @@ local function _start_task_chain(tasks, on_complete)
                     chain.active_job = job
                     local cmd_descr = table.concat(strtools.cmd_to_string_array(task.command), ' ')
                     notifications.trace({ "Running " .. task.type .. " task", "  " .. cmd_descr })
-                    window.show_task_output()
                 else
-                    notifications.notify({ "Task creation failed: " .. task.name, "  " .. tostring(err) }, vim.log.levels.ERROR)
+                    notifications.notify({ "Task creation failed: " .. task.name, "  " .. tostring(err) },
+                        vim.log.levels.ERROR)
                     chain.interrupted = true
                     vim.schedule(function()
                         if chain == _current_task_chain then

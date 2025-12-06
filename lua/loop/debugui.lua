@@ -11,6 +11,7 @@ local StackTracePage = require('loop.pages.StackTracePage')
 local uitools        = require('loop.tools.uitools')
 local Trackers       = require('loop.tools.Trackers')
 local notifications  = require('loop.notifications')
+local TermProc       = require('loop.tools.TermProc')
 
 local M              = {}
 
@@ -372,7 +373,7 @@ function M.track_new_debugjob(task_name)
         _on_debug_command(command, task_page)
     end
 
-    window.add_page("task", task_page)
+    window.add_page("debug", task_page)
 
     local output_pages = {}
     local stacktrace_pages = {}
@@ -402,11 +403,26 @@ function M.track_new_debugjob(task_name)
             local level = category == "stderr" and "error" or nil
             page:add_line(output, level)
         end,
-        on_new_term = function(name, bufnr)
+
+        on_new_term = function(name, args, cb)
             local page = Page:new("term", name)
-            page:assign_buf(bufnr)
             window.add_page("debugoutput", page)
+            local proc = TermProc:new()
+            local started, proc_err = proc:start(page:get_or_create_buf(), {
+                name = name,
+                command = args.args,
+                env = args.env,
+                cwd = args.cwd,
+                on_exit_handler = function(code)
+                end
+            })
+            if  started then
+                cb(proc:get_pid(), nil)
+            else
+                cb(nil, proc_err or "term err")
+            end
         end,
+
         on_thread_pause = function(sess_id, sess_name, thread_data)
             ---@type loop.pages.ItemTreePage|nil
             local variable_page = variable_pages[sess_id]

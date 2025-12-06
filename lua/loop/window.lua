@@ -29,7 +29,11 @@ local _ui_select_page
 
 local _tabs = {
     ---@type loop.TabInfo
-    tasks = { label = "Task", pages = {}, list_prefix = "Task - " },
+    build = { label = "Build", pages = {}, list_prefix = "Build - " },
+    ---@type loop.TabInfo
+    run = { label = "Run", pages = {}, list_prefix = "Run - " },
+    ---@type loop.TabInfo
+    debug = { label = "Debug", pages = {}, list_prefix = "Debug - " },
     ---@type loop.TabInfo
     breakpoints = { label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
@@ -43,7 +47,9 @@ local _tabs = {
 }
 
 local _tabs_arr = {
-    _tabs.tasks,
+    _tabs.build,
+    _tabs.run,
+    _tabs.debug,
     _tabs.breakpoints,
     _tabs.debug_output,
     _tabs.threads,
@@ -320,8 +326,8 @@ local function create_window()
         local tab = _tabs_arr[_active_tab_idx]
         if not tab or not tab.pages[tab.active_page_idx] then
             local page = OutputPage:new("")
-            _add_tab_page(_tabs.tasks, page)
-            _set_active_tab(_get_tab_index(_tabs.tasks), nil)
+            _add_tab_page(_tabs.build, page)
+            _set_active_tab(_get_tab_index(_tabs.build), nil)
         end
     end
 
@@ -401,25 +407,30 @@ function M.toggle_window()
     end
 end
 
-function M.show_task_output()
-    _set_active_tab(_get_tab_index(_tabs.tasks), nil)
-    create_window()
-end
-
 function M.remove_task_pages()
-    _delete_tab_pages(_tabs.tasks)
+    _delete_tab_pages(_tabs.build)
+    _delete_tab_pages(_tabs.run)
+    _delete_tab_pages(_tabs.debug)
     _delete_tab_pages(_tabs.debug_output)
     _delete_tab_pages(_tabs.stacktrace)
     _delete_tab_pages(_tabs.variables)
 end
 
----@param type "task"|"debugoutput"|"stacktrace"|"variables"
+---@param type "build"|"run"|"debug"|"debugoutput"|"stacktrace"|"variables"
 ---@param page loop.pages.Page
 function M.add_page(type, page)
     assert(setup_done)
     local tab
-    if type == "task" then
-        tab = _tabs.tasks
+    local activate
+    if type == "build" then
+        tab = _tabs.build
+        activate = true
+    elseif type == "run" then
+        tab = _tabs.run
+        activate = true
+    elseif type == "debug" then
+        tab = _tabs.debug
+        activate = true
     elseif type == "debugoutput" then
         tab = _tabs.debug_output
     elseif type == "stacktrace" then
@@ -429,7 +440,10 @@ function M.add_page(type, page)
     end
     assert(tab)
     _add_tab_page(tab, page)
-    --_set_active_tab(tab.index, nil)
+    if activate then
+        _set_active_tab(_get_tab_index(tab), nil)
+        create_window()
+    end
 end
 
 ---@param config_dir string

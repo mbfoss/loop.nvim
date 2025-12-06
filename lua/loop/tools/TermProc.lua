@@ -36,12 +36,13 @@ end
 ---@field on_exit_handler fun(code : number)
 
 ---Starts a new terminal job.
+---@param bufnr number
 ---@param args loop.tools.TermProc.StartArgs
----@return number bunfr
+---@return boolean success
 ---@return string|nil error msg or nil
-function TermProc:start(args)
+function TermProc:start(bufnr, args)
     if self.job_id ~= -1 then
-        return -1, "already started"
+        return false, "already started"
     end
 
     assert(args.on_exit_handler)
@@ -54,7 +55,7 @@ function TermProc:start(args)
     end
 
     if vim.fn.isdirectory(command_cwd) == 0 then
-        return -1, string.format("CWD: '%s' is not a valid directory", command_cwd)
+        return false, string.format("CWD: '%s' is not a valid directory", command_cwd)
     end
 
     -- get the real path (no symlinks etc...)
@@ -68,18 +69,13 @@ function TermProc:start(args)
     local cmd_and_args = strtools.cmd_to_string_array(args.command)
 
     if #cmd_and_args == 0 then
-        return -1, "command is missing"
+        return false, "command is missing"
     end
 
     if vim.fn.executable(cmd_and_args[1]) == 0 then
-        return -1, "command is not an executable: " .. cmd_and_args[1]
+        return false, "command is not an executable: " .. cmd_and_args[1]
     end
 
-    local bufnr = vim.api.nvim_create_buf(false, true)
-    vim.bo[bufnr].buftype = "nofile"
-    vim.bo[bufnr].bufhidden = "hide"
-    vim.bo[bufnr].swapfile = false
-    vim.bo[bufnr].modifiable = false
     vim.keymap.set('t', '<Esc>', function() vim.cmd('stopinsert') end, { buffer = bufnr })
 
     local previous_win = vim.api.nvim_get_current_win()
@@ -106,15 +102,15 @@ function TermProc:start(args)
 
     if not call_ok then
         vim.api.nvim_buf_delete(bufnr, { force = true })
-        return -1, result
+        return false, result
     end
     local started, start_err = result[1], result[2]
     if not started then
         vim.api.nvim_buf_delete(bufnr, { force = true })
-        return -1, start_err
+        return false, start_err
     end
 
-    return bufnr, nil
+    return true, nil
 end
 
 ---@param bufnr number

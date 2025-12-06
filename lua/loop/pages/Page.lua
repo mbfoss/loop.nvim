@@ -59,18 +59,6 @@ function Page:get_name()
     return self._name
 end
 
----@param bufnr number
-function Page:assign_buf(bufnr)
-    assert(not self._destroyed)
-    assert(bufnr > 0)
-    if self._buf ~= -1 then
-        vim.api.nvim_buf_delete(self._buf, { force = true })
-        assert(self._buf == -1)
-    end
-    self._buf = bufnr
-    self:_setup_buf(false)
-end
-
 ---@return number |nil -- buffer number
 function Page:get_buf()
     if self._destroyed then
