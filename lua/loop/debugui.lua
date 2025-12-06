@@ -123,7 +123,9 @@ end
 ---@param sess_name string
 ---@param task_page loop.pages.ItemListPage
 local function _on_session_removed(sess_id, sess_name, task_page)
-    task_page:remove_item(sess_id)
+    vim.defer_fn(function ()
+        task_page:remove_item(sess_id)        
+    end, 10000)
     for _, data in pairs(_breakpoints_data) do
         if data.states then
             data.states[sess_id] = nil

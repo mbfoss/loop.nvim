@@ -1,3 +1,4 @@
+require('loop.task.taskdef')
 return {
     {
         name = "Lua check",
@@ -11,7 +12,7 @@ return {
     {
         name = "Build ${filename}",
         type = "build",
-        command = { "g++", "-g", "-std=c++23", "${file}", "-o", "${fileroot}.out" },
+        command = { "g++", "-g", "-std=c++23", "${file:cpp}", "-o", "${fileroot}.out" },
         cwd = "${projdir}",
         quickfix_matcher = "gcc",
         depends_on = {},

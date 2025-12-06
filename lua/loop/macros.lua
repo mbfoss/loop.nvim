@@ -5,7 +5,8 @@ local projinfo = require("loop.projinfo")
 local systools = require("loop.tools.systools")
 local selector = require("loop.selector")
 
-local _nofile_error = "No file: current buffer is not a regular saved file"
+local _nofile_error = "Current buffer is not a regular saved file"
+local _badtype_error = "Current file type is not %s"
 
 local function _is_file()
     local buf = vim.api.nvim_get_current_buf()
@@ -26,16 +27,22 @@ function M.home(cb)
     cb(home)
 end
 
-function M.file(cb)
+function M.file(cb,type)
     if not _is_file() then
         return cb(nil, _nofile_error)
+    end
+    if type and type ~= vim.bo.filetype then
+        return cb(nil, _badtype_error:format(type))        
     end
     cb(vim.fn.expand("%:p"))
 end
 
-function M.filename(cb)
+function M.filename(cb,type)
     if not _is_file() then
         return cb(nil, _nofile_error)
+    end
+    if type and type ~= vim.bo.filetype then
+        return cb(nil, _badtype_error:format(type))        
     end
     cb(vim.fn.expand("%:t"))
 end
@@ -48,9 +55,12 @@ function M.fileext(cb)
     cb(ext ~= "" and ext or nil)
 end
 
-function M.fileroot(cb)
+function M.fileroot(cb,type)
     if not _is_file() then
         return cb(nil, _nofile_error)
+    end
+    if type and type ~= vim.bo.filetype then
+        return cb(nil, _badtype_error:format(type))        
     end
     cb(vim.fn.expand("%:p:r"))
 end
@@ -93,6 +103,11 @@ end
 
 function M.timestamp(cb)
     cb(os.date("%Y-%m-%dT%H:%M:%S"))
+end
+
+function M.prompt(cb, text)
+    assert(text, "prompt macro require prompt text")
+    vim.ui.input({ prompt = text }, cb)
 end
 
 -- Async process selector (now works!)

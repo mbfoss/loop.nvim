@@ -1,6 +1,6 @@
 require('loop.task.taskdef')
-local builtinmacros = require('loop.macros')
-local debugger_templates = require('loop.dbgtemplates')
+local builtin_macros = require('loop.macros')
+local builtin_debuggers = require('loop.debuggers')
 
 ---@class loop.Config
 ---@field debug loop.Config.Debug
@@ -20,8 +20,8 @@ M.current = {
         },
     },
 
-    debuggers = debugger_templates,
-    macros = builtinmacros
+    debuggers = builtin_debuggers,
+    macros = builtin_macros
 }
 
 return M

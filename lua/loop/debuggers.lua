@@ -2,7 +2,7 @@ require('loop.task.taskdef')
 local strtools = require('loop.tools.strtools')
 
 ---@param task loop.Task
-local function get_task_program(task)
+local function get_task_command(task)
     local cmdparts = strtools.cmd_to_string_array(task.command or "")
     return cmdparts[1]
 end
@@ -65,7 +65,7 @@ end
 -- ==================================================================
 -- Lua (local debugging inside Neovim or standalone scripts)
 -- ==================================================================
-debuggers.lua = { -- tested
+debuggers.lua = {
     dap = {
         adapter_id = "lua",
         name = "Local Lua Debugger",
@@ -89,24 +89,14 @@ debuggers.lua = { -- tested
         cwd = "${projdir}",
         program = {
             lua = vim.fn.exepath("lua"),
-            file = "${file}",
+            file = get_task_command,
             communication = 'stdio',
-        }
-    },
-
-    -- Attach: to a running Lua process (e.g. Neovim itself or external script)
-    attach_args = {
-        type = "lua_local",
-        request = "attach",
-        name = "Attach to Running Lua Process",
-        processId = "${select-pid}",
-        cwd = "${projdir}",
-        sourceMaps = true,
+        },
     },
 }
 
 
-debuggers["lua:remote"] = { -- tested
+debuggers["lua:remote"] = {
     dap = {
         adapter_id = "lua:remote",
         name = "Lua Remote Debugger",
@@ -127,7 +117,7 @@ debuggers["lua:remote"] = { -- tested
 -- ==================================================================
 -- C / C++ / Rust / Objective-C
 -- ==================================================================
-debuggers.lldb = { -- tested
+debuggers.lldb = {
     dap = {
         adapter_id = "lldb",
         name = "LLDB (via lldb-dap)",
@@ -135,7 +125,7 @@ debuggers.lldb = { -- tested
         command = { mason_bin("lldb-dap") },
     },
     launch_args = {
-        program = get_task_program,
+        program = get_task_command,
         args = get_task_args,
         cwd = "${projdir}",
         stopOnEntry = false,
@@ -148,7 +138,7 @@ debuggers.lldb = { -- tested
     },
     attach_args = {
         pid = "${select-pid}",
-        program = get_task_program,
+        program = get_task_command,
     },
 }
 
@@ -177,20 +167,43 @@ debuggers.node = {
         --outputCapture = "std",
     },
     attach_args = {
-        port = 9229,
-        host = "127.0.0.1",
-        restart = false,
-        timeout = 10000,
-        protocol = "inspector",
-        localRoot = "/path/to/local/code",
-        remoteRoot = "/path/in/remote/process"
+        type = "pwa-node",
+        request = "attach",
+        name = "Attach to Node (localhost)",
+        address = "127.0.0.1",
+        port = "${prompt:Inspector port: }",
+        cwd = "${projdir}",
+        restart = true,      -- auto-reconnect if process restarts
+        localRoot = "${projdir}",
+        remoteRoot = "/app", -- change if your container path is different
+        skipFiles = { "<node_internals>/**", "node_modules/**" },
+    },
+}
+
+-- ==================================================================
+-- Python
+-- ==================================================================
+debuggers.debugpy = { -- tested
+    dap = {
+        adapter_id = "debugpy",
+        name = "debugpy",
+        type = "executable",
+        command = { "python3", "-m", "debugpy.adapter" },
+    },
+    launch_args = {
+        program = function(task) return task.command end,
+        cwd = get_task_cwd,
+        stopOnEntry = false,
+        justMyCode = false,
+        console = "integratedTerminal",
+        env = function(task) return task.env end,
     },
 }
 
 -- ==================================================================
 -- Go
 -- ==================================================================
-debuggers.go = {
+debuggers.go = { -- untested
     dap = {
         adapter_id = "go",
         name = "Delve (dlv)",
@@ -210,32 +223,9 @@ debuggers.go = {
 }
 
 -- ==================================================================
--- Python
--- ==================================================================
-debuggers.python = {
-    dap = {
-        adapter_id = "debugpy",
-        name = "debugpy",
-        type = "executable",
-        command = { "python3", "-m", "debugpy.adapter" },
-    },
-    launch_args = {
-        program = function(task) return task.command end,
-        cwd = get_task_cwd,
-        stopOnEntry = false,
-        justMyCode = false,
-        console = "integratedTerminal",
-        env = function(task) return task.env end,
-    },
-}
-
-debuggers.javascript = debuggers.node
-debuggers.typescript = debuggers.node
-
--- ==================================================================
 -- Chrome / Edge / Web (Browser)
 -- ==================================================================
-debuggers.chrome = {
+debuggers.chrome = { -- untested
     dap = {
         adapter_id = "chrome",
         name = "Chrome",
@@ -261,7 +251,7 @@ debuggers.chrome = {
 -- ==================================================================
 -- Bash
 -- ==================================================================
-debuggers.bash = {
+debuggers.bash = { -- untested
     dap = {
         adapter_id = "bash",
         name = "bashdb",
@@ -286,7 +276,7 @@ debuggers.bash = {
 -- ==================================================================
 -- PHP
 -- ==================================================================
-debuggers.php = {
+debuggers.php = { -- untested
     dap = {
         adapter_id = "php",
         name = "PHP Debug (vscode-php-debug)",
@@ -306,7 +296,7 @@ debuggers.php = {
 -- ==================================================================
 -- Java
 -- ==================================================================
-debuggers.java = {
+debuggers.java = { -- untested
     dap = {
         adapter_id = "java",
         name = "Java (jdtls)",
@@ -320,7 +310,7 @@ debuggers.java = {
 -- ==================================================================
 -- C# / .NET
 -- ==================================================================
-debuggers.csharp = {
+debuggers.csharp = { -- untested
     dap = {
         adapter_id = "netcoredbg",
         name = "netcoredbg",

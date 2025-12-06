@@ -448,7 +448,7 @@ function M.add_page(type, page)
     end
     assert(tab)
     _add_tab_page(tab, page)
-    _set_active_tab(tab.index, nil)
+    --_set_active_tab(tab.index, nil)
 end
 
 ---@param config_dir string

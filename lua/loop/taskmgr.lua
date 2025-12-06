@@ -105,51 +105,8 @@ end
 
 ---@param config_dir string
 function M.add_debug_task(config_dir)
-    ---@type loop.Task
-    local template = {
-        name = "",
-        type = "debug",
-        command = "",
-        depends_on = {}
-    }
-    local choices = {}
-    local keys = vim.tbl_keys(config.current.debuggers)
-    vim.fn.sort(keys)
-    for _, key in ipairs(keys) do
-        local debugger = config.current.debuggers[key]
-        ---@type loop.SelectorItem
-        if debugger.launch_args then
-            local name = tostring(key) .. ' (launch)'
-            local item = {
-                label = name,
-                data = { name = name, adapter = tostring(key), request = "launch", request_args = debugger.launch_args },
-            }
-            table.insert(choices, item)
-        end
-        if debugger.attach_args then
-            local name = tostring(key) .. ' (attach)'
-            local item = {
-                label = name,
-                data = { name = name, adapter = tostring(key), request = "attach", request_args = debugger.attach_args },
-            }
-            table.insert(choices, item)
-        end
-    end
-    selector.select("Select debug adapter", choices, nil, function(data)
-        if data then
-            local req_args = vim.deepcopy(data.request_args)
-            _strip_functions(req_args)
-            template.name = data.name
-            template.debug_adapter = data.adapter
-            template.debug_request = data.request
-            template.debug_args = req_args
-            local ok, errors = taskstore.add_task(config_dir, template)
-            if not ok then
-                window.add_events(strtools.indent_errors(errors, "Failed to add task"), "error")
-                return
-            end
-        end
-    end)
+    local templates = require('loop.task.debugtemplates')
+    _select_and_add_task(config_dir, templates, "Choose a task template")
 end
 
 ---@param config_dir string

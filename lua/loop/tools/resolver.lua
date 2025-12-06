@@ -23,8 +23,18 @@ local function _is_simple_data(value, _seen)
 end
 
 local ESCAPE_MARKER = "\001"
+local PLACEHOLDER_START = "\002"
+local PLACEHOLDER_END = "\003"
 
--- FIXED: Correct async string expansion with proper placeholder replacement
+local function parse_macro_spec(spec)
+    -- Supports ${macro} or ${macro:arg with spaces and:colons}
+    local name, args = spec:match("^([^:%s]-)%s*:(.*)$") -- tolerant to spaces after :
+    if not name then
+        name = spec:match("^([^:%s]-)%s*$")
+    end
+    return name, args and args:match("^%s*(.-)%s*$") or nil
+end
+
 local function _expand_string_async(str, callback)
     if type(str) ~= "string" then
         return callback(false, nil, "Input must be a string")
@@ -33,38 +43,41 @@ local function _expand_string_async(str, callback)
         return callback(false, nil, "String contains internal escape sequence")
     end
 
+    -- Escape ${{...}} → \001{...}
     local escaped = str:gsub("%$%${(.-)}", ESCAPE_MARKER .. "{%1}")
 
-    -- Single macro case
-    local single_macro = str:match("^%${([^}]+)}$")
-    if single_macro then
-        local fn = config.current.macros[single_macro]
+    -- Single macro case: ${name:args}
+    local single_macro_spec = escaped:match("^%${([^}]+)}$")
+    if single_macro_spec then
+        local macro_name, macro_arg = parse_macro_spec(single_macro_spec)
+        local fn = config.current.macros[macro_name]
         if not fn then
-            return callback(false, nil, ("Unknown macro: ${%s}"):format(single_macro))
+            return callback(false, nil, ("Unknown macro: ${%s}"):format(single_macro_spec))
         end
 
         local ok, err = pcall(fn, function(value, macro_err)
             if macro_err then
                 callback(false, nil, macro_err)
             elseif not _is_simple_data(value) then
-                callback(false, nil, ("Macro ${%s} returned invalid data"):format(single_macro))
+                callback(false, nil, ("Macro ${%s} returned invalid data"):format(macro_name))
             else
                 callback(true, value)
             end
-        end)
+        end, macro_arg)
 
         if not ok then
-            callback(false, nil, ("Macro ${%s} crashed: %s"):format(single_macro, err))
+            callback(false, nil, ("Macro ${%s} crashed: %s"):format(macro_name, err))
         end
         return
     end
 
-    -- Multiple macros: build list first, then resolve sequentially
+    -- Multiple macros case
     local macros = {}
-    local template = escaped:gsub("%${([^}]+)}", function(name)
+    local template = escaped:gsub("%${([^}]+)}", function(full_spec)
+        local name, arg = parse_macro_spec(full_spec)
         local id = #macros + 1
-        table.insert(macros, { name = name, id = id })
-        return "\002" .. id .. "\002"
+        table.insert(macros, { name = name, arg = arg, id = id, spec = full_spec })
+        return PLACEHOLDER_START .. id .. PLACEHOLDER_END
     end)
 
     if #macros == 0 then
@@ -81,7 +94,7 @@ local function _expand_string_async(str, callback)
         local fn = config.current.macros[macro.name]
         if not fn then
             success = false
-            last_err = ("Unknown macro: ${%s}"):format(macro.name)
+            last_err = ("Unknown macro: ${%s}"):format(macro.spec)
             pending = pending - 1
             if pending == 0 then callback(success, nil, last_err) end
             goto continue
@@ -101,8 +114,7 @@ local function _expand_string_async(str, callback)
                 success = false
                 last_err = ("Macro ${%s} returned non-string: %s"):format(macro.name, type(value))
             else
-                -- Replace placeholder in all parts
-                local placeholder = "\002" .. macro.id .. "\002"
+                local placeholder = PLACEHOLDER_START .. macro.id .. PLACEHOLDER_END
                 for i, part in ipairs(result_parts) do
                     result_parts[i] = part:gsub(placeholder, value, 1)
                 end
@@ -110,10 +122,11 @@ local function _expand_string_async(str, callback)
 
             pending = pending - 1
             if pending == 0 then
-                local final_result = table.concat(result_parts):gsub(ESCAPE_MARKER .. "{(.-)}", "${%1}")
+                local final_result = table.concat(result_parts)
+                    :gsub(ESCAPE_MARKER .. "{(.-)}", "${%1}")
                 callback(success, final_result, last_err)
             end
-        end)
+        end, macro.arg)
 
         if not ok then
             success = false
@@ -125,7 +138,6 @@ local function _expand_string_async(str, callback)
         ::continue::
     end
 end
-
 -- Table expansion — unchanged and correct
 local function _expand_table_async(tbl, seen, final_callback)
     seen = seen or {}

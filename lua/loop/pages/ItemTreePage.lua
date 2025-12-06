@@ -98,7 +98,6 @@ end
 
 -- Add or update an item
 function ItemTreePage:insert_item(item)
-
     assert(not self._by_id[item.id])
     -- Store in flat items table
     self._by_id[item.id] = item
@@ -230,7 +229,7 @@ function ItemTreePage:render()
         end
         local indent = string.rep(self.indent_string, item._depth or 0)
         local text = item.formatter_override or (item.id and self.formatter(item) or item.data or "")
-        lines[i] = indent .. prefix .. " " .. text
+        lines[i] = (indent .. prefix .. " " .. text):gsub('\n', ' ')
 
         if item.id and self.highlighter then
             local hl_items = self.highlighter(item)
