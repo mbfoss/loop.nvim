@@ -252,7 +252,12 @@ function ItemTreePage:render()
 
     vim.api.nvim_buf_clear_namespace(buf, NS, 0, -1)
     for _, mark in ipairs(extmarks) do
-        vim.api.nvim_buf_add_highlight(buf, NS, mark.group, mark.row, mark.col_start, mark.col_end)
+        vim.api.nvim_buf_set_extmark(buf, NS, mark.row, mark.col_start, {
+            end_col = mark.col_end,
+            hl_group = mark.group,
+            -- optionally:
+            -- priority = 100,
+        })
     end
 end
 

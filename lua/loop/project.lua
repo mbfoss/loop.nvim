@@ -8,6 +8,7 @@ local runner = require("loop.runner")
 local uitools = require('loop.tools.uitools')
 local breakpoints = require('loop.dap.breakpoints')
 local extensions = require('loop.ext.extensions')
+local notifications = require('loop.notifications')
 
 local _setup_done = false
 local _project_dir = nil
@@ -15,7 +16,7 @@ local _save_timer = nil
 
 local function _get_proj_dir_or_warn()
     if not _project_dir then
-        vim.notify("Loop.nvim: No active project")
+        notifications.notify("No active project", vim.log.levels.WARN)
         return
     end
     return _project_dir
@@ -59,7 +60,7 @@ local function _close_project()
         breakpoints.clear_all_breakpoints()
     end
 
-    window.add_events({ "Project closed" })
+    notifications.notify("Project closed")
     _project_dir = nil
 end
 
@@ -108,7 +109,7 @@ function M.create_project(dir)
     dir = dir or vim.fn.getcwd()
     assert(type(dir) == 'string')
     if _is_project_dir(dir) then
-        vim.notify("A project already exists in " .. dir)
+        notifications.notify("A project already exists in " .. dir, vim.log.levels.ERROR)
         return
     end
 
@@ -117,8 +118,7 @@ function M.create_project(dir)
 
     _load_project(dir)
     if _project_dir then
-        window.add_events({ "Project created in " .. _project_dir })
-        window.show_events()
+        notifications.notify("Project created in " .. _project_dir)
     end
 end
 
@@ -127,12 +127,11 @@ function M.open_project(dir)
     dir = dir or vim.fn.getcwd()
     local ok, errors = _load_project(dir)
     if ok and _project_dir then
-        window.add_events({ "Project loaded " .. _project_dir })
+        notifications.trace("Project loaded " .. _project_dir)
     else
         errors = errors or {}
         table.insert(errors, 1, "Failed to load project")
-        window.add_events(errors, "error")
-        window.show_events()
+        notifications.notify(errors, vim.log.levels.ERROR)
     end
 end
 
@@ -182,7 +181,7 @@ function _extension_command(extname, extcommand)
     elseif cmd == "import" then
         taskmgr.import_task(config_dir, name)
     else
-        vim.notify('loop.nvim: Invalid extension command: ' .. extname .. ' ' .. cmd)
+        notifications.notify('Invalid extension command: ' .. extname .. ' ' .. cmd)
     end
 end
 
@@ -219,7 +218,7 @@ function M.task_command(command, arg1, arg2)
     elseif command == "ext" then
         _extension_command(arg1, arg2)
     else
-        vim.notify('loop.nvim: Invalid task command: ' .. command)
+        notifications.notify('Invalid task command: ' .. command)
     end
 end
 
@@ -274,7 +273,7 @@ function M.breakpoints_command(command)
             end
         end)
     else
-        vim.notify('loop.nvim: Invalid breakpoints subcommand: ' .. tostring(command))
+        notifications.notify('Invalid breakpoints subcommand: ' .. tostring(command))
     end
 end
 
@@ -371,10 +370,7 @@ function M.save_project_files()
             table.insert(lines, ("  … and %d more"):format(saved - max_show))
         end
 
-        vim.notify(table.concat(lines, "\n"), vim.log.levels.INFO, {
-            icon = "Saved",
-            timeout = 4000,
-        })
+        notifications.notify(lines, vim.log.levels.INFO)
     end
 
     return saved

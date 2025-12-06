@@ -10,7 +10,6 @@ local jsontools = require('loop.tools.json')
 local selector = require("loop.selector")
 
 ---@class loop.TabInfo
----@field index number
 ---@field label string
 ---@field pages loop.pages.Page[]
 ---@field active_page_idx number|nil
@@ -33,32 +32,39 @@ local _ui_select_page
 
 local _tabs = {
     ---@type loop.TabInfo
-    events = { index = 1, label = "Messages", pages = {}, active_page_idx = 1 },
+    breakpoints = { label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
-    breakpoints = { index = 2, label = "Breakpoints", pages = {} },
+    tasks = { label = "Task", pages = {}, list_prefix = "Task - " },
     ---@type loop.TabInfo
-    tasks = { index = 3, label = "Task", pages = {}, list_prefix = "Task - " },
+    debug_output = { label = "Debug Console", pages = {}, list_prefix = "Debug Console - " },
     ---@type loop.TabInfo
-    debug_output = { index = 4, label = "Debug Console", pages = {}, list_prefix = "Debug Console - " },
+    threads = { label = "Threads", pages = {}, list_prefix = "Threads - " },
     ---@type loop.TabInfo
-    threads = { index = 5, label = "Threads", pages = {}, list_prefix = "Threads - " },
+    stacktrace = { label = "Call Stack", pages = {}, list_prefix = "Call Stack - " },
     ---@type loop.TabInfo
-    stacktrace = { index = 6, label = "Call Stack", pages = {}, list_prefix = "Call Stack - " },
-    ---@type loop.TabInfo
-    variables = { index = 7, label = "Variables", pages = {}, list_prefix = "Variables - " },
+    variables = { label = "Variables", pages = {}, list_prefix = "Variables - " },
 }
 
-local _tabs_arr = (function()
-    local arr = {}
-    for _, t in pairs(_tabs) do
-        assert(not arr[t.index])
-        arr[t.index] = t
-    end
-    return arr
-end)()
+local _tabs_arr = {
+    _tabs.breakpoints,
+    _tabs.tasks,
+    _tabs.debug_output,
+    _tabs.threads,
+    _tabs.stacktrace,
+    _tabs.variables
+}
 
 ---@type number
 local _active_tab_idx = 1
+
+---@param tab loop.TabInfo
+---@return number
+local function _get_tab_index(tab)
+    for idx, t in ipairs(_tabs_arr) do
+        if t == tab then return idx end
+    end
+    return 0
+end
 
 ---@param vim_tab_id number
 ---@return number
@@ -108,7 +114,7 @@ local function _setup_tabs()
 
     local active_tab = _tabs_arr[_active_tab_idx]
     if #active_tab.pages == 0 then
-        active_tab = _tabs.events
+        return
     end
 
     local page_idx = active_tab.active_page_idx or 1
@@ -258,7 +264,6 @@ end
 
 ---@param tab loop.TabInfo
 local function _delete_tab_pages(tab)
-    assert(tab ~= _tabs.events)
     for _, page in ipairs(tab.pages) do
         page:destroy()
     end
@@ -314,11 +319,20 @@ local function create_window()
         return
     end
 
+    do
+        local tab = _tabs_arr[_active_tab_idx]
+        if not tab or not tab.pages[tab.active_page_idx] then
+            local page = OutputPage:new("")
+            _add_tab_page(_tabs.tasks, page)
+            _set_active_tab(_get_tab_index(_tabs.tasks), nil)
+        end
+    end
+
     local prev_win = vim.api.nvim_get_current_win()
     -- Open a bottom split.
     vim.cmd('bot split')
     -- Get the new window ID.
-    _loop_win = vim.api.nvim_get_current_win()    
+    _loop_win = vim.api.nvim_get_current_win()
     if _loop_win_height_ratio then
         vim.api.nvim_win_set_height(_loop_win, math.floor(vim.o.lines * _loop_win_height_ratio))
     else
@@ -356,25 +370,6 @@ local function _on_window_enter()
     end
 end
 
----@param lines string[]
----@param level nil|"warn"|"error"
-function M.add_events(lines, level)
-    assert(setup_done)
-
-    ---@type loop.pages.OutputPage|nil
-    ---@diagnostic disable-next-line: assign-type-mismatch
-    local page = _tabs.events.pages[1]
-    assert(page)
-    assert(getmetatable(page) == OutputPage)
-    local timestamp = os.date("%H:%M:%S")
-    for _, line in ipairs(lines) do
-        page:add_line(timestamp .. ' ' .. line, level, #timestamp)
-    end
-    if level == "error" then
-        M.show_events()
-    end
-end
-
 local function _ensure_breakpoints_page()
     assert(setup_done)
     local page = _tabs.breakpoints.pages[1]
@@ -409,19 +404,8 @@ function M.toggle_window()
     end
 end
 
-function M.show_events()
-    assert(setup_done)
-    _set_active_tab(_tabs.events.index, nil)
-    create_window()
-end
-
 function M.show_task_output()
-    _set_active_tab(_tabs.tasks.index, nil)
-    create_window()
-end
-
-function M.show_stacktrace()
-    _set_active_tab(_tabs.stacktrace.index, nil)
+    _set_active_tab(_get_tab_index(_tabs.tasks), nil)
     create_window()
 end
 
@@ -472,9 +456,6 @@ function M.setup(_)
     end
     -- setup only once
     setup_done = true
-
-    _tabs.events.pages[1] = OutputPage:new("Messages")
-    _tabs.events.pages[1]:add_keymaps(get_page_keymap())
 
     -- ensure breakpoints page is shown if there are breakpoints
     require('loop.dap.breakpoints').add_tracker({

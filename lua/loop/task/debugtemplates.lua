@@ -37,7 +37,7 @@ return {
         debug_adapter = "lldb",
         debug_request = "launch",
         debug_args = {
-            runInTerminal = true,        -- most people want this
+            runInTerminal = true, -- most people want this
             stopOnEntry = false,
         },
     },
@@ -103,7 +103,7 @@ return {
         cwd = "${projdir}",
         debug_adapter = "go",
         debug_request = "launch",
-        debug_args = { mode = "debug" },  -- program is auto-filled from cwd
+        debug_args = { mode = "debug" }, -- program is auto-filled from cwd
     },
 
     {

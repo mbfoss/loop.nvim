@@ -3,6 +3,7 @@ local M = {}
 
 local project = require('loop.project')
 local config = require('loop.config')
+local notifications = require('loop.notifications')
 
 -- Command completion: suggest subcommands first
 local function _loop_complete(func_names, arg_lead, cmd_line)
@@ -38,19 +39,19 @@ local function _loop_command(calls, opts)
 	local args = vim.split(opts.args, "%s+")
 	local subcmd = args[1]
 	if not subcmd or subcmd == "" then
-		vim.notify("Usage: :Loop <command> [args...]", vim.log.levels.WARN)
+		notifications.notify("Usage: :Loop <command> [args...]", vim.log.levels.WARN)
 		return
 	end
 	local fn = calls[subcmd]
 	if not fn then
-		vim.notify("Invalid command: " .. subcmd, vim.log.levels.ERROR)
+		notifications.notify("Invalid command: " .. subcmd, vim.log.levels.ERROR)
 		return
 	end
 	-- Pass any remaining arguments to the function
 	local rest = { unpack(args, 2) }
 	local ok, err = pcall(fn, unpack(rest))
 	if not ok then
-		vim.notify("Loop " .. subcmd .. " failed: " .. tostring(err), vim.log.levels.ERROR)
+		notifications.notify("Loop " .. subcmd .. " failed: " .. tostring(err), vim.log.levels.ERROR)
 	end
 end
 

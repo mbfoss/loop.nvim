@@ -4,32 +4,8 @@ local jsontools = require('loop.tools.json')
 local strtools = require('loop.tools.strtools')
 local taskstore = require("loop.task.taskstore")
 local runner = require("loop.runner")
-local window = require("loop.window")
 local selector = require("loop.selector")
-local config = require("loop.config")
-
-
-local function _strip_functions(t, _seen)
-    if type(t) ~= "table" then
-        return t
-    end
-
-    _seen = _seen or {}
-    if _seen[t] then
-        return t -- Avoid infinite loop on cyclic references
-    end
-    _seen[t] = true
-
-    for k, v in pairs(t) do
-        if type(v) == "function" then
-            t[k] = nil
-        elseif type(v) == "table" then
-            _strip_functions(v, _seen)
-        end
-    end
-
-    return t
-end
+local notifications = require("loop.notifications")
 
 ---@params task loop.Task
 ---@return string
@@ -58,7 +34,7 @@ local function _select_and_add_task(config_dir, templates, prompt)
         if template then
             local ok, errors = taskstore.add_task(config_dir, template)
             if not ok then
-                window.add_events(strtools.indent_errors(errors, "Failed to add task"), "error")
+                notifications.notify(strtools.indent_errors(errors, "Failed to add task"), vim.log.levels.ERROR)
                 return
             end
         end
@@ -82,7 +58,7 @@ function M.add_run_task(config_dir)
     }
     local ok, errors = taskstore.add_task(config_dir, template)
     if not ok then
-        window.add_events(strtools.indent_errors(errors, "Failed to add task"), "error")
+        notifications.notify(strtools.indent_errors(errors, "Failed to add task"), vim.log.levels.ERROR)
         return
     end
 end
@@ -98,7 +74,7 @@ function M.add_vimcmd_task(config_dir)
     }
     local ok, errors = taskstore.add_task(config_dir, template)
     if not ok then
-        window.add_events(strtools.indent_errors(errors, "Failed to add task"), "error")
+        notifications.notify(strtools.indent_errors(errors, "Failed to add task"), vim.log.levels.ERROR)
         return
     end
 end
@@ -119,7 +95,7 @@ end
 function M.import_task(config_dir, source)
     taskstore.get_extension_tasks(config_dir, source, function(tasks, errors)
         if not tasks then
-            window.add_events(strtools.indent_errors(errors, "Failed to import tasks"), "error")
+            notifications.notify(strtools.indent_errors(errors, "Failed to import tasks"), vim.log.levels.ERROR)
             return
         end
         _select_and_add_task(config_dir, tasks, "Choose a task to import")
@@ -163,7 +139,7 @@ function M.run_task(proj_dir, config_dir, mode, task_name)
 
     local tasks, task_errors = taskstore.load_tasks(config_dir)
     if not tasks or task_errors then
-        window.add_events(strtools.indent_errors(task_errors, "Errors while loading tasks"), "error")
+        notifications.notify(strtools.indent_errors(task_errors, "Errors while loading tasks"), vim.log.levels.ERROR)
     end
 
     if not tasks then
@@ -173,12 +149,12 @@ function M.run_task(proj_dir, config_dir, mode, task_name)
     if task_name and task_name ~= "" then
         local task = vim.iter(tasks):find(function(t) return t.name == task_name end)
         if not task then
-            window.add_events({ "No task found with name: " .. task_name }, "error")
+            notifications.notify({ "No task found with name: " .. task_name }, vim.log.levels.ERROR)
             return
         end
         local chain, err = runner.get_deps_chain(tasks, task)
         if not chain then
-            window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
+            notifications.notify({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, vim.log.levels.ERROR)
             return
         end
         runner.start_task_chain(chain)
@@ -186,7 +162,7 @@ function M.run_task(proj_dir, config_dir, mode, task_name)
     end
 
     if #tasks == 0 then
-        window.add_events({ "No tasks found" }, "warn")
+        notifications.notify({ "No tasks found" }, "warn")
         return
     end
 
@@ -198,7 +174,7 @@ function M.run_task(proj_dir, config_dir, mode, task_name)
     _select_task(select_args, function(task)
         local chain, err = runner.get_deps_chain(tasks, task)
         if not chain then
-            window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
+            notifications.notify({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, vim.log.levels.ERROR)
             return
         end
         taskstore.save_last_task_name(task.name, config_dir)
@@ -215,7 +191,7 @@ end
 function M.create_extension_config(config_dir, ext_name)
     local ok, err = taskstore.create_extension_config(config_dir, ext_name)
     if not ok then
-        window.add_events({ "Failed to create configuration", "  " .. err }, "error")
+        notifications.notify({ "Failed to create configuration", "  " .. err }, vim.log.levels.ERROR)
     end
 end
 
@@ -224,7 +200,7 @@ end
 function M.run_extension_task(config_dir, ext_name)
     taskstore.get_extension_tasks(config_dir, ext_name or "", function(tasks, errors)
         if not tasks or errors then
-            window.add_events(strtools.indent_errors(errors, "Errors while loading tasks"), "error")
+            notifications.notify(strtools.indent_errors(errors, "Errors while loading tasks"), vim.log.levels.ERROR)
         end
         if not tasks then
             return
@@ -237,7 +213,7 @@ function M.run_extension_task(config_dir, ext_name)
         _select_task(select_args, function(task)
             local chain, err = runner.get_deps_chain(tasks, task)
             if not chain then
-                window.add_events({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, "error")
+                notifications.notify({ "Dependency error for task '" .. task.name .. "'", "  " .. err }, vim.log.levels.ERROR)
                 return
             end
             runner.start_task_chain(chain)

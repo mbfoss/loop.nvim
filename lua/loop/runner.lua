@@ -11,6 +11,7 @@ local window = require('loop.window')
 local debugui = require('loop.debugui')
 local Page = require('loop.pages.Page')
 local config = require("loop.config")
+local notifications = require('loop.notifications')
 
 ---@class loop.runner.TaskChain
 ---@field tasks loop.Task[]
@@ -176,7 +177,7 @@ local function _create_vimcmd_job(task, startup_callback, _, exit_handler)
         command = task.command,
         on_exit_handler = exit_handler
     }
-    --vim.notify("Starting job:\n" .. vim.inspect(args))
+    --notifications.notify("Starting job:\n" .. vim.inspect(args))
     local job = VimCmdJob:new()
     local ok, err = job:start(args)
     if not ok then
@@ -217,7 +218,7 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
             on_exit_handler = exit_handler,
         }
 
-        --vim.notify("Starting job:\n" .. vim.inspect(start_args))
+        --notifications.notify("Starting job:\n" .. vim.inspect(start_args))
         local job = TermJob:new()
         local bufnr, err = job:start(start_args)
         if not bufnr or bufnr == -1 then
@@ -302,7 +303,7 @@ local function _create_debug_job(task, startup_callback, output_handler, exit_ha
             },
         }
 
-        --vim.notify("Starting job:\n" .. vim.inspect(start_args))
+        --notifications.notify("Starting job:\n" .. vim.inspect(start_args))
         local job = DebugJob:new(task.name)
 
         -- Add trackers
@@ -330,7 +331,7 @@ end
 ---@param startup_callback fun(job: loop.job.DebugJob|nil, err: string|nil)
 ---@param task_exit_handler fun(exit_code : number)
 local function _start_one_task(task, startup_callback, task_exit_handler)
-    --vim.notify("Starting task:\n" .. vim.inspect(task))
+    --notifications.notify("Starting task:\n" .. vim.inspect(task))
 
     if task.type ~= "debug" then
         if not task.command or #task.command == 0 then
@@ -371,7 +372,7 @@ end
 local function _kill_current_chain(new_chain)
     if _current_task_chain then
         if _current_task_chain.active_job and not _current_task_chain.ended then
-            window.add_events({ "Interrupting current task: " .. tostring(_current_task_name) })
+            notifications.trace({ "Interrupting current task: " .. tostring(_current_task_name)})
             _current_task_chain.interrupted = true
             _current_task_chain.next_chain = new_chain
             if _current_task_chain.active_job then
@@ -417,10 +418,10 @@ local function _start_task_chain(tasks, on_complete)
                 if job then
                     chain.active_job = job
                     local cmd_descr = table.concat(strtools.cmd_to_string_array(task.command), ' ')
-                    window.add_events({ "Running " .. task.type .. " task", "  " .. cmd_descr })
+                    notifications.trace({ "Running " .. task.type .. " task", "  " .. cmd_descr })
                     window.show_task_output()
                 else
-                    window.add_events({ "Task creation failed: " .. task.name, "  " .. tostring(err) }, "error")
+                    notifications.notify({ "Task creation failed: " .. task.name, "  " .. tostring(err) }, vim.log.levels.ERROR)
                     chain.interrupted = true
                     vim.schedule(function()
                         if chain == _current_task_chain then
@@ -431,13 +432,13 @@ local function _start_task_chain(tasks, on_complete)
             end
             , function(exit_code)
                 if type(exit_code) ~= "number" then
-                    window.add_events({ "Invalid task status for " .. task.name }, "error")
+                    notifications.notify({ "Invalid task status for " .. task.name }, vim.log.levels.ERROR)
                     chain.interrupted = true
                 elseif exit_code == 0 then
-                    window.add_events({ "Task ended: " .. task.name })
+                    notifications.notify({ "Task ended: " .. task.name })
                 else
                     chain.interrupted = true
-                    window.add_events({ "Task ended: " .. task.name .. ', exit code: ' .. tostring(exit_code) })
+                    notifications.notify({ "Task ended: " .. task.name .. ', exit code: ' .. tostring(exit_code) })
                 end
                 vim.schedule(function()
                     if chain == _current_task_chain then
@@ -491,10 +492,10 @@ function M.start_task_chain(tasks, on_complete)
 
             if not success then
                 had_error = true
-                window.add_events({
+                notifications.notify({
                     "Failed to resolve macro(s) in task '" .. original_name .. "'",
                     tostring(err)
-                }, "error")
+                }, vim.log.levels.ERROR)
                 pending = pending - 1
                 if pending == 0 and on_complete then
                     vim.schedule(on_complete)
@@ -522,7 +523,7 @@ end
 ---@param command loop.job.DebugJob.Command|nil
 function M.debug_task_command(command)
     if not _current_task_chain or not _current_task_chain.active_job or getmetatable(_current_task_chain.active_job) ~= DebugJob then
-        window.add_events({ "Debug command not usable, no debut task is currently running" })
+        notifications.notify({ "Debug command not usable, no debut task is currently running" })
         return
     end
     ---@type loop.job.DebugJob
