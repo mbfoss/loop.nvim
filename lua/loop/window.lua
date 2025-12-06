@@ -29,9 +29,9 @@ local _ui_select_page
 
 local _tabs = {
     ---@type loop.TabInfo
-    breakpoints = { label = "Breakpoints", pages = {} },
-    ---@type loop.TabInfo
     tasks = { label = "Task", pages = {}, list_prefix = "Task - " },
+    ---@type loop.TabInfo
+    breakpoints = { label = "Breakpoints", pages = {} },
     ---@type loop.TabInfo
     debug_output = { label = "Debug Console", pages = {}, list_prefix = "Debug Console - " },
     ---@type loop.TabInfo
@@ -43,8 +43,8 @@ local _tabs = {
 }
 
 local _tabs_arr = {
-    _tabs.breakpoints,
     _tabs.tasks,
+    _tabs.breakpoints,
     _tabs.debug_output,
     _tabs.threads,
     _tabs.stacktrace,

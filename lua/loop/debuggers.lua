@@ -146,7 +146,7 @@ debuggers.lldb = {
 -- JavaScript / TypeScript / Node.js (pwa-node, pwa-chrome, etc.)
 -- server command: node dapDebugServer.js
 -- ──────────────────────────────────────────────────────────────
-debuggers.node = {
+debuggers["js-debug"] = {
     dap = {
         adapter_id = "js-debug",
         name = "js-debug",

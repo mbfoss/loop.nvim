@@ -4,12 +4,25 @@ local Job      = require('loop.job.Job')
 local Session  = require('loop.dap.Session')
 local TermProc = require('loop.tools.TermProc')
 
----@alias loop.job.DebugJob.Command "continue"|"step_in"|"step_out"|"step_over"|"terminate"|"terminate_all"
+---@alias loop.job.DebugJob.Command 
+---| "continue"
+---|"step_in"
+---|"step_out"
+---|"step_over"
+---|"terminate"
+---|"continue_all"
+---|"terminate_all"
 
+---@class loop.job.DebugJob.SessionController
+---@field continue fun()
+---@field step_in fun()
+---@field step_over fun()
+---@field step_out fun()
+---@field terminate fun()
 
 ---@class loop.job.debugjob.Tracker
 ---@field on_exit fun(code : number)|nil
----@field on_sess_added fun(id:number,name:string, parent_id:number)|nil
+---@field on_sess_added fun(id:number,name:string, parent_id:number,ctrl:loop.job.DebugJob.SessionController)|nil
 ---@field on_sess_removed fun(id:number, name:string)|nil
 ---@field on_sess_state fun(id:number, name:string, data:loop.dap.session.notify.StateData)|nil
 ---@field on_new_term fun(name:string, bufnr:number)|nil|nil
@@ -111,7 +124,16 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
 
     self._sessions[session_id] = session
 
-    self._trackers:invoke("on_sess_added", session_id, name, parent_sess_id)
+    ---@type loop.job.DebugJob.SessionController
+    local controller = {
+        continue = function() session:debug_continue() end,
+        step_in = function() session:debug_stepIn() end,
+        step_over = function() session:debug_stepOver() end,
+        step_out = function() session:debug_stepOut() end,
+        terminate = function() session:debug_terminate() end,
+    }
+
+    self._trackers:invoke("on_sess_added", session_id, name, parent_sess_id, controller)
 
     return true, nil
 end
@@ -128,36 +150,6 @@ function DebugJob:_session_exit_handler(session_id, code)
             end
         end
     end)
-end
-
----@param command loop.job.DebugJob.Command|nil
----@return boolean,string|nil
-function DebugJob:debug_command(command)
-    local active_session = 1 -- TODO: make this selectable from the UI
-    local session = self._sessions[active_session]
-    if not session then
-        return false, "no active sessions"
-    end
-    if command == 'continue' then
-        for _, s in pairs(self._sessions) do
-            s:debug_continue()
-        end
-    elseif command == "step_in" then
-        session:debug_stepIn()
-    elseif command == "step_out" then
-        session:debug_stepOut()
-    elseif command == "step_over" then
-        session:debug_stepOver()
-    elseif command == "terminate" then
-        session:debug_terminate()
-    elseif command == "terminate_all" then
-        for _, s in pairs(self._sessions) do
-            s:debug_terminate()
-        end
-    else
-        return false, "Invalid debug command: " .. tostring(command)
-    end
-    return true
 end
 
 ---@param sess_id number

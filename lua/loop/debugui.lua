@@ -1,20 +1,25 @@
-local config            = require('loop.config')
-local signs             = require('loop.signs')
-local selector          = require("loop.selector")
-local window            = require('loop.window')
-local breakpoints       = require('loop.dap.breakpoints')
-local Page              = require('loop.pages.Page')
-local OutputPage        = require('loop.pages.OutputPage')
-local ItemListPage      = require('loop.pages.ItemListPage')
-local ItemTreePage      = require('loop.pages.ItemTreePage')
-local StackTracePage    = require('loop.pages.StackTracePage')
-local uitools           = require('loop.tools.uitools')
-local Trackers          = require('loop.tools.Trackers')
+local config         = require('loop.config')
+local signs          = require('loop.signs')
+local selector       = require("loop.selector")
+local window         = require('loop.window')
+local breakpoints    = require('loop.dap.breakpoints')
+local Page           = require('loop.pages.Page')
+local OutputPage     = require('loop.pages.OutputPage')
+local ItemListPage   = require('loop.pages.ItemListPage')
+local ItemTreePage   = require('loop.pages.ItemTreePage')
+local StackTracePage = require('loop.pages.StackTracePage')
+local uitools        = require('loop.tools.uitools')
+local Trackers       = require('loop.tools.Trackers')
+local notifications  = require('loop.notifications')
 
-local M                 = {}
+local M              = {}
 
-local _setup_done       = false
-local _last_node_id     = 0
+local _setup_done    = false
+local _last_node_id  = 0
+
+
+---@type fun(command:loop.job.DebugJob.Command)
+local _command_handler
 
 ---@class loop.debugui.TrackerCallbacks
 ---@field on_bp_added fun(bp:loop.dap.SourceBreakpoint, verified:boolean)|nil
@@ -102,15 +107,24 @@ end
 ---@param sess_id number
 ---@param sess_name string
 ---@param parent_id number|nil
+---@param controller loop.job.DebugJob.SessionController
 ---@param task_page loop.pages.ItemListPage
-local function _on_session_added(sess_id, sess_name, parent_id, task_page)
-    task_page:upsert_item({
+local function _on_session_added(sess_id, sess_name, parent_id, controller, task_page)
+    local item = {
         id = sess_id,
+        ---@class loop.debugui.TaskPageItemData
         data = {
             name = sess_name,
-            state = 'starting'
+            state = 'starting',
+            controller = controller
         }
-    })
+    }
+
+    task_page:upsert_item(item)
+
+    if not task_page:get_current_item() then
+        task_page:set_current_item(item)
+    end
 
     for _, data in pairs(_breakpoints_data) do
         data.states = data.states or {}
@@ -123,14 +137,54 @@ end
 ---@param sess_name string
 ---@param task_page loop.pages.ItemListPage
 local function _on_session_removed(sess_id, sess_name, task_page)
-    vim.defer_fn(function ()
-        task_page:remove_item(sess_id)        
+    vim.defer_fn(function()
+        task_page:remove_item(sess_id)
     end, 3000)
     for _, data in pairs(_breakpoints_data) do
         if data.states then
             data.states[sess_id] = nil
             _refresh_breakpoint_sign(data)
         end
+    end
+end
+
+---@param command loop.job.DebugJob.Command
+---@param task_page loop.pages.ItemListPage
+local function _on_debug_command(command, task_page)
+    if command == 'continue_all' or command == "terminate_all" then
+        local is_continue = command == 'continue_all'
+        for _, item in ipairs(task_page:get_items()) do
+            ---@type loop.debugui.TaskPageItemData
+            local data = item.data
+            if data.controller then
+                if is_continue then
+                    data.controller.continue()
+                else
+                    data.controller.terminate()
+                end
+            end
+        end
+        return
+    end
+    local item = task_page:get_current_item()
+    if not item then
+        notifications.notify("No debug session selected", vim.log.levels.WARN)
+        return
+    end
+    ---@type loop.debugui.TaskPageItemData
+    local data = item.data
+    if command == 'continue' then
+        data.controller.continue()
+    elseif command == "step_in" then
+        data.controller.step_in()
+    elseif command == "step_out" then
+        data.controller.step_out()
+    elseif command == "step_over" then
+        data.controller.step_over()
+    elseif command == "terminate" then
+        data.controller.terminate()
+    else
+        return false, "Invalid debug command: " .. tostring(command)
     end
 end
 
@@ -311,8 +365,13 @@ function M.track_new_debugjob(task_name)
 
     ---@type loop.pages.ItemListPage
     local task_page = ItemListPage:new(task_name, {
-        formatter = _debug_session_item_formatter
+        formatter = _debug_session_item_formatter,
+        show_current_prefix = true,
     })
+    _command_handler = function(command)
+        _on_debug_command(command, task_page)
+    end
+
     window.add_page("task", task_page)
 
     local output_pages = {}
@@ -321,8 +380,8 @@ function M.track_new_debugjob(task_name)
 
     ---@type loop.job.debugjob.Tracker
     local tracker = {
-        on_sess_added = function(id, name, parent_id)
-            _on_session_added(id, name, parent_id, task_page)
+        on_sess_added = function(id, name, parent_id, controller)
+            _on_session_added(id, name, parent_id, controller, task_page)
         end,
         on_sess_removed = function(id, name)
             _on_session_removed(id, name, task_page)
@@ -418,6 +477,19 @@ function M.setup(_)
         on_removed = _on_breakpoint_removed,
         on_all_removed = _on_all_breakpoints_removed
     })
+end
+
+---@param command loop.job.DebugJob.Command|nil
+function M.debug_command(command)
+    if not command then
+        notifications.notify("Debug command missing", vim.log.levels.WARN)
+        return
+    end
+    if not _command_handler then
+        notifications.notify("No active debug sessions", vim.log.levels.WARN)
+        return
+    end
+    _command_handler(command)
 end
 
 return M

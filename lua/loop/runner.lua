@@ -520,16 +520,4 @@ function M.terminate_task_chain()
     _kill_current_chain(nil)
 end
 
----@param command loop.job.DebugJob.Command|nil
-function M.debug_task_command(command)
-    if not _current_task_chain or not _current_task_chain.active_job or getmetatable(_current_task_chain.active_job) ~= DebugJob then
-        notifications.notify({ "Debug command not usable, no debut task is currently running" })
-        return
-    end
-    ---@type loop.job.DebugJob
-    ---@diagnostic disable-next-line: assign-type-mismatch
-    local job = _current_task_chain.active_job
-    job:debug_command(command)
-end
-
 return M

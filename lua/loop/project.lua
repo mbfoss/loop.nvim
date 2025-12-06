@@ -3,6 +3,7 @@ local M = {}
 require("loop.config")
 local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
+local debugui = require("loop.debugui")
 local projinfo = require("loop.projinfo")
 local runner = require("loop.runner")
 local uitools = require('loop.tools.uitools')
@@ -138,6 +139,10 @@ end
 function M.close_project()
     assert(_setup_done)
     _close_project()
+end
+
+function M.show_proj_path()
+    print(_project_dir or "No active project")
 end
 
 function M.get_proj_dir()
@@ -281,14 +286,15 @@ end
 ---@return string[]
 function M.debug_subcommands(args)
     if #args == 0 then
-        return { "continue", "step_in", "step_out", "step_over", "terminate", "terminate_all" }
+        return { "continue", "step_in", "step_out", "step_over", "terminate",
+            "continue_all", "terminate_all" }
     end
     return {}
 end
 
 ---@param command loop.job.DebugJob.Command|nil
 function M.debug_command(command)
-    taskmgr.debug_task_command(command)
+    debugui.debug_command(command)
 end
 
 function M.show_window()

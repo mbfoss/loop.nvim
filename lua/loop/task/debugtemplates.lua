@@ -70,7 +70,7 @@ return {
         task = {
             name = "Debug",
             type = "debug",
-            command = { "node", "${file:js}" },
+            command = "${file:javascript}",
             cwd = "${projdir}",
             debug_adapter = "js-debug",
             debug_request = "launch",

@@ -92,9 +92,10 @@ M.setup = function(args)
 	_G.LoopProject =
 	{
 		_winbar_click = project.winbar_click,
+		project = project.show_proj_path,
 		create_project = project.create_project,
 		open_project = project.open_project,
-		close_project = project.close_project,
+		project_info = project.show_proj_info,
         save_project_files = project.save_project_files,
 		toggle = project.toggle_window,
 		show = project.show_window,
