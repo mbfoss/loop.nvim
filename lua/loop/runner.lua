@@ -1,15 +1,14 @@
 local M = {}
 
 require('loop.task.taskdef')
-local qfparsers = require("loop.task.qfparsers")
 local resolver = require('loop.tools.resolver')
 local strtools = require('loop.tools.strtools')
 local TermJob = require('loop.job.TermJob')
 local DebugJob = require('loop.job.DebugJob')
 local VimCmdJob = require('loop.job.VimCmdJob')
 local window = require('loop.window')
-local debugui = require('loop.debugui')
-local loopbreakpoints = require('loop.breakpoints')
+local debugui = require('loop.debug.debugui')
+local breakpoints = require('loop.debug.breakpoints')
 local Page = require('loop.pages.Page')
 local config = require("loop.config")
 local notifications = require('loop.notifications')
@@ -100,7 +99,7 @@ local function _make_output_parser(task)
         return line
     end
 
-    local quickfix_parser = qfparsers.get_parser(task.quickfix_matcher)
+    local quickfix_parser = config.current.qfmatchers[tostring(task.quickfix_matcher)]
     if not quickfix_parser then
         return nil, "Invalid quickfix matcher: " .. task.quickfix_matcher
     end
@@ -261,7 +260,12 @@ local function _create_debug_job(task, startup_callback, output_handler, exit_ha
     end
 
     -- Resolve default args based on request type
-    local default_args = (task.debug_request == "launch") and debugger.launch_args or debugger.attach_args or {}
+    local default_args
+    if task.debug_request == "launch" then
+        default_args = debugger.launch_args or {}
+    else
+        default_args = debugger.attach_args or {}
+    end
     local request_args = vim.tbl_deep_extend("force", {}, default_args)
 
     -- Resolve functions first
@@ -304,7 +308,7 @@ local function _create_debug_job(task, startup_callback, output_handler, exit_ha
 
         -- Add trackers
         job:add_tracker(debugui.track_new_debugjob(task.name))
-        job:add_tracker(loopbreakpoints.track_new_debugjob(task.name))
+        job:add_tracker(breakpoints.track_new_debugjob(task.name))
         job:add_tracker({ on_exit = exit_handler })
 
         if output_handler then

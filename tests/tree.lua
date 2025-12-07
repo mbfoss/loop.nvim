@@ -5,10 +5,10 @@ describe("loop.tools.Tree", function()
     it("inserts a root item", function()
         local tree = Tree:new()
         tree:upsert_item(nil, "A", { value = 1 })
-        assert.truthy(tree.nodes["A"])
-        assert.same(nil, tree.nodes["A"].parent_id)
-        assert.equal("A", tree.root_first)
-        assert.equal("A", tree.root_last)
+        assert.truthy(tree._nodes["A"])
+        assert.same(nil, tree._nodes["A"].parent_id)
+        assert.equal("A", tree._root_first)
+        assert.equal("A", tree._root_last)
         local flat = tree:flatten()
         assert.same({
             { id = "A", data = { value = 1 }, depth = 0 }
@@ -21,12 +21,12 @@ describe("loop.tools.Tree", function()
         tree:upsert_item("A", "B", {})
         tree:upsert_item("A", "C", {})
         tree:upsert_item("A", "D", {})
-        local A = tree.nodes["A"]
+        local A = tree._nodes["A"]
         assert.equal("B", A.first_child)
         assert.equal("D", A.last_child)
-        assert.equal("C", tree.nodes["B"].next_sibling)
-        assert.equal("D", tree.nodes["C"].next_sibling)
-        assert.is_nil(tree.nodes["D"].next_sibling)
+        assert.equal("C", tree._nodes["B"].next_sibling)
+        assert.equal("D", tree._nodes["C"].next_sibling)
+        assert.is_nil(tree._nodes["D"].next_sibling)
         local flat = tree:flatten()
         assert.same({
             { id = "A", depth = 0, data = {} },
@@ -40,7 +40,7 @@ describe("loop.tools.Tree", function()
         local tree = Tree:new()
         tree:upsert_item(nil, "A", { value = 1 })
         tree:upsert_item(nil, "A", { value = 99 }) -- update same id
-        assert.same({ value = 99 }, tree.nodes["A"].data)
+        assert.same({ value = 99 }, tree._nodes["A"].data)
     end)
 
     it("reparents a node correctly", function()
@@ -49,14 +49,14 @@ describe("loop.tools.Tree", function()
         tree:upsert_item(nil, "B", {})
         tree:upsert_item(nil, "C", {})
         tree:upsert_item("A", "B", {}) -- move B under A
-        assert.equal("A", tree.nodes["B"].parent_id)
-        assert.equal("B", tree.nodes["A"].first_child)
-        assert.equal("B", tree.nodes["A"].last_child)
+        assert.equal("A", tree._nodes["B"].parent_id)
+        assert.equal("B", tree._nodes["A"].first_child)
+        assert.equal("B", tree._nodes["A"].last_child)
         -- root list should now contain A, C
-        assert.equal("A", tree.root_first)
-        assert.equal("C", tree.root_last)
-        assert.equal("C", tree.nodes["A"].next_sibling)
-        assert.is_nil(tree.nodes["C"].next_sibling)
+        assert.equal("A", tree._root_first)
+        assert.equal("C", tree._root_last)
+        assert.equal("C", tree._nodes["A"].next_sibling)
+        assert.is_nil(tree._nodes["C"].next_sibling)
     end)
 
     it("removes a leaf node", function()
@@ -64,7 +64,7 @@ describe("loop.tools.Tree", function()
         tree:upsert_item(nil, "A", {})
         tree:upsert_item(nil, "B", {})
         tree:remove_item("B")
-        assert.is_nil(tree.nodes["B"])
+        assert.is_nil(tree._nodes["B"])
         local flat = tree:flatten()
         assert.same({
             { id = "A", data = {}, depth = 0 },
@@ -77,8 +77,8 @@ describe("loop.tools.Tree", function()
         tree:upsert_item("A", "B", {})
         tree:upsert_item("B", "C", {})
         tree:remove_item("B")
-        assert.is_nil(tree.nodes["B"])
-        assert.is_nil(tree.nodes["C"])
+        assert.is_nil(tree._nodes["B"])
+        assert.is_nil(tree._nodes["C"])
         local flat = tree:flatten()
         assert.same({
             { id = "A", data = {}, depth = 0 }
@@ -93,8 +93,8 @@ describe("loop.tools.Tree", function()
             { id = "C", data = {} },
             { id = "D", data = {} },
         })
-        assert.equal("B", tree.nodes["A"].first_child)
-        assert.equal("D", tree.nodes["A"].last_child)
+        assert.equal("B", tree._nodes["A"].first_child)
+        assert.equal("D", tree._nodes["A"].last_child)
         local flat = tree:flatten()
         assert.same({
             { id = "A", data = {}, depth = 0 },
@@ -132,18 +132,18 @@ describe("loop.tools.Tree", function()
     it("handles upsert_item with nil parent_id for root", function()
         local tree = Tree:new()
         tree:upsert_item(nil, "Root1", { key = "value" })
-        assert.equal("Root1", tree.root_first)
-        assert.equal("Root1", tree.root_last)
-        assert.same(nil, tree.nodes["Root1"].parent_id)
-        assert.same({ key = "value" }, tree.nodes["Root1"].data)
+        assert.equal("Root1", tree._root_first)
+        assert.equal("Root1", tree._root_last)
+        assert.same(nil, tree._nodes["Root1"].parent_id)
+        assert.same({ key = "value" }, tree._nodes["Root1"].data)
     end)
 
     it("updates data without changing position if parent same", function()
         local tree = Tree:new()
         tree:upsert_item(nil, "A", { old = true })
         tree:upsert_item(nil, "A", { new = true })
-        assert.same({ new = true }, tree.nodes["A"].data)
-        assert.equal("A", tree.root_first)
+        assert.same({ new = true }, tree._nodes["A"].data)
+        assert.equal("A", tree._root_first)
     end)
 
     it("reparents from root to child", function()
@@ -151,10 +151,10 @@ describe("loop.tools.Tree", function()
         tree:upsert_item(nil, "Parent", {})
         tree:upsert_item(nil, "Child", {})
         tree:upsert_item("Parent", "Child", {}) -- Move Child under Parent
-        assert.equal("Parent", tree.nodes["Child"].parent_id)
-        assert.equal("Child", tree.nodes["Parent"].first_child)
-        assert.equal("Parent", tree.root_first)
-        assert.equal("Parent", tree.root_last) -- Only Parent at root
+        assert.equal("Parent", tree._nodes["Child"].parent_id)
+        assert.equal("Child", tree._nodes["Parent"].first_child)
+        assert.equal("Parent", tree._root_first)
+        assert.equal("Parent", tree._root_last) -- Only Parent at root
     end)
 
     it("reparents from child to root", function()
@@ -162,11 +162,11 @@ describe("loop.tools.Tree", function()
         tree:upsert_item(nil, "Parent", {})
         tree:upsert_item("Parent", "Child", {})
         tree:upsert_item(nil, "Child", {}) -- Move to root
-        assert.same(nil, tree.nodes["Child"].parent_id)
-        assert.is_nil(tree.nodes["Parent"].first_child)
-        assert.equal("Parent", tree.root_first)
-        assert.equal("Child", tree.root_last)
-        assert.equal("Child", tree.nodes["Parent"].next_sibling)
+        assert.same(nil, tree._nodes["Child"].parent_id)
+        assert.is_nil(tree._nodes["Parent"].first_child)
+        assert.equal("Parent", tree._root_first)
+        assert.equal("Child", tree._root_last)
+        assert.equal("Child", tree._nodes["Parent"].next_sibling)
     end)
 
     it("handles reparenting with siblings preserved", function()
@@ -177,11 +177,11 @@ describe("loop.tools.Tree", function()
         tree:upsert_item("P1", "C", {})
         tree:upsert_item(nil, "P2", {})
         tree:upsert_item("P2", "B", {}) -- Move B to P2
-        assert.equal("A", tree.nodes["P1"].first_child)
-        assert.equal("C", tree.nodes["P1"].last_child)
-        assert.equal("C", tree.nodes["A"].next_sibling)
-        assert.is_nil(tree.nodes["C"].next_sibling)
-        assert.equal("B", tree.nodes["P2"].first_child)
+        assert.equal("A", tree._nodes["P1"].first_child)
+        assert.equal("C", tree._nodes["P1"].last_child)
+        assert.equal("C", tree._nodes["A"].next_sibling)
+        assert.is_nil(tree._nodes["C"].next_sibling)
+        assert.equal("B", tree._nodes["P2"].first_child)
     end)
 
     -- Additional tests for remove_item
@@ -189,16 +189,16 @@ describe("loop.tools.Tree", function()
         local tree = Tree:new()
         tree:remove_item("NonExistent")
         -- No error, just no-op
-        assert.same({}, tree.nodes)
+        assert.same({}, tree._nodes)
     end)
 
     it("removes root node with no children", function()
         local tree = Tree:new()
         tree:upsert_item(nil, "Root", {})
         tree:remove_item("Root")
-        assert.is_nil(tree.root_first)
-        assert.is_nil(tree.root_last)
-        assert.same({}, tree.nodes)
+        assert.is_nil(tree._root_first)
+        assert.is_nil(tree._root_last)
+        assert.same({}, tree._nodes)
     end)
 
     it("removes root node with siblings", function()
@@ -207,10 +207,10 @@ describe("loop.tools.Tree", function()
         tree:upsert_item(nil, "R2", {})
         tree:upsert_item(nil, "R3", {})
         tree:remove_item("R2")
-        assert.equal("R1", tree.root_first)
-        assert.equal("R3", tree.root_last)
-        assert.equal("R3", tree.nodes["R1"].next_sibling)
-        assert.is_nil(tree.nodes["R3"].next_sibling)
+        assert.equal("R1", tree._root_first)
+        assert.equal("R3", tree._root_last)
+        assert.equal("R3", tree._nodes["R1"].next_sibling)
+        assert.is_nil(tree._nodes["R3"].next_sibling)
     end)
 
     it("removes node with children and siblings", function()
@@ -222,12 +222,12 @@ describe("loop.tools.Tree", function()
         tree:upsert_item("B", "B1", {})
         tree:upsert_item("B", "B2", {})
         tree:remove_item("B")
-        assert.equal("A", tree.nodes["Root"].first_child)
-        assert.equal("C", tree.nodes["Root"].last_child)
-        assert.equal("C", tree.nodes["A"].next_sibling)
-        assert.is_nil(tree.nodes["C"].next_sibling)
-        assert.is_nil(tree.nodes["B1"])
-        assert.is_nil(tree.nodes["B2"])
+        assert.equal("A", tree._nodes["Root"].first_child)
+        assert.equal("C", tree._nodes["Root"].last_child)
+        assert.equal("C", tree._nodes["A"].next_sibling)
+        assert.is_nil(tree._nodes["C"].next_sibling)
+        assert.is_nil(tree._nodes["B1"])
+        assert.is_nil(tree._nodes["B2"])
     end)
 
     it("removes entire tree by removing all roots", function()
@@ -237,8 +237,8 @@ describe("loop.tools.Tree", function()
         tree:upsert_item(nil, "R2", {})
         tree:remove_item("R1")
         tree:remove_item("R2")
-        assert.same({}, tree.nodes)
-        assert.is_nil(tree.root_first)
+        assert.same({}, tree._nodes)
+        assert.is_nil(tree._root_first)
     end)
 
     -- Additional tests for upsert_items
@@ -247,7 +247,7 @@ describe("loop.tools.Tree", function()
         tree:upsert_item(nil, "Parent", {})
         tree:upsert_items("Parent", {})
         -- No change
-        assert.is_nil(tree.nodes["Parent"].first_child)
+        assert.is_nil(tree._nodes["Parent"].first_child)
     end)
 
     it("handles upsert_items mixing new and existing items", function()
@@ -259,11 +259,11 @@ describe("loop.tools.Tree", function()
             { id = "Existing", data = { new = true } },
             { id = "New2",     data = {} },
         })
-        assert.same({ new = true }, tree.nodes["Existing"].data)
-        assert.equal("New1", tree.nodes["Parent"].first_child)
-        assert.equal("New2", tree.nodes["Parent"].last_child)
-        assert.equal("Existing", tree.nodes["New1"].next_sibling)
-        assert.equal("New2", tree.nodes["Existing"].next_sibling)
+        assert.same({ new = true }, tree._nodes["Existing"].data)
+        assert.equal("New1", tree._nodes["Parent"].first_child)
+        assert.equal("New2", tree._nodes["Parent"].last_child)
+        assert.equal("Existing", tree._nodes["New1"].next_sibling)
+        assert.equal("New2", tree._nodes["Existing"].next_sibling)
     end)
 
     it("handles set_children to root (nil parent)", function()
@@ -274,11 +274,11 @@ describe("loop.tools.Tree", function()
             { id = "ExistingRoot", data = { updated = true } },
             { id = "NewRoot2",     data = {} },
         })
-        assert.equal("NewRoot1", tree.root_first)
-        assert.equal("NewRoot2", tree.root_last)
-        assert.same({ updated = true }, tree.nodes["ExistingRoot"].data)
-        assert.equal("ExistingRoot", tree.nodes["NewRoot1"].next_sibling)
-        assert.equal("NewRoot2", tree.nodes["ExistingRoot"].next_sibling)
+        assert.equal("NewRoot1", tree._root_first)
+        assert.equal("NewRoot2", tree._root_last)
+        assert.same({ updated = true }, tree._nodes["ExistingRoot"].data)
+        assert.equal("ExistingRoot", tree._nodes["NewRoot1"].next_sibling)
+        assert.equal("NewRoot2", tree._nodes["ExistingRoot"].next_sibling)
     end)
 
     -- Additional tests for flatten
@@ -354,14 +354,14 @@ describe("loop.tools.Tree", function()
         }, flat)
 
         -- Check direct links
-        assert.equal("ChildA", tree.nodes["Root1"].first_child)
-        assert.is_nil(tree.nodes["Root1"].last_child.next_sibling) -- only one child
+        assert.equal("ChildA", tree._nodes["Root1"].first_child)
+        assert.is_nil(tree._nodes["Root1"].last_child.next_sibling) -- only one child
 
-        assert.equal("ChildB", tree.nodes["Root2"].first_child)
-        assert.equal("ChildB", tree.nodes["Root2"].last_child)
+        assert.equal("ChildB", tree._nodes["Root2"].first_child)
+        assert.equal("ChildB", tree._nodes["Root2"].last_child)
 
-        assert.equal("Grandchild", tree.nodes["ChildB"].first_child)
-        assert.equal("Grandchild", tree.nodes["ChildB"].last_child)
+        assert.equal("Grandchild", tree._nodes["ChildB"].first_child)
+        assert.equal("Grandchild", tree._nodes["ChildB"].last_child)
     end)
 
     it("handles large batch upsert_items with mixed new and existing items", function()
@@ -391,7 +391,7 @@ describe("loop.tools.Tree", function()
         -- - So final order under P: 1 → 2 → 3 → 4 → 5
         --   (original 1→2→3 preserved, then 4 and 5 appended)
 
-        local parent_node = tree.nodes["P"]
+        local parent_node = tree._nodes["P"]
         assert.equal(1, parent_node.first_child) -- unchanged
         assert.equal(5, parent_node.last_child)  -- new ones appended
 
@@ -400,17 +400,17 @@ describe("loop.tools.Tree", function()
         local cur = parent_node.first_child
         while cur do
             table.insert(chain, cur)
-            cur = tree.nodes[cur].next_sibling
+            cur = tree._nodes[cur].next_sibling
         end
 
         assert.same({ 1, 2, 3, 4, 5 }, chain)
 
         -- Verify data was updated correctly
-        assert.same({ value = "one", updated = true }, tree.nodes[1].data)
-        assert.same({ value = "two", updated = true }, tree.nodes[2].data)
-        assert.same({ value = "three" }, tree.nodes[3].data)
-        assert.same({ value = "four" }, tree.nodes[4].data)
-        assert.same({ value = "five" }, tree.nodes[5].data)
+        assert.same({ value = "one", updated = true }, tree._nodes[1].data)
+        assert.same({ value = "two", updated = true }, tree._nodes[2].data)
+        assert.same({ value = "three" }, tree._nodes[3].data)
+        assert.same({ value = "four" }, tree._nodes[4].data)
+        assert.same({ value = "five" }, tree._nodes[5].data)
     end)
 
     it("handles upsert_items with duplicate ids in same batch (last wins?)", function()
@@ -422,12 +422,12 @@ describe("loop.tools.Tree", function()
             { id = "Dup", data = { second = true } },
         })
         -- Processes sequentially, so Dup created first, then updated later
-        assert.same({ second = true }, tree.nodes["Dup"].data)
+        assert.same({ second = true }, tree._nodes["Dup"].data)
         -- Order: Dup (first), New, Dup (but same id, updated but position from first insert)
         -- Since same id, second is update, no new link
-        assert.equal("Dup", tree.nodes["P"].first_child)
-        assert.equal("New", tree.nodes["Dup"].next_sibling)
-        assert.equal("New", tree.nodes["P"].last_child)
+        assert.equal("Dup", tree._nodes["P"].first_child)
+        assert.equal("New", tree._nodes["Dup"].next_sibling)
+        assert.equal("New", tree._nodes["P"].last_child)
         -- Only two children
     end)
 
@@ -440,8 +440,8 @@ describe("loop.tools.Tree", function()
             { id = "B", data = {} },
         })
         tree:remove_item("A")
-        assert.equal("B", tree.nodes["P"].first_child)
-        assert.equal("B", tree.nodes["P"].last_child)
+        assert.equal("B", tree._nodes["P"].first_child)
+        assert.equal("B", tree._nodes["P"].last_child)
     end)
 
     it("preserves sibling order when updating existing nodes in upsert_items", function()
@@ -456,14 +456,14 @@ describe("loop.tools.Tree", function()
         })
 
         local chain = {}
-        local cur = tree.nodes["P"].first_child
+        local cur = tree._nodes["P"].first_child
         while cur do
-            table.insert(chain, cur); cur = tree.nodes[cur].next_sibling
+            table.insert(chain, cur); cur = tree._nodes[cur].next_sibling
         end
 
         assert.same({ "A", "B", "C" }, chain) -- Order preserved!
-        assert.truthy(tree.nodes["A"].data.updated)
-        assert.truthy(tree.nodes["B"].data.updated)
+        assert.truthy(tree._nodes["A"].data.updated)
+        assert.truthy(tree._nodes["B"].data.updated)
     end)
 
     it("handles set_children removing all children", function()
@@ -473,10 +473,10 @@ describe("loop.tools.Tree", function()
 
         tree:set_children("P", {}) -- Empty list = remove all
 
-        assert.is_nil(tree.nodes["P"].first_child)
-        assert.is_nil(tree.nodes["P"].last_child)
-        assert.is_nil(tree.nodes["A"])
-        assert.is_nil(tree.nodes["B"])
+        assert.is_nil(tree._nodes["P"].first_child)
+        assert.is_nil(tree._nodes["P"].last_child)
+        assert.is_nil(tree._nodes["A"])
+        assert.is_nil(tree._nodes["B"])
     end)
 
     it("handles set_children on root with empty list", function()
@@ -485,9 +485,9 @@ describe("loop.tools.Tree", function()
 
         tree:set_children(nil, {})
 
-        assert.is_nil(tree.root_first)
-        assert.is_nil(tree.root_last)
-        assert.same({}, tree.nodes)
+        assert.is_nil(tree._root_first)
+        assert.is_nil(tree._root_last)
+        assert.same({}, tree._nodes)
     end)
 
     it("prevents cycles via reparenting (detects and errors or ignores)", function()
@@ -519,11 +519,11 @@ describe("loop.tools.Tree", function()
 
         tree:upsert_item(nil, "D", { moved = true }) -- reparent to root
 
-        assert.same(nil, tree.nodes["D"].parent_id)
-        assert.equal("D", tree.root_last)
+        assert.same(nil, tree._nodes["D"].parent_id)
+        assert.equal("D", tree._root_last)
 
         -- C lost its only child
-        assert.is_nil(tree.nodes["C"].first_child)
+        assert.is_nil(tree._nodes["C"].first_child)
 
         local flat = tree:flatten()
         assert.same({
@@ -543,9 +543,9 @@ describe("loop.tools.Tree", function()
 
         tree:upsert_item("B", "Root2", { moved = true })
 
-        assert.equal("B", tree.nodes["Root2"].parent_id)
-        assert.equal("Root1", tree.root_first)
-        assert.is_nil(tree.nodes["Root1"].next_sibling) -- Root2 removed from root list
+        assert.equal("B", tree._nodes["Root2"].parent_id)
+        assert.equal("Root1", tree._root_first)
+        assert.is_nil(tree._nodes["Root1"].next_sibling) -- Root2 removed from root list
 
         local flat = tree:flatten()
         assert.same({
@@ -565,14 +565,14 @@ describe("loop.tools.Tree", function()
         tree:upsert_item("P", "B", { updated = true })
 
         local chain = {}
-        local cur = tree.nodes["P"].first_child
+        local cur = tree._nodes["P"].first_child
         while cur do
             table.insert(chain, cur)
-            cur = tree.nodes[cur].next_sibling
+            cur = tree._nodes[cur].next_sibling
         end
 
         assert.same({ "A", "B", "C" }, chain)
-        assert.same({ updated = true }, tree.nodes["B"].data)
+        assert.same({ updated = true }, tree._nodes["B"].data)
     end)
 
     it("reparents last sibling to become first child", function()
@@ -583,10 +583,10 @@ describe("loop.tools.Tree", function()
         tree:upsert_item("P", "C", { moved = true }) -- just updates data, does NOT move
 
         -- Sibling order stays the same
-        assert.equal("A", tree.nodes["P"].first_child)
-        assert.equal("B", tree.nodes["A"].next_sibling)
-        assert.equal("C", tree.nodes["B"].next_sibling)
-        assert.equal("C", tree.nodes["P"].last_child)
+        assert.equal("A", tree._nodes["P"].first_child)
+        assert.equal("B", tree._nodes["A"].next_sibling)
+        assert.equal("C", tree._nodes["B"].next_sibling)
+        assert.equal("C", tree._nodes["P"].last_child)
 
         local flat = tree:flatten()
         assert.same({

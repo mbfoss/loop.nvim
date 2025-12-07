@@ -9,9 +9,9 @@ local Tree = require("loop.tools.Tree")
 ---@field end_col number|nil 0-based
 
 ---@class loop.pages.ItemTreePage.Item
----@field id number|string
+---@field id any
 ---@field data any
----@field parent_id number|string|nil
+---@field parent_id any
 ---@field children_callback nil|fun(cb:fun(items:loop.pages.ItemTreePage.ItemData[]))
 ---@field expanded boolean|nil
 
@@ -31,6 +31,7 @@ local Tree = require("loop.tools.Tree")
 ---@field collapse_char string?
 ---@field indent_string string?
 ---@field loading_text string?
+---@field render_delay_ms number|nil
 
 ---@class loop.pages.ItemTreePage : loop.pages.Page
 ---@field new fun(self: loop.pages.ItemTreePage, name:string, args:loop.pages.ItemTreePage.InitArgs): loop.pages.ItemTreePage
@@ -56,11 +57,12 @@ function ItemTreePage:init(name, args)
     assert(args.formatter, "formatter is required")
     Page.init(self, "tree", name)
 
-    self.formatter = args.formatter
-    self.expand_char = args.expand_char or "▸"
-    self.collapse_char = args.collapse_char or "▾"
-    self.indent_string = args.indent_string or " "
-    self.loading_text = args.loading_text or "Loading..."
+    self._formatter = args.formatter
+    self._expand_char = args.expand_char or "▸"
+    self._collapse_char = args.collapse_char or "▾"
+    self._indent_string = args.indent_string or " "
+    self._loading_text = args.loading_text or "Loading..."
+    self._render_delay_ms = args.render_delay_ms
 
     self._trackers = Trackers:new()
 
@@ -106,14 +108,18 @@ function ItemTreePage:remove_tracker(id) return self._trackers:remove_tracker(id
 ---------------------------------------------------------
 -- ITEM MANAGEMENT
 ---------------------------------------------------------
+
+function ItemTreePage:clear_items()
+    self._tree = Tree:new()
+    self:_rebuild_flat()
+    self:_render()
+end
+
 ---@param items loop.pages.ItemTreePage.Item[]
 function ItemTreePage:upsert_items(items)
-    self._tree = Tree:new()
-
     for _, item in ipairs(items) do
         self._tree:upsert_item(item.parent_id, item.id, _item_to_itemdata(item))
     end
-
     self:_rebuild_flat()
     self:_render()
 end
@@ -122,7 +128,7 @@ end
 function ItemTreePage:upsert_item(item)
     self._tree:upsert_item(item.parent_id or nil, item.id, _item_to_itemdata(item))
     self:_rebuild_flat()
-    self:_debounced_render()
+    self:_render()
 end
 
 ---@param ids any[]
@@ -131,7 +137,7 @@ function ItemTreePage:remove_items(ids)
         self._tree:remove_item(id)
     end
     self:_rebuild_flat()
-    self:_debounced_render()
+    self:_render()
     return true
 end
 
@@ -139,7 +145,7 @@ function ItemTreePage:remove_item(id)
     self._tree:remove_item(id)
 
     self:_rebuild_flat()
-    self:_debounced_render()
+    self:_render()
     return true
 end
 
@@ -160,9 +166,8 @@ function ItemTreePage:_rebuild_flat()
         -- Only show children if node is expanded
         if item.expanded then
             local item_id = flat_node.id
-            local node = self._tree.nodes[item_id]
             -- Lazy loading
-            if item.reload_children ~= false and item.children_callback and not node.first_child and not self._loading_nodes[item_id] then
+            if item.reload_children ~= false and item.children_callback and not self._loading_nodes[item_id] then
                 item.reload_children = false
                 self._loading_nodes[item_id] = true
 
@@ -199,17 +204,17 @@ function ItemTreePage:_rebuild_flat()
     end
 end
 
-function ItemTreePage:_debounced_render()
+function ItemTreePage:_render()
     if self._debounce_timer then
         self._debounce_timer:stop()
     end
     self._debounce_timer = vim.defer_fn(function()
-        self:_render()
+        self:_immediate_render()
         self._debounce_timer = nil
-    end, 10)
+    end, self._render_delay_ms or 100)
 end
 
-function ItemTreePage:_render()
+function ItemTreePage:_immediate_render()
     local buf = self:get_buf()
     if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
 
@@ -224,18 +229,18 @@ function ItemTreePage:_render()
         local prefix = ""
         local have_children = self._tree:have_children(item_id)
         if item_id and (have_children or item.children_callback) then
-            prefix = item.expanded and self.collapse_char or self.expand_char
+            prefix = item.expanded and self._collapse_char or self._expand_char
         end
 
-        local indent = string.rep(self.indent_string, flatnode.depth or 0)
+        local indent = string.rep(self._indent_string, flatnode.depth or 0)
 
         ---@type loop.pages.ItemTreePage.Highlight[]
         local highlights = {}
         local text
         if item.is_loading then
-            text = self.loading_text
+            text = self._loading_text
         else
-            text = (item_id and self.formatter(item_id, item.userdata, highlights) or ""):gsub('\n', ' ')
+            text = (item_id and self._formatter(item_id, item.userdata, highlights) or ""):gsub('\n', ' ')
         end
 
         local full_prefix = indent .. prefix .. " "
@@ -305,18 +310,24 @@ function ItemTreePage:collapse(id)
     end
 end
 
----------------------------------------------------------
--- GETTERS
----------------------------------------------------------
-function ItemTreePage:get_item(id)
-    local node = self._tree.nodes[id]
-    return node and node.data
+---@return loop.pages.ItemTreePage.ItemData
+function ItemTreePage:_get_item(id)
+    return self._tree:get_item(id)
 end
 
+---@return loop.pages.ItemTreePage.Item[]
 function ItemTreePage:get_items()
     local items = {}
-    for _, node in pairs(self._tree.nodes) do
-        table.insert(items, node.data)
+    for _, treeitem in ipairs(self._tree:get_items()) do
+        ---@type loop.pages.ItemTreePage.ItemData
+        local data = treeitem.data
+        ---@type loop.pages.ItemTreePage.Item
+        local item = {
+            id = treeitem.id,
+            data = data.userdata,
+            expanded = data.expanded,
+        }
+        table.insert(items, item)
     end
     return items
 end

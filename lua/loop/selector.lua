@@ -93,8 +93,8 @@ function M.select(prompt, items, formatter, callback)
     local callback_called = false
     local has_preview = type(formatter) == "function"
     formatter = formatter or function(v) return type(v) == "table" and vim.inspect(v) or tostring(v) end
-    local width = math.floor(vim.o.columns * (has_preview and 0.8 or 0.5))
-    local height = math.floor(vim.o.lines * 0.8)
+    local width = math.floor(vim.o.columns * (has_preview and 0.6 or 0.3))
+    local height = math.floor(vim.o.lines * 0.6)
     local list_w = has_preview and math.floor(width * 0.5) or width
     local prev_w = has_preview and (width - list_w) or 0
     local row = math.floor((vim.o.lines - height) / 2)

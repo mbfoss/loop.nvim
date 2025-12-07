@@ -3,11 +3,11 @@ local M = {}
 require("loop.config")
 local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
-local debugui = require("loop.debugui")
+local debugui = require("loop.debug.debugui")
 local projinfo = require("loop.projinfo")
 local runner = require("loop.runner")
 local uitools = require('loop.tools.uitools')
-local breakpoints = require('loop.dap.breakpoints')
+local dapbreakpoints = require('loop.dap.breakpoints')
 local extensions = require('loop.ext.extensions')
 local notifications = require('loop.notifications')
 
@@ -43,7 +43,7 @@ local function _save_project()
     local config_dir = _get_config_dir(_project_dir)
     vim.fn.mkdir(config_dir, "p")
     window.save_settings(config_dir)
-    breakpoints.save_breakpoints(config_dir)
+    dapbreakpoints.save_breakpoints(config_dir)
 end
 
 local function _close_project()
@@ -56,9 +56,9 @@ local function _close_project()
 
     _save_project()
 
-    local have_breakpoints = breakpoints.have_breakpoints()
+    local have_breakpoints = dapbreakpoints.have_breakpoints()
     if have_breakpoints then
-        breakpoints.clear_all_breakpoints()
+        dapbreakpoints.clear_all_breakpoints()
     end
 
     notifications.notify("Project closed")
@@ -84,7 +84,7 @@ local function _load_project(dir)
     local config_dir = _get_config_dir(proj_dir)
 
     window.load_settings(config_dir)
-    breakpoints.load_breakpoints(config_dir)
+    dapbreakpoints.load_breakpoints(config_dir)
 
     if not _save_timer then
         -- Create and start the repeating timer
@@ -247,14 +247,14 @@ function M.breakpoints_command(command)
     if command == "" or command == "toggle" then
         local file, line = uitools.get_current_file_and_line()
         if file and line then
-            breakpoints.toggle_breakpoint(file, line)
+            dapbreakpoints.toggle_breakpoint(file, line)
         end
     elseif command == "logpoint" then
         vim.ui.input({ prompt = "Enter log message: " }, function(message)
             if message and message ~= "" then
                 local file, line = uitools.get_current_file_and_line()
                 if file and line then
-                    breakpoints.set_logpoint(file, line, message)
+                    dapbreakpoints.set_logpoint(file, line, message)
                     print("Logpoint set at " .. file .. ":" .. line)
                 end
             end
@@ -264,17 +264,17 @@ function M.breakpoints_command(command)
         if vim.api.nvim_buf_is_valid(bufnr) then
             local full_path = vim.api.nvim_buf_get_name(bufnr)
             if full_path and full_path ~= "" then
-                uitools.confirm_action("Clear breakpoints in file", false, function(accepted)
+                uitools.confirm_action("Clear dapbreakpoints in file", false, function(accepted)
                     if accepted == true then
-                        breakpoints.clear_file_breakpoints(full_path)
+                        dapbreakpoints.clear_file_breakpoints(full_path)
                     end
                 end)
             end
         end
     elseif command == "clear_all" then
-        uitools.confirm_action("Clear all breakpoints", false, function(accepted)
+        uitools.confirm_action("Clear all dapbreakpoints", false, function(accepted)
             if accepted == true then
-                breakpoints.clear_all_breakpoints()
+                dapbreakpoints.clear_all_breakpoints()
             end
         end)
     else
@@ -392,8 +392,8 @@ function M.setup(config)
     assert(not _setup_done, "Setup alreay done")
     _setup_done = true
 
-    require('loop.signs').setup()
-    require('loop.breakpoints').setup()
+    require('loop.debug.signs').setup()
+    require('loop.debug.breakpoints').setup()
 
     window.setup({})
 

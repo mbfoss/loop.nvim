@@ -338,7 +338,8 @@ end
 ---@return boolean|nil
 function Session:get_breakpoint_state(id)
     local bp = self._source_breakpoints.by_usr_id[id]
-    return bp and bp.verified or nil
+    if bp then return bp.verified end
+    return nil
 end
 
 ---@param event loop.session.TrackerEvent

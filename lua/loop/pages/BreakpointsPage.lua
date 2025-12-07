@@ -101,7 +101,8 @@ function BreakpointsPage:init()
         end
     })
 
-    require('loop.breakpoints').add_tracker({
+    local breakpoints = require('loop.debug.breakpoints')
+    breakpoints.add_tracker({
         on_bp_added = function(bp, verified) self:_update_one(bp, verified) end,
         on_bp_removed = function(bp) self:_on_removed(bp) end,
         on_all_bp_removed = function(bpts) self:_on_all_removed(bpts) end,

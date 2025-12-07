@@ -1,11 +1,13 @@
 require('loop.task.taskdef')
-local builtin_macros = require('loop.macros')
-local builtin_debuggers = require('loop.debuggers')
+local builtin_macros = require('loop.task.macros')
+local builtin_debuggers = require('loop.task.debuggers')
+local builtin_qfmatchers = require("loop.task.qfmatchers")
 
 ---@class loop.Config
 ---@field debug loop.Config.Debug
----@field debuggers loop.Config.Debugger[]
+---@field qfmatchers table<string,fun(line:string,context:table):loop.task.QuickFixItem>
 ---@field macros table<string,fun():any>
+---@field debuggers table<string,loop.Config.Debugger>
 
 local M = {}
 
@@ -20,8 +22,10 @@ M.current = {
         },
     },
 
+
+    qfmatchers = builtin_qfmatchers,
+    macros = builtin_macros,
     debuggers = builtin_debuggers,
-    macros = builtin_macros
 }
 
 return M

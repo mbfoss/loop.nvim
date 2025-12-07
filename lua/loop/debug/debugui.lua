@@ -1,4 +1,4 @@
-local signs          = require('loop.signs')
+local signs          = require('loop.debug.signs')
 local window         = require('loop.window')
 local Page           = require('loop.pages.Page')
 local OutputPage     = require('loop.pages.OutputPage')

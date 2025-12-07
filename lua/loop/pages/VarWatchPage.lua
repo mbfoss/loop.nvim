@@ -50,7 +50,7 @@ local function _variable_node_formatter(id, data, highlights)
     if data.greyout then
         table.insert(highlights, { group = "NonText" })
     else
-        local valuehl = data.is_na_value  and "NonText" or _get_vartype_hightlight(data.type)
+        local valuehl = data.is_na_value and "NonText" or _get_vartype_hightlight(data.type)
         table.insert(highlights, { group = "@symbol", start_col = 0, end_col = #data.name })
         table.insert(highlights, { group = valuehl, start_col = #data.name + 2 })
     end
@@ -91,11 +91,13 @@ function VarWatchPage:init(name)
         end
     })
     ---@type string[]
-    self._watch_exressions = { "test", "i", "this" }
+    self._watch_exressions = {}
     ---@type loop.dap.session.notify.ThreadData|nil
     self._cur_thread_data = nil
     ---@type loop.dap.proto.StackFrame
     self._cur_frame = nil
+    ---@type table<any,boolean> -- id --> expanded
+    self._layout_cache = {}
 
     self:_load_expressions()
 end
@@ -104,17 +106,18 @@ end
 ---@param ref number
 ---@param parent_id number|string
 ---@param callback fun(items:loop.pages.VariablesPage.Item[])
-local function load_variables(thread_data, ref, parent_id, callback)
+function VarWatchPage:_load_variables(thread_data, ref, parent_id, callback)
     thread_data.variables_provider({ variablesReference = ref },
         function(_, vars_data)
             local children = {}
             if vars_data then
                 for _, var in ipairs(vars_data.variables) do
+                    local item_id = parent_id .. "\001" .. var.name
                     ---@type loop.pages.VariablesPage.Item
                     local var_item = {
-                        id = parent_id .. "\001" .. var.name,
+                        id = item_id,
                         parent = parent_id,
-                        expanded = true,
+                        expanded = self._layout_cache[item_id],
                         data = {
                             name = var.name,
                             type = var.type,
@@ -122,12 +125,11 @@ local function load_variables(thread_data, ref, parent_id, callback)
                         },
                     }
                     if var.variablesReference and var.variablesReference > 0 then
-                        var_item.expanded = false
                         var_item.children_callback = function(cb)
                             if var_item.data.greyout then
                                 cb({})
                             else
-                                load_variables(thread_data, var.variablesReference, var_item.id, cb)
+                                self:_load_variables(thread_data, var.variablesReference, item_id, cb)
                             end
                         end
                     end
@@ -151,7 +153,7 @@ function VarWatchPage:_load_expr_value(expr)
     local var_item = {
         id = expr,
         parent = nil,
-        expanded = false,
+        expanded = self._layout_cache[expr],
         data = { name = expr }
     }
     if not self._cur_thread_data or not self._cur_frame then
@@ -175,7 +177,7 @@ function VarWatchPage:_load_expr_value(expr)
                     if var_item.data.greyout then
                         cb({})
                     else
-                        load_variables(self._cur_thread_data, data.variablesReference, var_item.id, cb)
+                        self:_load_variables(self._cur_thread_data, data.variablesReference, var_item.id, cb)
                     end
                 end
             end
@@ -196,6 +198,7 @@ function VarWatchPage:greyout_content()
     local items = self:get_items()
     for _, item in ipairs(items) do
         item.data.greyout = true
+        self._layout_cache[item.id] = item.expanded
     end
     self:refresh_content()
 end

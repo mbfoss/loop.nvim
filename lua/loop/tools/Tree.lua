@@ -15,21 +15,21 @@ local class = require("loop.tools.class")
 ---@generic T
 ---@class loop.tools.Tree
 ---@field new fun(self: loop.tools.Tree) : loop.tools.Tree
----@field nodes table<any, loop.tools.Tree.Node>
----@field root_first any|nil
----@field root_last any|nil
+---@field _nodes table<any, loop.tools.Tree.Node>
+---@field _root_first any|nil
+---@field _root_last any|nil
 local Tree = class()
 
 ---Initialize internal state
 function Tree:init()
     ---@type table<any, loop.tools.Tree.Node>
-    self.nodes = {}
+    self._nodes = {}
 
     ---@type any|nil
-    self.root_first = nil
+    self._root_first = nil
 
     ---@type any|nil
-    self.root_last = nil
+    self._root_last = nil
 end
 
 --==============================================================
@@ -41,17 +41,17 @@ end
 ---@param parent_id any|nil
 ---@param id any
 function Tree:_link_child(parent_id, id)
-    local parent = parent_id and self.nodes[parent_id]
+    local parent = parent_id and self._nodes[parent_id]
     if not parent then
         -- link under root list
-        if not self.root_first then
-            self.root_first = id
-            self.root_last = id
+        if not self._root_first then
+            self._root_first = id
+            self._root_last = id
         else
-            local last = self.root_last
-            self.nodes[last].next_sibling = id
-            self.nodes[id].prev_sibling = last
-            self.root_last = id
+            local last = self._root_last
+            self._nodes[last].next_sibling = id
+            self._nodes[id].prev_sibling = last
+            self._root_last = id
         end
         return
     end
@@ -62,8 +62,8 @@ function Tree:_link_child(parent_id, id)
         parent.last_child = id
     else
         local last = parent.last_child
-        self.nodes[last].next_sibling = id
-        self.nodes[id].prev_sibling = last
+        self._nodes[last].next_sibling = id
+        self._nodes[id].prev_sibling = last
         parent.last_child = id
     end
 end
@@ -72,7 +72,7 @@ end
 ---@private
 ---@param id any
 function Tree:_unlink(id)
-    local node = self.nodes[id]
+    local node = self._nodes[id]
     local parent_id = node.parent_id
 
     local prev = node.prev_sibling
@@ -80,16 +80,16 @@ function Tree:_unlink(id)
 
     if parent_id == nil then
         -- unlink from root
-        if id == self.root_first then self.root_first = next end
-        if id == self.root_last then self.root_last = prev end
+        if id == self._root_first then self._root_first = next end
+        if id == self._root_last then self._root_last = prev end
     else
-        local parent = self.nodes[parent_id]
+        local parent = self._nodes[parent_id]
         if id == parent.first_child then parent.first_child = next end
         if id == parent.last_child then parent.last_child = prev end
     end
 
-    if prev then self.nodes[prev].next_sibling = next end
-    if next then self.nodes[next].prev_sibling = prev end
+    if prev then self._nodes[prev].next_sibling = next end
+    if next then self._nodes[next].prev_sibling = prev end
 
     node.prev_sibling = nil
     node.next_sibling = nil
@@ -99,18 +99,18 @@ end
 ---@private
 ---@param id any
 function Tree:_remove_subtree(id)
-    local node = self.nodes[id]
+    local node = self._nodes[id]
     if not node then return end
 
     local child = node.first_child
     while child do
-        local next_child = self.nodes[child].next_sibling
+        local next_child = self._nodes[child].next_sibling
         self:_remove_subtree(child) -- recurse first
         child = next_child
     end
 
     self:_unlink(id)
-    self.nodes[id] = nil
+    self._nodes[id] = nil
 end
 
 --==============================================================
@@ -135,15 +135,20 @@ end
 function Tree:set_children(parent_id, items)
     assert(type(items) == "table")
 
-    local parent_node = parent_id and self.nodes[parent_id]
+    local parent_node = parent_id and self._nodes[parent_id]
     assert(not parent_id or parent_node)
 
     local old_children = {}
     do
-        local child = parent_node and parent_node.first_child or self.root_first
+        local child
+        if parent_node then
+            child = parent_node.first_child
+        else
+            child = self._root_first
+        end
         while child do
             old_children[child] = true
-            child = self.nodes[child].next_sibling
+            child = self._nodes[child].next_sibling
         end
     end
 
@@ -155,7 +160,7 @@ function Tree:set_children(parent_id, items)
         local id = assert(item.id)
         local data = item.data
 
-        local node = self.nodes[id]
+        local node = self._nodes[id]
         if node then
             assert(node.parent_id == parent_id, "Node exists under another parent")
             node.data = data
@@ -168,7 +173,7 @@ function Tree:set_children(parent_id, items)
                 next_sibling = nil,
                 prev_sibling = nil,
             }
-            self.nodes[id] = node
+            self._nodes[id] = node
         end
 
         -- Remove from old children set
@@ -178,7 +183,7 @@ function Tree:set_children(parent_id, items)
         node.prev_sibling = prev_id
         node.next_sibling = nil
         if prev_id then
-            self.nodes[prev_id].next_sibling = id
+            self._nodes[prev_id].next_sibling = id
         end
         if not first then first = id end
         last = id
@@ -190,8 +195,8 @@ function Tree:set_children(parent_id, items)
         parent_node.first_child = first
         parent_node.last_child = last
     else
-        self.root_first = first
-        self.root_last = last
+        self._root_first = first
+        self._root_last = last
     end
 
     -- Remove any children not in the new list
@@ -206,9 +211,9 @@ end
 ---@param data T
 function Tree:upsert_item(parent_id, id, data)
     assert(id ~= nil, "id is required")
-    assert(parent_id == nil or self.nodes[parent_id], "parent does not exist")
+    assert(parent_id == nil or self._nodes[parent_id], "parent does not exist")
 
-    local node = self.nodes[id]
+    local node = self._nodes[id]
     if node then
         -- Update data
         node.data = data
@@ -234,7 +239,7 @@ function Tree:upsert_item(parent_id, id, data)
             next_sibling = nil,
             prev_sibling = nil,
         }
-        self.nodes[id] = node
+        self._nodes[id] = node
 
         -- Link under parent or root
         self:_link_child(parent_id, id)
@@ -246,13 +251,13 @@ end
 ---@param items loop.tools.Tree.Item[]
 function Tree:upsert_items(parent_id, items)
     assert(type(items) == "table", "items must be a table")
-    assert(parent_id == nil or self.nodes[parent_id], "parent does not exist")
+    assert(parent_id == nil or self._nodes[parent_id], "parent does not exist")
 
     for _, item in ipairs(items) do
         local id   = assert(item.id, "each item must have an 'id'")
         local data = item.data
 
-        local node = self.nodes[id]
+        local node = self._nodes[id]
         if node then
             -- Update data
             node.data = data
@@ -278,7 +283,7 @@ function Tree:upsert_items(parent_id, items)
                 next_sibling = nil,
                 prev_sibling = nil,
             }
-            self.nodes[id] = node
+            self._nodes[id] = node
 
             -- Link into child chain
             self:_link_child(parent_id, id)
@@ -290,15 +295,24 @@ end
 ---@return any -- node data
 function Tree:get_item(id)
     assert(id, "id required")
-    local node = self.nodes[id]
+    local node = self._nodes[id]
     return node.data
+end
+
+---@return loop.tools.Tree.Item[]
+function Tree:get_items()
+    local items = {}
+    for id, node in pairs(self._nodes) do
+        table.insert(items, { id = id, data = node.data })
+    end
+    return items
 end
 
 ---@param id any
 ---@return boolean
 function Tree:have_children(id)
     assert(id, "id required")
-    local node = self.nodes[id]
+    local node = self._nodes[id]
     return node and node.first_child ~= nil
 end
 
@@ -334,7 +348,7 @@ function Tree:flatten(exclude_node, exclude_children)
     local path = {} -- for better error reporting (shows the cycle path)
 
     local function walk(id, depth)
-        local node = self.nodes[id]
+        local node = self._nodes[id]
         if not node then
             error(string.format("Tree:flatten() - Invalid node id %s (nil node)", tostring(id)))
         end
@@ -374,7 +388,7 @@ function Tree:flatten(exclude_node, exclude_children)
             local child = node.first_child
             while child do
                 walk(child, depth + 1)
-                child = self.nodes[child].next_sibling
+                child = self._nodes[child].next_sibling
             end
         end
 
@@ -386,15 +400,15 @@ function Tree:flatten(exclude_node, exclude_children)
         ::continue::
     end
 
-    local id = self.root_first
+    local id = self._root_first
     while id do
-        -- Reset visited set for each root (in case of forest with shared nodes - which shouldn't happen in a tree)
+        -- Reset visited set for each root (in case of forest with shared _nodes - which shouldn't happen in a tree)
         -- But to be safe and allow detection across roots if somehow shared
         if visited[id] then
             assert(false, string.format("Node %s appears under multiple roots - not a valid forest", tostring(id)))
         end
         walk(id, 0)
-        id = self.nodes[id].next_sibling
+        id = self._nodes[id].next_sibling
     end
 
     return out

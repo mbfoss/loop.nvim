@@ -7,13 +7,6 @@ local ItemTreePage = require('loop.pages.ItemTreePage')
 ---@field new fun(self: loop.pages.VariablesPage, name:string): loop.pages.VariablesPage
 local VariablesPage = class(ItemTreePage)
 
-local _last_node_id = 0
-local function _make_node_id()
-    local id = _last_node_id + 1
-    _last_node_id = id
-    return id
-end
-
 local _vartype_to_group = {
     -- primitives
     ["string"]     = "@string",
@@ -62,7 +55,7 @@ local function _variable_node_formatter(id, data, highlights)
         table.insert(highlights, { group = "NonText" })
         return "not available"
     end
-    
+
     if data.greyout then
         table.insert(highlights, { group = "NonText" })
     else
@@ -75,9 +68,9 @@ end
 ---@param scopes loop.dap.proto.Scope[]
 ---@param thread_data loop.dap.session.notify.ThreadData
 ---@param variables_page loop.pages.VariablesPage
-local function _load_scopes(scopes, thread_data, variables_page)
+function VariablesPage:_load_scopes(scopes, thread_data, variables_page)
     ---@param ref number
-    ---@param parent_id number|string
+    ---@param parent_id string
     ---@param callback fun(items:loop.pages.VariablesPage.Item[])
     local function load_variables(ref, parent_id, callback)
         thread_data.variables_provider({ variablesReference = ref },
@@ -85,11 +78,12 @@ local function _load_scopes(scopes, thread_data, variables_page)
                 local children = {}
                 if vars_data then
                     for var_idx, var in ipairs(vars_data.variables) do
+                        local item_id = parent_id .. '\001' .. var.name
                         ---@type loop.pages.VariablesPage.Item
                         local var_item = {
-                            id = _make_node_id(),
+                            id = item_id,
                             parent = parent_id,
-                            expanded = true,
+                            expanded = self._layout_cache[item_id],
                             data = {
                                 name = var.name,
                                 type = var.type,
@@ -97,12 +91,11 @@ local function _load_scopes(scopes, thread_data, variables_page)
                             },
                         }
                         if var.variablesReference and var.variablesReference > 0 then
-                            var_item.expanded = false
                             var_item.children_callback = function(cb)
                                 if var_item.data.greyout then
                                     cb({})
                                 else
-                                    load_variables(var.variablesReference, var_item.id, cb)
+                                    load_variables(var.variablesReference, item_id, cb)
                                 end
                             end
                         end
@@ -110,7 +103,12 @@ local function _load_scopes(scopes, thread_data, variables_page)
                     end
                 else
                     ---@type loop.pages.VariablesPage.Item
-                    local var_item = { id = _make_node_id(), parent = parent_id, data = { is_na = true }, }
+                    local var_item = {
+                        id = {}, -- a unique id
+                        parent =
+                            parent_id,
+                        data = { is_na = true },
+                    }
                     table.insert(children, var_item)
                 end
                 callback(children)
@@ -120,25 +118,31 @@ local function _load_scopes(scopes, thread_data, variables_page)
     ---@type loop.pages.ItemTreePage.Item[]
     local scope_items = {}
     for scope_idx, scope in ipairs(scopes) do
+        local item_id = scope.name
         local prefix = scope.expensive and "⏱ " or ""
+        local expanded = self._layout_cache[item_id]
+        if expanded == nil then
+            if scope.expensive
+                or scope.presentationHint == "globals"
+                or scope.name == "Globals"
+                or scope.presentationHint == "registers"
+            then
+                expanded = false
+            else
+                expanded = true
+            end
+        end
         ---@type loop.pages.ItemTreePage.Item
         local scope_item = {
-            id = _make_node_id(),
-            expanded = false,
+            id = item_id,
+            expanded = expanded,
             data = { scopelabel = prefix .. scope.name }
         }
-        if not scope.expensive
-            and scope.presentationHint ~= "globals"
-            and scope.name ~= "Globals"
-            and scope.presentationHint ~= "registers"
-        then
-            scope_item.expanded = true
-        end
         scope_item.children_callback = function(cb)
             if scope_item.data.greyout then
                 cb({})
             else
-                load_variables(scope.variablesReference, scope_item.id, cb)
+                load_variables(scope.variablesReference, item_id, cb)
             end
         end
         table.insert(scope_items, scope_item)
@@ -146,12 +150,13 @@ local function _load_scopes(scopes, thread_data, variables_page)
     variables_page:upsert_items(scope_items)
 end
 
-
 ---@param name string
 function VariablesPage:init(name)
     ItemTreePage.init(self, name, {
         formatter = _variable_node_formatter
     })
+    ---@type table<any,boolean> -- id --> expanded
+    self._layout_cache = {}
 end
 
 ---@param event_data loop.dap.session.notify.ThreadData
@@ -159,15 +164,17 @@ end
 function VariablesPage:load_variables(event_data, frame)
     event_data.scopes_provider({ frameId = frame.id }, function(_, scopes_data)
         if scopes_data and scopes_data.scopes then
-            _load_scopes(scopes_data.scopes, event_data, self)
+            self:_load_scopes(scopes_data.scopes, event_data, self)
         end
     end)
 end
 
 function VariablesPage:greyout_content()
+    self._layout_cache = {}
     local items = self:get_items()
     for _, item in ipairs(items) do
         item.data.greyout = true
+        self._layout_cache[item.id] = item.expanded
     end
     self:refresh_content()
 end

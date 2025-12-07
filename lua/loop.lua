@@ -108,14 +108,6 @@ M.setup = function(args)
 
 	_setup_user_command(_G.LoopProject)
 
-vim.keymap.set("n", "<leader>db",  project.breakpoints_command, {desc = "Toggle breakpoint"})
-vim.keymap.set("n", "<leader>dc",  ":Loop debug continue<CR>", {desc = "Debug continue", silent = true})
-vim.keymap.set("n", "<leader>di",  ":Loop debug step_in<CR>", {desc = "Debug step in", silent = true})
-vim.keymap.set("n", "<leader>do",  ":Loop debug step_out<CR>", {desc = "Debug step out", silent = true})
-vim.keymap.set("n", "<leader>ds",  ":Loop debug step_over<CR>", {desc = "Debug step over", silent = true})
-vim.keymap.set("n", "<leader>dT",  ":Loop debug terminate<CR>", {desc = "Debug terminate session", silent = true})
-vim.keymap.set("n", "<leader>dK", ":Loop debug terminate_all<CR>", {desc = "Debug terminate all sessions", silent = true})
-
 end
 
 return M

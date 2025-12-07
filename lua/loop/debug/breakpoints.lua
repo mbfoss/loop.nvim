@@ -1,4 +1,4 @@
-local signs             = require('loop.signs')
+local signs             = require('loop.debug.signs')
 local Trackers          = require('loop.tools.Trackers')
 
 local M                 = {}

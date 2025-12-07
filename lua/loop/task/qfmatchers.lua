@@ -1,5 +1,3 @@
-local M = {}
-
 local strtools = require("loop.tools.strtools")
 
 ---@class loop.task.QuickFixItem
@@ -88,15 +86,8 @@ local function _parse_luacheck(line, context)
     return item
 end
 
-local parsers = {
+---@type table<string,fun(line:string,context:table):loop.task.QuickFixItem>
+return {
     gcc = _parse_gcc,
     luacheck = _parse_luacheck
 }
-
----@param type string
----@return (fun(line:string,context:table):loop.task.QuickFixItem)|nil
-function M.get_parser(type)
-    return parsers[type]
-end
-
-return M
