@@ -1,0 +1,289 @@
+local M = {}
+
+require('loop.task.taskdef')
+local jsontools = require('loop.tools.json')
+local filetools = require('loop.tools.file')
+local uitools = require('loop.tools.uitools')
+local strtools = require('loop.tools.strtools')
+local resolver = require('loop.tools.resolver')
+local jsonschema = require('loop.tools.jsonschema')
+local extensions = require('loop.ext.extensions')
+
+---@param content string
+---@return loop.Task[]|nil
+---@return string[]|nil
+local function _load_tasks_from_str(content)
+    local loaded, data_or_err = jsontools.from_string(content)
+    if not loaded or type(data_or_err) ~= 'table' then
+        return nil, { data_or_err }
+    end
+
+    local schema = require("loop.task.tasksschema")
+    local data = data_or_err
+    local errors = jsonschema.validate(schema, data)
+    if errors and #errors > 0 then
+        return nil, errors
+    end
+    if not data or not data.tasks then
+        return nil, { "Parsing error" }
+    end
+    return data.tasks, nil
+end
+
+---@param filepath string
+---@return loop.Task[]|nil
+---@return string[]|nil
+local function _load_tasks_file(filepath)
+    if not filetools.file_exists(filepath) then
+        return {}, nil -- not an error
+    end
+    local loaded, contents_or_err = uitools.smart_read_file(filepath)
+    if not loaded then
+        return nil, { contents_or_err }
+    end
+    return _load_tasks_from_str(contents_or_err)
+end
+
+
+local function task_order_handler(path, attrs)
+    return { "name", "type", "command", "cwd",
+        "env", "quickfix_matcher", "debug_adapter", "debug_request", "debug_args", "depends_on" }
+end
+
+local function order_handler(path, attrs)
+    if path == "/" then
+        return { "$schema", "tasks" }
+    end
+    return task_order_handler(path, attrs)
+end
+
+---@param config_dir string
+---@param new_task loop.Task
+---@return boolean
+---@return string[]|nil
+function M.add_task(config_dir, new_task)
+    vim.fn.mkdir(config_dir, "p")
+    local filepath = vim.fs.joinpath(config_dir, "tasks.json")
+    local _, bufnr = uitools.smart_open_file(filepath)
+
+    -- Get all lines
+    local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+    local content = table.concat(lines, "\n")
+
+    local new_lines = nil
+    if #content == 0 then
+        local tasks = { new_task }
+        local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
+        jsontools.save_to_file(schema_filepath, require("loop.task.tasksschema"))
+        local file_data = {}
+        file_data["$schema"] = './tasksschema.json'
+        file_data["tasks"] = tasks
+        local new_content = jsontools.to_string(file_data, order_handler)
+        new_lines = vim.split(new_content, "\n", { plain = true })
+    else
+        local task_as_json = jsontools.to_string(new_task, task_order_handler)
+        local positions = {}
+        for i = 1, #content do
+            if content:sub(i, i) == "}" then
+                table.insert(positions, i)
+            end
+        end
+        -- Need at least two braces
+        if #positions >= 2 then
+            -- Find position of second-to-last brace
+            local insert_pos = positions[#positions - 1]
+            -- Insert the new text right before it
+            local prev_lines = vim.split(content:sub(1, insert_pos) .. ',', "\n", { plain = true })
+            local mid_lines = vim.split(task_as_json, "\n", { plain = true, trimempty = true })
+            local next_lines = vim.split(content:sub(insert_pos + 1), "\n", { plain = true, trimempty = true })
+            for idx, line in ipairs(mid_lines) do
+                mid_lines[idx] = "    " .. line
+            end
+            new_lines = vim.list_extend(vim.list_extend(prev_lines, mid_lines), next_lines)
+        end
+    end
+    if new_lines then
+        -- Replace all lines in the buffer
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, new_lines)
+        if vim.api.nvim_get_current_buf() == bufnr then
+            uitools.move_to_last_occurence('"name": "')
+        end
+    end
+    return true
+end
+
+---@param config_dir string
+function M.open_config(config_dir)
+    local filepath = vim.fs.joinpath(config_dir, "tasks.json")
+    uitools.smart_open_file(filepath)
+end
+
+---@param config_dir string
+---@return loop.Task[]|nil
+---@return string[]|nil
+function M.load_tasks(config_dir)
+    local filepath = vim.fs.joinpath(config_dir, "tasks.json")
+    local tasks, errors = _load_tasks_file(filepath)
+    if not tasks then
+        return nil, strtools.indent_errors(errors, "error(s) in: " .. filepath)
+    end
+
+    local byname = {}
+    for _, task in ipairs(tasks) do
+        if byname[task.name] ~= nil then
+            return nil, { "error in: " .. filepath, "  duplicate task name: " .. task.name }
+        end
+        byname[task.name] = task
+    end
+
+    return tasks, nil
+end
+
+---@param name string
+---@param config_dir string
+function M.save_last_task_name(name, config_dir)
+    local filepath = vim.fs.joinpath(config_dir, "last.json")
+    local data = { task = name }
+    jsontools.save_to_file(filepath, data)
+end
+
+---@param config_dir string
+---@return string|nil
+function M.load_last_task_name(config_dir)
+    local filepath = vim.fs.joinpath(config_dir, "last.json")
+    local ok, payload = jsontools.load_from_file(filepath)
+    if not ok then
+        return nil
+    end
+    return payload and payload.task or nil
+end
+
+---@param ext_name string
+---@return table|nil,string|nil
+local function _get_extension_mod(ext_name)
+    if not ext_name or ext_name == "" then
+        return nil, "Extension name required"
+    end
+    if type(ext_name) ~= "string" or not ext_name:match("^[%a%d_-]+$") then
+        return nil, "Invalid extension name: " .. ext_name "'"
+    end
+    local exists = false
+    for _, v in ipairs(extensions.ext_names()) do if v == ext_name then exists = true end end
+    if not exists then
+        return nil, "Invalid extension name '" .. ext_name
+    end
+    local mod_loaded, mod = pcall(require, 'loop.ext.' .. ext_name .. '.extension')
+    if not mod_loaded then
+        return nil, "Failed to load extension '" .. ext_name .. "' " .. mod
+    end
+    if type(mod.get_config_schema) ~= "function" or
+        type(mod.get_config_template) ~= "function" or
+        type(mod.get_tasks) ~= "function" then
+        return nil, "Missing function in extension: " .. ext_name
+    end
+    return mod
+end
+
+---@param config_dir string
+---@param ext_name string
+---@param callback fun(config:table|nil,err:string[]|nil)
+local function _load_extension_config(config_dir, ext_name, callback)
+    local mod, mod_err = _get_extension_mod(ext_name)
+    if not mod then
+        return callback(nil, { mod_err })
+    end
+
+    local filepath = vim.fs.joinpath(config_dir, "ext." .. ext_name .. ".json")
+    if not filetools.file_exists(filepath) then
+        return callback(nil, { "Config file does not exist:", filepath }) -- not an error
+    end
+
+    local loaded, contents_or_err = uitools.smart_read_file(filepath)
+    if not loaded then
+        return callback(nil, { contents_or_err })
+    end
+
+    local decoded, data_or_err = jsontools.from_string(contents_or_err)
+    if not decoded then
+        return callback(nil, { data_or_err })
+    end
+
+    local data = data_or_err
+    if not data then
+        return callback(nil, { "Parsing error" })
+    end
+
+    local schema = mod.get_config_schema()
+    assert(type(schema) == "table")
+
+    local errors = jsonschema.validate(schema, data)
+    if errors and #errors > 0 then
+        return callback(nil, errors)
+    end
+
+    local cmake_config = data.config
+
+    resolver.resolve_macros(cmake_config, function (success, result_table, err)
+        if not success or not result_table then
+            callback(nil, {err or "failed to resolve macros"})
+        else
+            callback(result_table, nil)
+        end
+    end)
+end
+
+---@param config_dir string
+---@param ext_name string
+---@param callback fun(tasks:loop.Task[]|nil,errors:string[]|nil)
+function M.get_extension_tasks(config_dir, ext_name, callback)
+    local mod, mod_err = _get_extension_mod(ext_name)
+    if not mod then
+        return nil, { mod_err }
+    end
+    _load_extension_config(config_dir, ext_name, function (config, err)
+        if not config then
+            callback(nil, err)
+        else
+            callback(mod.get_tasks(config))
+        end        
+    end)
+end
+
+---@param config_dir string
+---@param ext_name string
+---@return boolean,string|nil
+function M.create_extension_config(config_dir, ext_name)
+    local mod, mod_err = _get_extension_mod(ext_name)
+    if not mod then
+        return false, mod_err
+    end
+
+    local schema = mod.get_config_schema()
+    assert(type(schema) == "table")
+
+    local template = mod.get_config_template()
+    assert(type(template) == "table")
+
+    if next(template) == nil then
+        -- task does not require configuration
+        return true
+    end
+
+    local config_order_handler = mod.get_config_order_handler()
+
+    local config_filepath = vim.fs.joinpath(config_dir, 'ext.' .. ext_name .. '.json')
+
+    if not filetools.file_exists(config_filepath) then
+        vim.fn.mkdir(config_dir, "p")
+        local schemafilename = 'extschema.' .. ext_name .. '.json'
+        local schemafilepath = vim.fs.joinpath(config_dir, schemafilename)
+        jsontools.save_to_file(schemafilepath, schema)
+        template["$schema"] = './' .. schemafilename
+        jsontools.save_to_file(config_filepath, template, config_order_handler)
+    end
+
+    uitools.smart_open_file(config_filepath)
+    return true
+end
+
+return M
