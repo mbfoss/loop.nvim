@@ -65,6 +65,9 @@ function M.add_task(config_dir, new_task)
     vim.fn.mkdir(config_dir, "p")
     local filepath = vim.fs.joinpath(config_dir, "tasks.json")
     local _, bufnr = uitools.smart_open_file(filepath)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return false, {"failed to open tasks file"}
+    end
 
     -- Get all lines
     local lines = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)

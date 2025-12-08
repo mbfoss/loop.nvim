@@ -60,7 +60,7 @@ function M.get_current_file_and_line()
         return
     end
     local lnum = vim.api.nvim_win_get_cursor(0)[1]
-    return file,lnum
+    return file, lnum
 end
 
 ---@param winid integer
@@ -111,6 +111,9 @@ function M.smart_open_file(filepath, line, col)
 
     vim.api.nvim_set_current_win(winid)
     local bufnr = vim.fn.bufadd(full_path)
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return -1, -1
+    end
     if vim.fn.bufloaded(bufnr) == 0 then
         vim.fn.bufload(bufnr)
     end
