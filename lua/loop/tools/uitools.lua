@@ -111,11 +111,12 @@ function M.smart_open_file(filepath, line, col)
 
     vim.api.nvim_set_current_win(winid)
     local bufnr = vim.fn.bufadd(full_path)
-    if not vim.api.nvim_buf_is_valid(bufnr) then
-        return -1, -1
-    end
     if vim.fn.bufloaded(bufnr) == 0 then
         vim.fn.bufload(bufnr)
+    end
+    -- bufload may invalidate the buffer
+    if not vim.api.nvim_buf_is_valid(bufnr) then
+        return -1, -1
     end
     vim.bo[bufnr].buflisted = true
     vim.api.nvim_win_set_buf(winid, bufnr)
