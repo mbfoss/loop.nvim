@@ -12,4 +12,5 @@ vim.cmd("runtime plugin/plenary.vim")
 
 require("tests.strtools")
 require("tests.tree")
---require("tests.runner")
+require("tests.resolver")
+require("tests.runner")

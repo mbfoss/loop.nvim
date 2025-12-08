@@ -74,47 +74,6 @@ local function _get_tab_index(tab)
     return 0
 end
 
----@param vim_tab_id number
----@return number
-local function _count_normal_windows(vim_tab_id)
-    local wins_in_tab = vim.api.nvim_tabpage_list_wins(vim_tab_id)
-    local count = 0
-    for _, win in ipairs(wins_in_tab) do
-        local cfg = vim.api.nvim_win_get_config(win)
-        if cfg.relative == "" then
-            count = count + 1
-        end
-    end
-    return count
-end
-
-local function _quit_if_last_window()
-    if _loop_win ~= -1 then
-        local count = _count_normal_windows(vim.api.nvim_win_get_tabpage(_loop_win))
-        if count == 1 then
-            local tab_count = #vim.api.nvim_list_tabpages()
-            if tab_count > 1 then
-                M.hide_window()
-            else
-                -- only our window remains, quit neovim
-                vim.cmd('quit')
-            end
-        end
-    end
-end
-
-local function _on_win_new_or_close()
-    if _loop_win == -1 then
-        return
-    end
-    local winid = _loop_win
-    local count = _count_normal_windows(vim.api.nvim_win_get_tabpage(winid))
-    --this should be configurable
-    if count <= 2 then
-        vim.schedule(_quit_if_last_window)
-    end
-end
-
 local function _setup_tabs()
     if _loop_win == -1 then
         return
@@ -491,23 +450,6 @@ function M.setup(_)
     end
 
     vim.api.nvim_create_autocmd("WinEnter", { callback = _on_window_enter })
-
-    vim.api.nvim_create_autocmd("WinNew", {
-        callback = function(_)
-            _on_win_new_or_close()
-        end,
-    })
-
-    vim.api.nvim_create_autocmd("WinClosed", {
-        callback = function(args)
-            local closed_winid = tonumber(args.match)
-            if closed_winid == _loop_win then
-                _loop_win = -1
-            else
-                _on_win_new_or_close()
-            end
-        end,
-    })
 
     vim.api.nvim_create_autocmd("BufEnter", {
         callback = function()

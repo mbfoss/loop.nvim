@@ -1,5 +1,6 @@
 local class = require('loop.tools.class')
 local ItemTreePage = require('loop.pages.ItemTreePage')
+local strtools = require('loop.tools.strtools')
 
 ---@alias loop.pages.VarWatchPage.Item loop.pages.ItemTreePage.Item
 
@@ -112,7 +113,7 @@ function VarWatchPage:_load_variables(thread_data, ref, parent_id, callback)
             local children = {}
             if vars_data then
                 for _, var in ipairs(vars_data.variables) do
-                    local item_id = parent_id .. "\001" .. var.name
+                    local item_id = parent_id .. strtools.escape_marker1() .. var.name
                     ---@type loop.pages.VariablesPage.Item
                     local var_item = {
                         id = item_id,

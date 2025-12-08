@@ -1,5 +1,6 @@
 local M = {}
 local config = require('loop.config')
+local strtools = require('loop.tools.strtools')
 
 ---@alias SimpleValue string | number | boolean | table
 
@@ -22,10 +23,13 @@ local function _is_simple_data(value, _seen)
     return true
 end
 
-local ESCAPE_MARKER = "\001"
-local PLACEHOLDER_START = "\002"
-local PLACEHOLDER_END = "\003"
 
+-- these are special UTF sequences that never appear in any text
+local ESCAPE_MARKER     = strtools.escape_marker1()
+local PLACEHOLDER_START = strtools.escape_marker2()
+local PLACEHOLDER_END   = strtools.escape_marker3()
+
+---@param spec string
 local function parse_macro_spec(spec)
     -- Supports ${macro} or ${macro:arg with spaces and:colons}
     local name, args = spec:match("^([^:%s]-)%s*:(.*)$") -- tolerant to spaces after :
@@ -35,6 +39,8 @@ local function parse_macro_spec(spec)
     return name, args and args:match("^%s*(.-)%s*$") or nil
 end
 
+---@param str string
+---@param callback fun(success:boolean, result_table:string|nil, err:string|nil)
 local function _expand_string_async(str, callback)
     if type(str) ~= "string" then
         return callback(false, nil, "Input must be a string")
@@ -43,7 +49,7 @@ local function _expand_string_async(str, callback)
         return callback(false, nil, "String contains internal escape sequence")
     end
 
-    -- Escape ${{...}} → \001{...}
+    -- Escape $${...} → ESCAPE_MARKER{...}
     local escaped = str:gsub("%$%${(.-)}", ESCAPE_MARKER .. "{%1}")
 
     -- Single macro case: ${name:args}
@@ -110,13 +116,15 @@ local function _expand_string_async(str, callback)
             if err then
                 success = false
                 last_err = err
-            elseif type(value) ~= "string" then
+            elseif type(value) ~= "string" and type(value) ~= "number" and type(value) ~= "boolean" then
                 success = false
-                last_err = ("Macro ${%s} returned non-string: %s"):format(macro.name, type(value))
+                last_err = ("Macro ${%s} return type ('%s') cannot be converted to string)")
+                    :format(type(value), macro.name)
             else
                 local placeholder = PLACEHOLDER_START .. macro.id .. PLACEHOLDER_END
+                local replacement = tostring(value):gsub("%%", "%%%%")
                 for i, part in ipairs(result_parts) do
-                    result_parts[i] = part:gsub(placeholder, value, 1)
+                    result_parts[i] = part:gsub(placeholder, replacement, 1)
                 end
             end
 
@@ -184,19 +192,21 @@ local function _expand_table_async(tbl, seen, final_callback)
 end
 
 -- Public API
----@param tbl table
----@param callback fun(success:boolean, result_table:table|nil, err:string|nil)
-function M.resolve_macros(tbl, callback)
-    if not tbl or type(tbl) ~= "table" then
-        return vim.schedule(function() callback(false, nil, "Input must be a table") end)
-    end
-
-    local tbl_copy = vim.deepcopy(tbl)
-    _expand_table_async(tbl_copy, {}, function(success, err)
-        vim.schedule(function()
-            callback(success, success and tbl_copy or nil, err)
+---@param val any
+---@param callback fun(success:boolean, result_table:any, err:string|nil)
+function M.resolve_macros(val, callback)
+    if type(val) == "table" then
+        local tbl = vim.deepcopy(val)
+        _expand_table_async(tbl, {}, function(success, err)
+            vim.schedule(function()
+                callback(success, success and tbl or nil, err)
+            end)
         end)
-    end)
+    elseif type(val) == "string" then
+        _expand_string_async(val, callback)
+    else
+        vim.schedule(function() callback(true, val) end)
+    end
 end
 
 return M

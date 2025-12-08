@@ -1,5 +1,21 @@
 local M = {}
 
+---@return string
+function M.escape_marker1()
+    -- this is a special UTF sequence that never appear in any text
+    return "\240\159\188\128"  -- U+EFF00
+end
+---@return string
+function M.escape_marker2()
+    -- this is a special UTF sequence that never appear in any text
+    return "\240\159\188\129"
+end
+---@return string
+function M.escape_marker3()
+    -- this is a special UTF sequence that never appear in any text
+    return "\240\159\188\130"
+end
+
 ---@param str string
 ---@return string
 function M.human_case(str)

@@ -7,7 +7,7 @@ Logger.__index = Logger
 -- CONFIGURATION
 ------------------------------------------------------------
 
-local env_log_level = vim.env.NEOVIM_LOOP_PLUGIN_LOG_LEVEL
+local env_log_level = vim.env.NVIM_LOOP_PLUGIN_LOG_LEVEL
 local log_level = env_log_level and tonumber(env_log_level) or vim.log.levels.OFF
 
 -- Log file path

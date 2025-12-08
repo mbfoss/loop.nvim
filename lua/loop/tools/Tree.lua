@@ -73,24 +73,38 @@ end
 ---@param id any
 function Tree:_unlink(id)
     local node = self._nodes[id]
-    local parent_id = node.parent_id
+    if not node then return end
 
+    local parent_id = node.parent_id
     local prev = node.prev_sibling
     local next = node.next_sibling
 
+    -- 1. Fix parent's first/last child pointers
     if parent_id == nil then
-        -- unlink from root
+        -- Root level
         if id == self._root_first then self._root_first = next end
-        if id == self._root_last then self._root_last = prev end
+        if id == self._root_last  then self._root_last  = prev end
     else
         local parent = self._nodes[parent_id]
-        if id == parent.first_child then parent.first_child = next end
-        if id == parent.last_child then parent.last_child = prev end
+        if parent then
+            if id == parent.first_child then parent.first_child = next end
+            if id == parent.last_child  then parent.last_child  = prev end
+        end
     end
-
-    if prev then self._nodes[prev].next_sibling = next end
-    if next then self._nodes[next].prev_sibling = prev end
-
+    -- 2. Fix sibling chain
+    if prev then
+        local prev_node = self._nodes[prev]
+        if prev_node then
+            prev_node.next_sibling = next
+        end
+    end
+    if next then
+        local next_node = self._nodes[next]
+        if next_node then
+            next_node.prev_sibling = prev
+        end
+    end
+    -- 3. Clear this node's sibling pointers
     node.prev_sibling = nil
     node.next_sibling = nil
 end
