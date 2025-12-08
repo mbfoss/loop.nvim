@@ -39,8 +39,7 @@ local function find_regular_window()
     local new_win = vim.api.nvim_get_current_win()
     local new_buf = vim.api.nvim_win_get_buf(new_win)
 
-    -- Ensure the new buffer is regular (it should be by default)
-    -- But just in case, create an empty buffer if needed
+    -- Ensure the new buffer is regular
     if not M.is_regular_buffer(new_buf) then
         local buf = vim.api.nvim_create_buf(true, false) -- listed, not scratch
         vim.api.nvim_win_set_buf(new_win, buf)
@@ -110,15 +109,7 @@ function M.smart_open_file(filepath, line, col)
     local winid = find_regular_window()
 
     vim.api.nvim_set_current_win(winid)
-    local bufnr = vim.fn.bufadd(full_path)
-    if vim.fn.bufloaded(bufnr) == 0 then
-        vim.fn.bufload(bufnr)
-    end
-    -- bufload may invalidate the buffer
-    if not vim.api.nvim_buf_is_valid(bufnr) then
-        return -1, -1
-    end
-    vim.bo[bufnr].buflisted = true
+    local bufnr = vim.uri_to_bufnr(vim.uri_from_fname(full_path))
     vim.api.nvim_win_set_buf(winid, bufnr)
     M.set_cursor_pos(winid, line, col)
 

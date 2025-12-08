@@ -20,6 +20,9 @@ local setup_done = false
 
 ---@type number
 local _loop_win = -1
+local _original_pell
+local _original_winbar
+
 ---@type number
 local _loop_win_height_ratio
 ---@type fun(action: "next"|"prev")
@@ -249,20 +252,6 @@ local function _add_tab_page(tab, page)
     _setup_tabs()
 end
 
-local function protect_split_window_buffer(buf)
-    if not Page.is_page(buf) then
-        local name =
-            uitools.is_regular_buffer(buf)
-            and vim.api.nvim_buf_get_name(buf) or nil
-        vim.schedule(function()
-            _setup_tabs()
-            if name then
-                uitools.smart_open_file(name, nil, nil)
-            end
-        end)
-    end
-end
-
 function M.winbar_click(id, clicks, button, mods)
     local tab_idx = math.floor(id / 1000)
     local page_idx = id % 1000
@@ -309,6 +298,8 @@ local function create_window()
     end
     vim.api.nvim_set_option_value('winfixheight', true, { scope = 'local', win = _loop_win })
     vim.api.nvim_set_current_win(prev_win)
+    _original_winbar = vim.wo[_loop_win].winbar
+    _original_pell = vim.wo[_loop_win].spell
     vim.wo[_loop_win].spell = false
 
     _setup_tabs()
@@ -449,6 +440,15 @@ function M.setup(_)
         vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "ErrorMsg" })
     end
 
+    vim.api.nvim_create_autocmd("WinClosed", {
+        callback = function(args)
+            local closed_winid = tonumber(args.match)
+            if closed_winid == _loop_win then
+                _loop_win = -1
+            end
+        end,
+    })
+
     vim.api.nvim_create_autocmd("WinEnter", { callback = _on_window_enter })
 
     vim.api.nvim_create_autocmd("BufEnter", {
@@ -456,7 +456,10 @@ function M.setup(_)
             local win = vim.api.nvim_get_current_win()
             if win == _loop_win then
                 local buf = vim.api.nvim_win_get_buf(win)
-                protect_split_window_buffer(buf)
+                if not Page.is_page(buf) then
+                    vim.wo[_loop_win].winbar = _original_winbar
+                    vim.wo[_loop_win].spell = _original_pell
+                end
             end
         end,
     })
