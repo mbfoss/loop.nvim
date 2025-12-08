@@ -154,7 +154,7 @@ function M.select(prompt, items, formatter, callback)
 
     redraw()
     -- Auto-close on focus loss
-    vim.api.nvim_create_autocmd({ "WinLeave", "BufLeave" }, {
+    vim.api.nvim_create_autocmd("BufLeave", {
         buffer = pbuf,
         once = true,
         callback = function()

@@ -58,39 +58,65 @@ local function _variable_node_formatter(id, data, highlights)
     return tostring(data.name) .. ": " .. tostring(data.value)
 end
 
+local function floating_input_at_cursor(opts)
+    local prev_win = vim.api.nvim_get_current_win()
+    -- Create scratch buffer
+    local buf = vim.api.nvim_create_buf(false, true)
+    vim.bo[buf].buftype = "nofile"
+    vim.bo[buf].bufhidden = "wipe"
+    vim.bo[buf].buftype = "nofile"
+    vim.bo[buf].swapfile = false
+    vim.bo[buf].undolevels = -1
+    -- Cursor position
+    -- Floating window at current line
+    local width = math.max(30, vim.fn.strdisplaywidth(opts.default) + 2)
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "cursor",
+        row = opts.row_offset,
+        col = opts.col_offset,
+        width = width,
+        height = 1,
+        style = "minimal",
+        border = "none",
+    })
+    vim.api.nvim_set_current_win(win)
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { opts.default })
+    vim.api.nvim_win_set_cursor(win, { 1, #opts.default })
+    vim.cmd("normal! q")
+    vim.cmd("startinsert")
+    local closed = false
+    local function close(value)
+        if closed then return end
+        closed = true
+        vim.cmd("stopinsert")
+        vim.api.nvim_set_current_win(prev_win)
+        if vim.api.nvim_win_is_valid(win) then
+            vim.api.nvim_win_close(win, true)
+        end
+        vim.schedule(function() opts.on_confirm(value) end)
+    end
+    -- Confirm on Enter
+    vim.keymap.set("i", "<CR>", function()
+        local line = vim.api.nvim_get_current_line()
+        close(line ~= "" and line or nil)
+    end, { buffer = buf, nowait = true })
+    -- Cancel on Esc
+    vim.keymap.set("i", "<Esc>", function() close(nil) end, { buffer = buf, nowait = true })
+    vim.api.nvim_create_autocmd("WinLeave", {
+        once = true,
+        callback = function()
+            close(nil)
+        end,
+    })
+end
+
 ---@param name string
 function VarWatchPage:init(name)
     ItemTreePage.init(self, name, {
         formatter = _variable_node_formatter,
     })
-    self:add_keymap("i", {
-        desc = 'Add a watcher',
-        callback = function()
-            vim.ui.input({
-                prompt = "Expression: "
-            }, function(expr)
-                if expr and #expr > 0 and not vim.tbl_contains(self._watch_exressions, expr) then
-                    table.insert(self._watch_exressions, expr)
-                    self:_load_expr_value(expr)
-                end
-            end)
-        end
-    })
-    self:add_keymap("d", {
-        desc = 'Delete a watcher',
-        callback = function()
-            local item = self:get_cur_item()
-            if item then
-                self:remove_item(item.id)
-                for idx, expr in ipairs(self._watch_exressions) do
-                    if expr == item.data.name then
-                        table.remove(self._watch_exressions, idx)
-                        break
-                    end
-                end
-            end
-        end
-    })
+    self:_add_keymaps()
+
     ---@type string[]
     self._watch_exressions = {}
     ---@type loop.dap.session.notify.ThreadData|nil
@@ -101,6 +127,81 @@ function VarWatchPage:init(name)
     self._layout_cache = {}
 
     self:_load_expressions()
+end
+
+function VarWatchPage:_add_keymaps()
+    --- Helper: edit an existing watch or add a new one
+    ---@param add_mode boolean true = add new, false = edit selected
+    local function edit_or_add_watch(add_mode)
+        local item = self:get_cur_item()
+        if not add_mode and (not item or not item.data.is_expr) then
+            return
+        end
+        local buf = self:get_or_create_buf()
+        local cursor = vim.api.nvim_win_get_cursor(0)
+        local row_offset = 0
+        local col_offset = -cursor[2] + 1
+        if add_mode then
+            local nblines = vim.api.nvim_buf_line_count(buf)
+            local firstln = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
+            row_offset = nblines - cursor[1] + 1
+            if nblines == 1 and firstln == "" then
+                row_offset = row_offset - 1
+            end
+        end
+        floating_input_at_cursor({
+            row_offset = row_offset,
+            col_offset = col_offset,
+            default = "",
+            on_confirm = function(expr)
+                if add_mode then
+                    -- Remove from _watch_expressions
+                    local exists = false
+                    for i, curexpr in ipairs(self._watch_exressions) do
+                        if expr == curexpr then
+                            exists = true
+                            break
+                        end
+                    end
+                    if not exists then
+                        table.insert(self._watch_exressions, expr)
+                    end
+                    self:_load_expr_value(expr)
+                else
+                    vim.notify("change mode not implemented yet")
+                end
+            end
+        })
+    end
+
+    -- Add keymaps
+    self:add_keymap("i", {
+        desc = "Add watch (inline)",
+        callback = function() edit_or_add_watch(true) end,
+    })
+
+    self:add_keymap("c", {
+        desc = "Change watch (inline)",
+        callback = function() edit_or_add_watch(false) end,
+    })
+
+    self:add_keymap("d", {
+        desc = "Delete watch",
+        callback = function()
+            local cur_item = self:get_cur_item()
+            if not cur_item then return end
+            -- Remove from _watch_expressions
+            for i, expr in ipairs(self._watch_exressions) do
+                if expr == cur_item.data.name then
+                    table.remove(self._watch_exressions, i)
+                    break
+                end
+            end
+            -- Remove from tree cache
+            self._layout_cache[cur_item.id] = nil
+            self:remove_item(cur_item.id)
+        end,
+    })
 end
 
 ---@param thread_data loop.dap.session.notify.ThreadData
@@ -155,7 +256,7 @@ function VarWatchPage:_load_expr_value(expr)
         id = expr,
         parent = nil,
         expanded = self._layout_cache[expr],
-        data = { name = expr }
+        data = { is_expr = true, name = expr }
     }
     if not self._cur_thread_data or not self._cur_frame then
         var_item.data.value = "not available"

@@ -375,7 +375,7 @@ end
 -- Refresh
 ---------------------------------------------------------
 function ItemTreePage:refresh_content()
-    self:_immediate_render()
+    self:_render()
 end
 
 function ItemTreePage:get_or_create_buf()
