@@ -20,6 +20,7 @@ local Tree = require("loop.tools.Tree")
 ---@field children_callback nil|fun(cb:fun(items:loop.pages.ItemTreePage.Item[]))
 ---@field expanded boolean|nil
 ---@field reload_children boolean|nil
+---@field children_loading boolean|nil
 ---@field is_loading boolean|nil
 
 ---@class loop.pages.ItemTreePage.TrackerCallbacks
@@ -51,6 +52,67 @@ local function _item_to_itemdata(item)
     }
 end
 
+---@param tree loop.tools.Tree
+---@param async_update fun()
+---@return loop.tools.Tree.Node[]
+---@return boolean have loading nodes
+local function _refresh_tree(tree, async_update)
+    ---@type loop.tools.Tree.Node[]
+    local flat = {}
+    local have_loading_nodes = false
+    -- Get all nodes in depth-first order
+    local nodes = tree:flatten(nil, function(data)
+        return not data.expanded
+    end)
+
+    for _, flat_node in ipairs(nodes) do
+        table.insert(flat, flat_node)
+        ---@type loop.pages.ItemTreePage.ItemData
+        local item = flat_node.data
+        -- Only show children if node is expanded
+        if item.expanded then
+            local item_id = flat_node.id
+            -- Lazy loading
+            if item.children_callback and item.reload_children ~= false and not item.children_loading then
+                item.children_loading = true
+                have_loading_nodes = true
+
+                ---@type loop.pages.ItemTreePage.ItemData
+                local loading_item = {
+                    ---@diagnostic disable-next-line: undefined-field
+                    id = "loading_" .. vim.loop.hrtime(),
+                    is_loading = true
+                }
+                ---@type loop.tools.Tree.FlatNode
+                table.insert(flat, {
+                    id = loading_item.id,
+                    data = loading_item,
+                    depth = flat_node.depth + 1,
+                })
+
+                vim.schedule(function()
+                    -- Trigger async load
+                    item.children_callback(function(loaded_children)
+                        ---@type loop.tools.Tree.Item[]
+                        local treeitems = {}
+                        for _, child in ipairs(loaded_children or {}) do
+                            ---@type loop.tools.Tree.Item
+                            local basetreeitem = { id = child.id, data = _item_to_itemdata(child) }
+                            table.insert(treeitems, basetreeitem)
+                        end
+                        tree:set_children(item_id, treeitems)
+                        item.reload_children = false
+                        item.children_loading = false
+                        async_update()
+                    end)
+                end)
+            end
+        end
+    end
+    return flat, have_loading_nodes
+end
+
+
 ---@param name string
 ---@param args loop.pages.ItemTreePage.InitArgs
 function ItemTreePage:init(name, args)
@@ -62,7 +124,7 @@ function ItemTreePage:init(name, args)
     self._collapse_char = args.collapse_char or "▾"
     self._indent_string = args.indent_string or " "
     self._loading_text = args.loading_text or "Loading..."
-    self._render_delay_ms = args.render_delay_ms
+    self._render_delay_ms = args.render_delay_ms or 100
 
     self._trackers = Trackers:new()
 
@@ -111,7 +173,6 @@ function ItemTreePage:remove_tracker(id) return self._trackers:remove_tracker(id
 
 function ItemTreePage:clear_items()
     self._tree = Tree:new()
-    self:_rebuild_flat()
     self:_render()
 end
 
@@ -120,14 +181,12 @@ function ItemTreePage:upsert_items(items)
     for _, item in ipairs(items) do
         self._tree:upsert_item(item.parent_id, item.id, _item_to_itemdata(item))
     end
-    self:_rebuild_flat()
     self:_render()
 end
 
 ---@param item loop.pages.ItemTreePage.Item
 function ItemTreePage:upsert_item(item)
     self._tree:upsert_item(item.parent_id or nil, item.id, _item_to_itemdata(item))
-    self:_rebuild_flat()
     self:_render()
 end
 
@@ -136,90 +195,53 @@ function ItemTreePage:remove_items(ids)
     for _, id in ipairs(ids) do
         self._tree:remove_item(id)
     end
-    self:_rebuild_flat()
     self:_render()
     return true
 end
 
 function ItemTreePage:remove_item(id)
     self._tree:remove_item(id)
-
-    self:_rebuild_flat()
     self:_render()
     return true
 end
 
--- Rebuild visible flat list with async loading support
-function ItemTreePage:_rebuild_flat()
-    self._flat = {}
-    self._loading_nodes = self._loading_nodes or {}
-
-    -- Get all nodes in depth-first order
-    local nodes = self._tree:flatten(nil, function(data)
-        return not data.expanded
-    end)
-
-    for _, flat_node in ipairs(nodes) do
-        table.insert(self._flat, flat_node)
-        ---@type loop.pages.ItemTreePage.ItemData
-        local item = flat_node.data
-        -- Only show children if node is expanded
-        if item.expanded then
-            local item_id = flat_node.id
-            -- Lazy loading
-            if item.reload_children ~= false and item.children_callback and not self._loading_nodes[item_id] then
-                item.reload_children = false
-                self._loading_nodes[item_id] = true
-
-                ---@type loop.pages.ItemTreePage.ItemData
-                local loading_item = {
-                    id = {}, -- a unique id
-                    is_loading = true
-                }
-                ---@type loop.tools.Tree.FlatNode
-                table.insert(self._flat, {
-                    id = loading_item.id,
-                    data = loading_item,
-                    depth = flat_node.depth + 1,
-                })
-
-                vim.schedule(function()
-                    -- Trigger async load
-                    item.children_callback(function(loaded_children)
-                        ---@type loop.tools.Tree.Item[]
-                        local treeitems = {}
-                        for _, child in ipairs(loaded_children or {}) do
-                            ---@type loop.tools.Tree.Item
-                            local basetreeitem = { id = child.id, data = _item_to_itemdata(child) }
-                            table.insert(treeitems, basetreeitem)
-                        end
-                        self._tree:set_children(item_id, treeitems)
-                        self:_rebuild_flat()
-                        self:_render()
-                        self._loading_nodes[item_id] = nil
-                    end)
-                end)
-            end
-        end
-    end
-end
-
 function ItemTreePage:_render()
-    if self._debounce_timer then
-        self._debounce_timer:stop()
+    if self._is_render_throttling then
+        self._is_render_pending = true
+        return
     end
-    self._debounce_timer = vim.defer_fn(function()
-        self:_immediate_render()
-        self._debounce_timer = nil
-    end, self._render_delay_ms or 100)
+
+    local rendered = self:_immediate_render()
+    if rendered then
+        self._is_render_throttling = true
+    end
+
+    vim.defer_fn(function()
+        self._is_render_throttling = false
+        if self._is_render_pending then
+            self._is_render_pending = false
+            self:_immediate_render()
+        end
+    end, self._render_delay_ms)
 end
 
+---@return boolean rendered
 function ItemTreePage:_immediate_render()
     local buf = self:get_buf()
-    if not buf or not vim.api.nvim_buf_is_valid(buf) then return end
+    if not buf or not vim.api.nvim_buf_is_valid(buf) then return true end
 
     local lines = {}
     local extmarks = {}
+
+    local have_loading_nodes
+    self._flat, have_loading_nodes = _refresh_tree(self._tree, function()
+        vim.schedule(function()
+            self:_render()
+        end)
+    end)
+    if have_loading_nodes then
+        return false
+    end
 
     for i, flatnode in ipairs(self._flat) do
         local item_id = flatnode.id
@@ -278,6 +300,8 @@ function ItemTreePage:_immediate_render()
             hl_group = mark.group,
         })
     end
+
+    return true
 end
 
 ---------------------------------------------------------
@@ -287,7 +311,6 @@ function ItemTreePage:toggle_expand(id)
     local item = self._tree:get_item(id)
     if item then
         item.expanded = not item.expanded
-        self:_rebuild_flat()
         self:_render()
     end
 end
@@ -296,7 +319,6 @@ function ItemTreePage:expand(id)
     local item = self._tree:get_item(id)
     if item then
         item.expanded = true
-        self:_rebuild_flat()
         self:_render()
     end
 end
@@ -305,7 +327,6 @@ function ItemTreePage:collapse(id)
     local item = self._tree:get_item(id)
     if item then
         item.expanded = false
-        self:_rebuild_flat()
         self:_render()
     end
 end
@@ -353,9 +374,8 @@ end
 ---------------------------------------------------------
 -- Refresh
 ---------------------------------------------------------
-function ItemTreePage:refresh_content(rebuild)
-    if rebuild then self:_rebuild_flat() end
-    self:_render()
+function ItemTreePage:refresh_content()
+    self:_immediate_render()
 end
 
 function ItemTreePage:get_or_create_buf()
