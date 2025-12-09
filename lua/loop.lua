@@ -102,6 +102,7 @@ M.setup = function(args)
 		hide = project.hide_window,
 
 		task = project.task_command,
+        debug_mode = project.toggle_debug_mode,
 		debug = project.debug_command,
 		breakpoint = project.breakpoints_command,
 	}

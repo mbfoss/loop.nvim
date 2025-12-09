@@ -1,4 +1,5 @@
 local signs          = require('loop.debug.signs')
+local debugmode          = require('loop.debug.debugmode')
 local window         = require('loop.window')
 local Page           = require('loop.pages.Page')
 local OutputPage     = require('loop.pages.OutputPage')
@@ -9,7 +10,6 @@ local StackTracePage = require('loop.pages.StackTracePage')
 local uitools        = require('loop.tools.uitools')
 local notifications  = require('loop.notifications')
 local TermProc       = require('loop.tools.TermProc')
-
 local M              = {}
 
 ---@class loop.debugui.DebugJobData
@@ -109,9 +109,9 @@ local function _refresh_task_page(jobdata)
         local flag = ''
         if item.data.state ~= 'ended' then
             if item.data.nb_paused_threads and item.data.nb_paused_threads > 0 then
-                flag = '⏸'
+                flag = ' ⏸'
             else
-                flag = '▶'
+                flag = ' ▶'
             end
         end
         uiflags = uiflags .. flag
@@ -316,6 +316,9 @@ function M.track_new_debugjob(task_name)
     }
 
     _current_job_data = jobdata
+    debugmode.command_function = function (cmd)
+        jobdata:command(cmd)
+    end
 
     window.add_page("debug", jobdata.task_page)
 
@@ -347,6 +350,8 @@ function M.track_new_debugjob(task_name)
 
         on_exit = function(code)
             _current_job_data = nil
+            debugmode.command_function = nil
+            debugmode.disable_debug_mode()
         end
     }
     return tracker

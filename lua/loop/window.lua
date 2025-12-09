@@ -86,7 +86,7 @@ local function _setup_tabs()
     local page_idx = active_tab.active_page_idx or 1
     assert(page_idx > 0 and page_idx <= #active_tab.pages)
 
-    local change_symbol = '●'
+    local change_symbol = ' ●'
     -- update window if visible
     local win = _loop_win
     local winbar_parts = { "%#LoopPluginInactiveTab#" }

@@ -1,15 +1,16 @@
 local M = {}
 
 require("loop.config")
+local notifications = require('loop.notifications')
 local taskmgr = require("loop.taskmgr")
 local window = require("loop.window")
 local debugui = require("loop.debug.debugui")
+local debugmode = require("loop.debug.debugmode")
 local projinfo = require("loop.projinfo")
 local runner = require("loop.runner")
 local uitools = require('loop.tools.uitools')
 local dapbreakpoints = require('loop.dap.breakpoints')
 local extensions = require('loop.ext.extensions')
-local notifications = require('loop.notifications')
 
 local _setup_done = false
 local _project_dir = nil
@@ -295,6 +296,10 @@ end
 ---@param command loop.job.DebugJob.Command|nil
 function M.debug_command(command)
     debugui.debug_command(command)
+end
+
+function M.toggle_debug_mode()
+    debugmode.toggle_debug_mode()
 end
 
 function M.show_window()
