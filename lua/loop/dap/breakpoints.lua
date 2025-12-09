@@ -76,6 +76,7 @@ local function _remove_source_breakpoint(file, line)
         _by_id[id] = nil
         _trackers:invoke("on_removed", bp)
     end
+    _need_saving = true
     return true
 end
 

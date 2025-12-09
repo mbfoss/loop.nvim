@@ -2,9 +2,7 @@ local M = {}
 local Page = require('loop.pages.Page')
 local OutputPage = require('loop.pages.OutputPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
-local ItemListPage = require('loop.pages.ItemListPage')
-local ItemTreePage = require('loop.pages.ItemTreePage')
-local StackTracePage = require('loop.pages.StackTracePage')
+local throttle = require('loop.tools.throttle')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local selector = require("loop.selector")
@@ -14,6 +12,7 @@ local selector = require("loop.selector")
 ---@field pages loop.pages.Page[]
 ---@field active_page_idx number|nil
 ---@field list_prefix string|nil
+---@field changed_pages table<number,boolean>
 
 ---@type boolean
 local setup_done = false
@@ -32,23 +31,21 @@ local _ui_select_page
 
 local _tabs = {
     ---@type loop.TabInfo
-    build = { label = "Build", pages = {}, list_prefix = "Build - " },
+    build = { label = "Build", pages = {}, changed_pages = {}, list_prefix = "Build - " },
     ---@type loop.TabInfo
-    run = { label = "Run", pages = {}, list_prefix = "Run - " },
+    run = { label = "Run", pages = {}, changed_pages = {}, list_prefix = "Run - " },
     ---@type loop.TabInfo
-    debug = { label = "Debug", pages = {}, list_prefix = "Debug - " },
+    debug = { label = "Debug", pages = {}, changed_pages = {}, list_prefix = "Debug - " },
     ---@type loop.TabInfo
-    breakpoints = { label = "Breakpoints", pages = {} },
+    breakpoints = { label = "Breakpoints", pages = {}, changed_pages = {} },
     ---@type loop.TabInfo
-    debug_output = { label = "Debug Console", pages = {}, list_prefix = "Debug Console - " },
+    debug_output = { label = "Debug Console", pages = {}, changed_pages = {}, list_prefix = "Debug Console - " },
     ---@type loop.TabInfo
-    threads = { label = "Threads", pages = {}, list_prefix = "Threads - " },
+    stacktrace = { label = "Call Stack", pages = {}, changed_pages = {}, list_prefix = "Call Stack - " },
     ---@type loop.TabInfo
-    stacktrace = { label = "Call Stack", pages = {}, list_prefix = "Call Stack - " },
+    variables = { label = "Variables", pages = {}, changed_pages = {}, list_prefix = "Variables - " },
     ---@type loop.TabInfo
-    variables = { label = "Variables", pages = {}, list_prefix = "Variables - " },
-    ---@type loop.TabInfo
-    varwatch = { label = "Watch", pages = {}, list_prefix = "Watch - " },
+    varwatch = { label = "Watch", pages = {}, changed_pages = {}, list_prefix = "Watch - " },
 
 }
 
@@ -90,42 +87,44 @@ local function _setup_tabs()
     local page_idx = active_tab.active_page_idx or 1
     assert(page_idx > 0 and page_idx <= #active_tab.pages)
 
+    local change_symbol = '●'
     -- update window if visible
     local win = _loop_win
     local winbar_parts = { "%#LoopPluginInactiveTab#" }
     local tabidx = 0
     for arr_idx, tab in ipairs(_tabs_arr) do
-        local active = false
+        local is_active_tab = false
         if active_tab == tab then
             _active_tab_idx = arr_idx
-            active = true
+            is_active_tab = true
             local buf = tab.pages[page_idx]:get_or_create_buf()
             vim.api.nvim_win_set_buf(win, buf)
         end
         if #tab.pages > 0 then
             tabidx = tabidx + 1
-            if tabidx ~= 1 then table.insert(winbar_parts, '|') end
-        end
-        if #tab.pages == 1 then
-            local str = (" %s "):format(tab.label)
-            if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-            table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx * 1000, str))
-            if active then table.insert(winbar_parts, "%#LoopPluginInactiveTab#") end
+            table.insert(winbar_parts, ' ')
+            if is_active_tab then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
+            local uiflags1 = ''
+            if #tab.pages == 1 then
+                if is_active_tab then tab.changed_pages[1] = nil end
+                local change_flag = tab.changed_pages[1] and change_symbol or ''
+                uiflags1 = #tab.pages == 1 and change_flag or ""
+            end
+            local str1 = ("[%s%s]"):format(tab.label, uiflags1)
+            table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx * 1000, str1))
+            if is_active_tab then table.insert(winbar_parts, "%#LoopPluginInactiveTab#") end
         end
         if #tab.pages > 1 then
-            if active then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
-            local str = (" %s"):format(tab.label)
-            table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx * 1000, str))
-            if active then table.insert(winbar_parts, "%#LoopPluginInactiveTab#") end
             for idx, page in ipairs(tab.pages) do
-                local active_page = active and idx == page_idx
-                local str2 = '[' .. tostring(idx) .. ']'
+                local active_page = is_active_tab and idx == page_idx
+                if active_page then tab.changed_pages[idx] = nil end
+                local uiflags2 = tab.changed_pages[idx] and change_symbol or ''
+                local str2 = '[' .. tostring(idx) .. (uiflags2 or "") .. ']'
                 if active_page then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
                 table.insert(winbar_parts,
                     string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx * 1000 + idx, str2))
                 if active_page then table.insert(winbar_parts, "%#LoopPluginInactiveTab#") end
             end
-            table.insert(winbar_parts, ' ')
         end
     end
     -- add right aligned current page/buffer info
@@ -137,6 +136,7 @@ local function _setup_tabs()
     vim.wo[win].winbar = table.concat(winbar_parts, '')
 end
 
+local _throttled_setup_tabs = throttle.throttle_wrap(1000, _setup_tabs)
 
 ---@param req_tabidx number
 ---@param req_pageidx number|nil
@@ -173,7 +173,7 @@ _cycle_pages = function(action)
         repeat
             tabidx = (tabidx - 1 + dir) % #_tabs_arr + 1
             tab = _tabs_arr[tabidx]
-        until (#tab.pages > 0) or (tabidx == start_idx)
+        until (tab.pages and #tab.pages > 0) or (tabidx == start_idx)
         pageidx = dir == 1 and 1 or #tab.pages
     end
 
@@ -248,7 +248,16 @@ end
 local function _add_tab_page(tab, page)
     page:add_keymaps(get_page_keymap())
     table.insert(tab.pages, page)
-    tab.active_page_idx = #tab.pages
+    local page_idx = #tab.pages
+    tab.active_page_idx = page_idx
+    page:add_tracker({
+        on_change = function()
+            if tab.changed_pages[page_idx] ~= true then
+                tab.changed_pages[page_idx] = true
+                _throttled_setup_tabs()
+            end
+        end
+    })
     _setup_tabs()
 end
 

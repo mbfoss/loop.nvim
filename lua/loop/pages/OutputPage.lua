@@ -44,7 +44,7 @@ local function append_line(buf, line, highlight, highligh_endcol)
     if count == 1 then
         local firstln = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
         if firstln == "" then
-            vim.api.nvim_buf_set_lines(buf, 0, 1, false, {line})
+            vim.api.nvim_buf_set_lines(buf, 0, 1, false, { line })
             -- highlight replacement if requested
             if highlight then
                 _highlight_line(0)
@@ -55,7 +55,7 @@ local function append_line(buf, line, highlight, highligh_endcol)
     end
 
     -- Append at end
-    vim.api.nvim_buf_set_lines(buf, count, count, false, {line})
+    vim.api.nvim_buf_set_lines(buf, count, count, false, { line })
     -- Highlight newly added lines if requested
     if highlight then
         _highlight_line(count)
@@ -94,6 +94,8 @@ function OutputPage:add_line(line, highlight, highligh_endcol)
         local last_line = vim.api.nvim_buf_line_count(buf)
         vim.api.nvim_win_set_cursor(cur_win, { last_line, 0 })
     end
+
+    self:send_change_notification()
 end
 
 return OutputPage

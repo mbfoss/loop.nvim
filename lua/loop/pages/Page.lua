@@ -1,6 +1,12 @@
 local class = require('loop.tools.class')
+local throttle = require('loop.tools.throttle')
+local Trackers = require('loop.tools.Trackers')
+
 
 ---@alias loop.pages.page.KeyMaps table<string,loop.pages.page.KeyMap>
+
+---@class loop.pages.Pages.Tracker
+---@field on_change fun()|nil
 
 ---@class loop.pages.page.KeyMap
 ---@field callback fun()
@@ -24,6 +30,10 @@ function Page:init(type, name)
     self._name = name
     self._keymaps = {}
     self._buf = -1
+    self._trackers = Trackers:new()
+    self._throttled_change_notification = throttle.throttle_wrap(1000, function()
+        self._trackers:invoke("on_change")
+    end)
 end
 
 function Page:destroy()
@@ -33,6 +43,18 @@ function Page:destroy()
         vim.api.nvim_buf_delete(self._buf, { force = true })
         assert(self._buf == -1)
     end
+end
+
+---@param callbacks loop.pages.Pages.Tracker>
+---@return number
+function Page:add_tracker(callbacks)
+    return self._trackers:add_tracker(callbacks)
+end
+
+---@param id number
+---@return boolean
+function Page:remove_tracker(id)
+    return Page._trackers:remove_tracker(id)
 end
 
 function Page:follow_last_line()
@@ -173,6 +195,10 @@ function Page:_apply_keymap(key, item)
         --vim.notify("keymap removed " .. tostring(ok))
         vim.keymap.set(modes, key, function() item.callback() end, { buffer = self._buf, desc = item.desc })
     end
+end
+
+function Page:send_change_notification()
+    self._throttled_change_notification()
 end
 
 return Page

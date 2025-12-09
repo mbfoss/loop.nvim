@@ -161,7 +161,10 @@ local function _on_session_new_term_req(jobdata, name, args, cb)
         command = args.args,
         env = args.env,
         cwd = args.cwd,
-        on_exit_handler = function(code)
+        on_exit_handler = function(_)
+        end,
+        output_handler = function(_, _)
+            page:send_change_notification()
         end
     })
     if started then

@@ -92,6 +92,7 @@ function ItemListPage:set_items(items)
         self._current_item = nil
     end
     self:_refresh_buffer(self:get_buf())
+    self:send_change_notification()
 end
 
 function ItemListPage:upsert_item(item)
@@ -123,6 +124,7 @@ function ItemListPage:upsert_item(item)
     end
 
     self:_highlight(pos, highlights)
+    self:send_change_notification()
 end
 
 function ItemListPage:get_item_under_cursor()

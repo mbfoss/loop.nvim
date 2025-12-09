@@ -174,6 +174,7 @@ function ItemTreePage:remove_tracker(id) return self._trackers:remove_tracker(id
 function ItemTreePage:clear_items()
     self._tree = Tree:new()
     self:_render()
+    self:send_change_notification()
 end
 
 ---@param items loop.pages.ItemTreePage.Item[]
@@ -182,12 +183,14 @@ function ItemTreePage:upsert_items(items)
         self._tree:upsert_item(item.parent_id, item.id, _item_to_itemdata(item))
     end
     self:_render()
+    self:send_change_notification()
 end
 
 ---@param item loop.pages.ItemTreePage.Item
 function ItemTreePage:upsert_item(item)
     self._tree:upsert_item(item.parent_id or nil, item.id, _item_to_itemdata(item))
     self:_render()
+    self:send_change_notification()
 end
 
 ---@param ids any[]
@@ -196,12 +199,14 @@ function ItemTreePage:remove_items(ids)
         self._tree:remove_item(id)
     end
     self:_render()
+    self:send_change_notification()
     return true
 end
 
 function ItemTreePage:remove_item(id)
     self._tree:remove_item(id)
     self:_render()
+    self:send_change_notification()
     return true
 end
 
