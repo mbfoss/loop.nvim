@@ -56,7 +56,6 @@ local _tabs_arr = {
     _tabs.debug,
     _tabs.breakpoints,
     _tabs.debug_output,
-    _tabs.threads,
     _tabs.stacktrace,
     _tabs.variables,
     _tabs.varwatch

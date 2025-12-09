@@ -132,6 +132,12 @@ function M.select(prompt, items, formatter, callback)
         row = row,
         col = col + list_w,
     }) or nil
+
+    local winhl = "Normal:Normal,NormalNC:Normal,EndOfBuffer:Normal,FloatBorder:Normal"
+    vim.wo[pwin].winhighlight = winhl
+    vim.wo[lwin].winhighlight = winhl
+    if vwin then vim.wo[vwin].winhighlight = winhl end
+
     vim.bo[lbuf].filetype = ""
     if has_preview then vim.bo[vbuf].filetype = "json" end
     local prompt_prefix = prompt .. " > "

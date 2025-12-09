@@ -107,11 +107,11 @@ function M.smart_open_file(filepath, line, col)
     end
 
     local winid = find_regular_window()
-
     vim.api.nvim_set_current_win(winid)
-    local bufnr = vim.uri_to_bufnr(vim.uri_from_fname(full_path))
-    vim.api.nvim_win_set_buf(winid, bufnr)
+
+    vim.cmd.edit(vim.fn.fnameescape(filepath))
     M.set_cursor_pos(winid, line, col)
+    local bufnr = vim.api.nvim_win_get_buf(winid)
 
     return winid, bufnr
 end

@@ -16,6 +16,7 @@ local M              = {}
 ---@field jobname string
 ---@field task_page loop.pages.ItemListPage
 ---@field output_pages loop.pages.OutputPage[]
+---@field debugger_output_pages loop.pages.OutputPage[]
 ---@field stacktrace_pages loop.pages.StackTracePage[]
 ---@field variable_pages loop.pages.VariablesPage[]
 ---@field varwatch_page loop.pages.VarWatchPage|nil
@@ -138,11 +139,21 @@ end
 local function _on_session_output(jobdata, sess_id, sess_name, category, output)
     ---@type loop.pages.OutputPage|nil
     ---@diagnostic disable-next-line: assign-type-mismatch
-    local page = jobdata.output_pages[sess_id]
-    if not page then
-        page = OutputPage:new(sess_name)
-        window.add_page("debugoutput", page)
-        jobdata.output_pages[sess_id] = page
+    local page
+    if category == "stdout" or category == "stderr" then
+        page = jobdata.output_pages[sess_id]
+        if not page then
+            page = OutputPage:new(sess_name)
+            window.add_page("debugoutput", page)
+            jobdata.output_pages[sess_id] = page
+        end
+    else
+        page = jobdata.debugger_output_pages[sess_id]
+        if not page then
+            page = OutputPage:new(sess_name .. ' (debugger)')
+            window.add_page("debugoutput", page)
+            jobdata.debugger_output_pages[sess_id] = page
+        end        
     end
     local level = category == "stderr" and "error" or nil
     page:add_line(output, level)
@@ -255,6 +266,7 @@ function M.track_new_debugjob(task_name)
             show_current_prefix = true,
         }),
         output_pages = {},
+        debugger_output_pages = {},
         stacktrace_pages = {},
         variable_pages = {},
 

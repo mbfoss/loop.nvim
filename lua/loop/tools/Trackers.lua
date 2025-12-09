@@ -38,22 +38,20 @@ end
 ---@param callback_name string
 ---@param ... any
 function Trackers:invoke(callback_name, ...)
-    function Trackers:invoke(callback_name, ...)
-        local n = select("#", ...)
-        local args = {}
-        -- Manually copy each argument including nils
-        for i = 1, n do
-            args[i] = select(i, ...)
-        end
-        vim.schedule(function()
-            for _, tracker in pairs(self._items) do
-                local fn = tracker[callback_name]
-                if fn then
-                    fn(unpack(args, 1, n))
-                end
-            end
-        end)
+    local n = select("#", ...)
+    local args = {}
+    -- Manually copy each argument including nils
+    for i = 1, n do
+        args[i] = select(i, ...)
     end
+    vim.schedule(function()
+        for _, tracker in pairs(self._items) do
+            local fn = tracker[callback_name]
+            if fn then
+                fn(unpack(args, 1, n))
+            end
+        end
+    end)
 end
 
 return Trackers

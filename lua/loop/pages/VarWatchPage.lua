@@ -69,16 +69,16 @@ local function floating_input_at_cursor(opts)
     vim.bo[buf].undolevels = -1
     -- Cursor position
     -- Floating window at current line
-    local width = math.max(30, vim.fn.strdisplaywidth(opts.default) + 2)
     local win = vim.api.nvim_open_win(buf, true, {
         relative = "cursor",
         row = opts.row_offset,
         col = opts.col_offset,
-        width = width,
+        width = opts.width,
         height = 1,
         style = "minimal",
-        border = "none",
+        border = "rounded",
     })
+    vim.wo[win].winhighlight = "Normal:Normal,NormalNC:Normal,EndOfBuffer:Normal,FloatBorder:Normal"
     vim.api.nvim_set_current_win(win)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { opts.default })
     vim.api.nvim_win_set_cursor(win, { 1, #opts.default })
@@ -131,45 +131,30 @@ end
 
 function VarWatchPage:_add_keymaps()
     --- Helper: edit an existing watch or add a new one
-    ---@param add_mode boolean true = add new, false = edit selected
-    local function edit_or_add_watch(add_mode)
-        local item = self:get_cur_item()
-        if not add_mode and (not item or not item.data.is_expr) then
-            return
-        end
-        local buf = self:get_or_create_buf()
-        local cursor = vim.api.nvim_win_get_cursor(0)
+    local function add_watch()
+        local win = vim.api.nvim_get_current_win()
+        local cursor = vim.api.nvim_win_get_cursor(win)
+        local col_offset = -cursor[2] 
         local row_offset = 0
-        local col_offset = -cursor[2] + 1
-        if add_mode then
-            local nblines = vim.api.nvim_buf_line_count(buf)
-            local firstln = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
-            row_offset = nblines - cursor[1] + 1
-            if nblines == 1 and firstln == "" then
-                row_offset = row_offset - 1
-            end
-        end
         floating_input_at_cursor({
             row_offset = row_offset,
             col_offset = col_offset,
+            width = 30,
             default = "",
             on_confirm = function(expr)
-                if add_mode then
-                    -- Remove from _watch_expressions
-                    local exists = false
-                    for i, curexpr in ipairs(self._watch_exressions) do
-                        if expr == curexpr then
-                            exists = true
-                            break
-                        end
+                if not expr then return end
+                -- Remove from _watch_expressions
+                local exists = false
+                for i, curexpr in ipairs(self._watch_exressions) do
+                    if expr == curexpr then
+                        exists = true
+                        break
                     end
-                    if not exists then
-                        table.insert(self._watch_exressions, expr)
-                    end
-                    self:_load_expr_value(expr)
-                else
-                    vim.notify("change mode not implemented yet")
                 end
+                if not exists then
+                    table.insert(self._watch_exressions, expr)
+                end
+                self:_load_expr_value(expr)
             end
         })
     end
@@ -177,12 +162,7 @@ function VarWatchPage:_add_keymaps()
     -- Add keymaps
     self:add_keymap("i", {
         desc = "Add watch (inline)",
-        callback = function() edit_or_add_watch(true) end,
-    })
-
-    self:add_keymap("c", {
-        desc = "Change watch (inline)",
-        callback = function() edit_or_add_watch(false) end,
+        callback = function() add_watch() end,
     })
 
     self:add_keymap("d", {
@@ -259,6 +239,8 @@ function VarWatchPage:_load_expr_value(expr)
         data = { is_expr = true, name = expr }
     }
     if not self._cur_thread_data or not self._cur_frame then
+        ---@diagnostic disable-next-line: undefined-field
+        var_item.id = "na_" .. vim.loop.hrtime()
         var_item.data.value = "not available"
         var_item.data.is_na_value = true
         self:upsert_item(var_item)
