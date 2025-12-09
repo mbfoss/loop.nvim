@@ -83,12 +83,12 @@ function Tree:_unlink(id)
     if parent_id == nil then
         -- Root level
         if id == self._root_first then self._root_first = next end
-        if id == self._root_last  then self._root_last  = prev end
+        if id == self._root_last then self._root_last = prev end
     else
         local parent = self._nodes[parent_id]
         if parent then
             if id == parent.first_child then parent.first_child = next end
-            if id == parent.last_child  then parent.last_child  = prev end
+            if id == parent.last_child then parent.last_child = prev end
         end
     end
     -- 2. Fix sibling chain
@@ -148,11 +148,10 @@ end
 ---@param items loop.tools.Tree.Item[]
 function Tree:set_children(parent_id, items)
     assert(type(items) == "table")
-
     local parent_node = parent_id and self._nodes[parent_id]
-    assert(not parent_id or parent_node)
+    assert(not parent_id or parent_node, "parent does not exist")
 
-    local old_children = {}
+    -- 1. Remove ALL old children
     do
         local child
         if parent_node then
@@ -161,61 +160,53 @@ function Tree:set_children(parent_id, items)
             child = self._root_first
         end
         while child do
-            old_children[child] = true
-            child = self._nodes[child].next_sibling
+            local next_child = self._nodes[child].next_sibling
+            self:_remove_subtree(child)
+            child = next_child
+        end
+
+        if parent_node then
+            parent_node.first_child = nil
+            parent_node.last_child  = nil
+        else
+            self._root_first = nil
+            self._root_last  = nil
         end
     end
 
-    local first = nil
-    local last = nil
-    local prev_id = nil
+    -- 2. Add new children
+    local first_new = nil
+    local last_new  = nil
 
     for _, item in ipairs(items) do
-        local id = assert(item.id)
-        local data = item.data
+        local id = assert(item.id, "item must have .id")
+        assert(self._nodes[id] == nil, ("duplicate id: %s"):format(tostring(id)))
 
-        local node = self._nodes[id]
-        if node then
-            assert(node.parent_id == parent_id, "Node exists under another parent")
-            node.data = data
-        else
-            node = {
-                parent_id = parent_id,
-                data = data,
-                first_child = nil,
-                last_child = nil,
-                next_sibling = nil,
-                prev_sibling = nil,
-            }
-            self._nodes[id] = node
+        local node = {
+            parent_id    = parent_id,
+            data         = item.data,
+            first_child  = nil,
+            last_child   = nil,
+            next_sibling = nil,
+            prev_sibling = nil,
+        }
+        self._nodes[id] = node
+
+        node.prev_sibling = last_new
+        if last_new then
+            self._nodes[last_new].next_sibling = id
         end
-
-        -- Remove from old children set
-        old_children[id] = nil
-
-        -- Relink in new position
-        node.prev_sibling = prev_id
-        node.next_sibling = nil
-        if prev_id then
-            self._nodes[prev_id].next_sibling = id
-        end
-        if not first then first = id end
-        last = id
-        prev_id = id
+        if not first_new then first_new = id end
+        last_new = id
     end
 
-    -- Update parent pointers
+    -- 3. Link to parent (or root)
     if parent_node then
-        parent_node.first_child = first
-        parent_node.last_child = last
+        parent_node.first_child = first_new
+        parent_node.last_child  = last_new
     else
-        self._root_first = first
-        self._root_last = last
-    end
-
-    -- Remove any children not in the new list
-    for id in pairs(old_children) do
-        self:remove_item(id)
+        self._root_first = first_new
+        self._root_last  = last_new
     end
 end
 
