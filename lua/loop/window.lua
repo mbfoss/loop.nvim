@@ -107,7 +107,7 @@ local function _setup_tabs()
             if #tab.pages == 1 then
                 if is_active_tab then tab.changed_pages[1] = nil end
                 local change_flag = tab.changed_pages[1] and change_symbol or ''
-                uiflags1 = #tab.pages == 1 and change_flag or ""
+                uiflags1 = (tab.pages[1]:get_ui_flags() or "") .. (change_flag or "") 
             end
             local str1 = ("[%s%s]"):format(tab.label, uiflags1)
             table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx * 1000, str1))
@@ -117,7 +117,8 @@ local function _setup_tabs()
             for idx, page in ipairs(tab.pages) do
                 local active_page = is_active_tab and idx == page_idx
                 if active_page then tab.changed_pages[idx] = nil end
-                local uiflags2 = tab.changed_pages[idx] and change_symbol or ''
+                local change_flag = tab.changed_pages[idx] and change_symbol or ''
+                local uiflags2 = (page:get_ui_flags() or "") .. (change_flag or "") 
                 local str2 = '[' .. tostring(idx) .. (uiflags2 or "") .. ']'
                 if active_page then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
                 table.insert(winbar_parts,
@@ -135,7 +136,7 @@ local function _setup_tabs()
     vim.wo[win].winbar = table.concat(winbar_parts, '')
 end
 
-local _throttled_setup_tabs = throttle.throttle_wrap(1000, _setup_tabs)
+local _throttled_setup_tabs = throttle.throttle_wrap(100, _setup_tabs)
 
 ---@param req_tabidx number
 ---@param req_pageidx number|nil
@@ -255,7 +256,8 @@ local function _add_tab_page(tab, page)
                 tab.changed_pages[page_idx] = true
                 _throttled_setup_tabs()
             end
-        end
+        end,
+        on_ui_flags_update = _throttled_setup_tabs
     })
     _setup_tabs()
 end

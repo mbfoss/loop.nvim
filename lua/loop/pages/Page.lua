@@ -7,6 +7,7 @@ local Trackers = require('loop.tools.Trackers')
 
 ---@class loop.pages.Pages.Tracker
 ---@field on_change fun()|nil
+---@field on_ui_flags_update fun()|nil
 
 ---@class loop.pages.page.KeyMap
 ---@field callback fun()
@@ -30,10 +31,8 @@ function Page:init(type, name)
     self._name = name
     self._keymaps = {}
     self._buf = -1
+    self._ui_flags = ""
     self._trackers = Trackers:new()
-    self._throttled_change_notification = throttle.throttle_wrap(1000, function()
-        self._trackers:invoke("on_change")
-    end)
 end
 
 function Page:destroy()
@@ -198,7 +197,18 @@ function Page:_apply_keymap(key, item)
 end
 
 function Page:send_change_notification()
-    self._throttled_change_notification()
+    self._trackers:invoke("on_change")
+end
+
+---@return string
+function Page:get_ui_flags()
+    return self._ui_flags
+end
+
+---@param str string
+function Page:set_ui_flags(str)
+    self._ui_flags = str
+    self._trackers:invoke("on_ui_flags_update")
 end
 
 return Page
