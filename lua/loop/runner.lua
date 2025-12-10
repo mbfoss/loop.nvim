@@ -207,6 +207,9 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
             return startup_callback(nil, "macro resolution failed: " .. tostring(resolve_err))
         end
 
+        -- Create and register the page
+        local page = Page:new("term", task.name or "Tool Task")
+
         -- Your original args — unchanged, just using the resolved values
         ---@type loop.tools.TermProc.StartArgs
         local start_args = {
@@ -215,11 +218,11 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
             command_env = resolved.env,
             command_cwd = resolved.cwd,
             output_handler = output_handler,
-            on_exit_handler = exit_handler,
+            on_exit_handler = function(code)
+                page:set_ui_flags(code == 0 and '✔' or '✖')
+                exit_handler(code)
+            end,
         }
-
-        -- Create and register the page
-        local page = Page:new("term", task.name or "Tool Task")
 
         --notifications.notify("Starting job:\n" .. vim.inspect(start_args))
         local job = TermJob:new()

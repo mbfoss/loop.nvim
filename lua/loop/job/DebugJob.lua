@@ -17,6 +17,7 @@ local TermProc = require('loop.tools.TermProc')
 ---@field continue fun()
 ---@field step_in fun()
 ---@field step_over fun()
+---@field step_back fun()
 ---@field step_out fun()
 ---@field terminate fun()
 
@@ -129,6 +130,7 @@ function DebugJob:add_new_session(name, debug_args, parent_sess_id)
         continue = function() session:debug_continue() end,
         step_in = function() session:debug_stepIn() end,
         step_over = function() session:debug_stepOver() end,
+        step_back = function() session:debug_stepBack() end,
         step_out = function() session:debug_stepOut() end,
         terminate = function() session:debug_terminate() end,
     }

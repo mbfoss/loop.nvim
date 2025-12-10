@@ -1,6 +1,7 @@
 local signs          = require('loop.debug.signs')
-local debugmode          = require('loop.debug.debugmode')
+local debugmode      = require('loop.debug.debugmode')
 local window         = require('loop.window')
+local filetools      = require('loop.tools.file')
 local Page           = require('loop.pages.Page')
 local OutputPage     = require('loop.pages.OutputPage')
 local ItemListPage   = require('loop.pages.ItemListPage')
@@ -14,13 +15,15 @@ local M              = {}
 
 ---@class loop.debugui.DebugJobData
 ---@field jobname string
+---@field current_session_id number|nil
+---@field session_controllers table<number,loop.job.DebugJob.SessionController>
 ---@field task_page loop.pages.ItemListPage
 ---@field output_pages loop.pages.OutputPage[]
 ---@field debugger_output_pages loop.pages.OutputPage[]
 ---@field stacktrace_pages loop.pages.StackTracePage[]
 ---@field variable_pages loop.pages.VariablesPage[]
 ---@field varwatch_page loop.pages.VarWatchPage|nil
----@field command fun(data:loop.debugui.DebugJobData,cmd:loop.job.DebugJob.Command)
+---@field command fun(data:loop.debugui.DebugJobData,cmd:loop.job.DebugJob.Command):boolean,(string|nil)
 
 ---@type loop.debugui.DebugJobData|nil
 local _current_job_data
@@ -42,9 +45,10 @@ local function _on_session_added(jobdata, sess_id, sess_name, parent_id, control
         }
     }
     task_page:upsert_item(item)
-    if not task_page:get_current_item() then
-        task_page:set_current_item(item)
+    if not jobdata.current_session_id then
+        jobdata.current_session_id = sess_id
     end
+    jobdata.session_controllers[sess_id] = controller
     if not jobdata.varwatch_page then
         jobdata.varwatch_page = VarWatchPage:new(jobdata.jobname)
         window.add_page("varwatch", jobdata.varwatch_page)
@@ -55,6 +59,7 @@ end
 ---@param sess_id number
 ---@param sess_name string
 local function _on_session_removed(jobdata, sess_id, sess_name)
+    jobdata.session_controllers[sess_id] = nil
     local task_page = jobdata.task_page
     vim.defer_fn(function()
         task_page:remove_item(sess_id)
@@ -63,42 +68,42 @@ end
 
 ---@param jobdata loop.debugui.DebugJobData
 ---@param command loop.job.DebugJob.Command
+---@return boolean
+---@return string|nil
 local function _on_debug_command(jobdata, command)
     if command == 'continue_all' or command == "terminate_all" then
         local is_continue = command == 'continue_all'
-        for _, item in ipairs(jobdata.task_page:get_items()) do
-            ---@type loop.debugui.TaskPageItemData
-            local data = item.data
-            if data.controller then
-                if is_continue then
-                    data.controller.continue()
-                else
-                    data.controller.terminate()
-                end
+        for _, controller in pairs(jobdata.session_controllers) do
+            if is_continue then
+                controller.continue()
+            else
+                controller.terminate()
             end
         end
-        return
+        return true
     end
-    local item = jobdata.task_page:get_current_item()
-    if not item then
-        notifications.notify("No debug session selected", vim.log.levels.WARN)
-        return
+    local sess_id = jobdata.current_session_id
+    if not sess_id or not jobdata.session_controllers[sess_id] then
+        return false, "No active debug session"
     end
+    local controller = jobdata.session_controllers[sess_id]
     ---@type loop.debugui.TaskPageItemData
-    local data = item.data
     if command == 'continue' then
-        data.controller.continue()
+        controller.continue()
     elseif command == "step_in" then
-        data.controller.step_in()
+        controller.step_in()
     elseif command == "step_out" then
-        data.controller.step_out()
+        controller.step_out()
     elseif command == "step_over" then
-        data.controller.step_over()
+        controller.step_over()
+    elseif command == "step_back" then
+        controller.step_back()
     elseif command == "terminate" then
-        data.controller.terminate()
+        controller.terminate()
     else
         return false, "Invalid debug command: " .. tostring(command)
     end
+    return true
 end
 
 ---@param jobdata loop.debugui.DebugJobData
@@ -191,7 +196,8 @@ local function _on_session_new_term_req(jobdata, name, args, cb)
         command = args.args,
         env = args.env,
         cwd = args.cwd,
-        on_exit_handler = function(_)
+        on_exit_handler = function(code)
+            page:set_ui_flags(code == 0 and '✔' or '✖')
         end,
         output_handler = function(_, _)
             page:send_change_notification()
@@ -212,6 +218,18 @@ local function _debug_session_item_formatter(item)
         str = str .. (" ( %d paused thread%s)"):format(item.data.nb_paused_threads, s)
     end
     return str
+end
+
+---@param jobdata loop.debugui.DebugJobData
+---@param sess_id number
+---@param sess_name string
+---@param frame loop.dap.proto.StackFrame
+local function _on_frame_selected(jobdata, sess_id, sess_name, frame)
+    if frame and frame.source and frame.source.path then
+        if filetools.file_exists(frame.source.path) then
+            uitools.smart_open_file(frame.source.path, frame.line, frame.column)
+        end
+    end
 end
 
 ---@param jobdata loop.debugui.DebugJobData
@@ -242,6 +260,9 @@ local function _on_session_thread_pause(jobdata, sess_id, sess_name, event_data)
     if not stacktrace_page then
         stacktrace_page = StackTracePage:new(sess_name)
         window.add_page("stacktrace", stacktrace_page)
+        stacktrace_page:add_frame_tracker(function(frame)
+            _on_frame_selected(jobdata, sess_id, sess_name, frame)
+        end)
         jobdata.stacktrace_pages[sess_id] = stacktrace_page
     end
 
@@ -302,6 +323,7 @@ function M.track_new_debugjob(task_name)
     ---@type loop.debugui.DebugJobData
     local jobdata = {
         jobname = task_name,
+        session_controllers = {},
         task_page = ItemListPage:new(task_name, {
             formatter = _debug_session_item_formatter,
             show_current_prefix = true,
@@ -311,12 +333,12 @@ function M.track_new_debugjob(task_name)
         stacktrace_pages = {},
         variable_pages = {},
         command = function(jobdata, cmd)
-            _on_debug_command(jobdata, cmd)
+            return _on_debug_command(jobdata, cmd)
         end
     }
 
     _current_job_data = jobdata
-    debugmode.command_function = function (cmd)
+    debugmode.command_function = function(cmd)
         jobdata:command(cmd)
     end
 
@@ -368,7 +390,10 @@ function M.debug_command(command)
         notifications.notify("Debug command missing", vim.log.levels.WARN)
         return
     end
-    job.command(job, command)
+    local ok, err = job.command(job, command)
+    if not ok then
+        notifications.notify(err or "Debug command failed", vim.log.levels.WARN)
+    end
 end
 
 return M

@@ -287,7 +287,7 @@ end
 ---@return string[]
 function M.debug_subcommands(args)
     if #args == 0 then
-        return { "continue", "step_in", "step_out", "step_over", "terminate",
+        return { "continue", "step_in", "step_out", "step_over", "step_back", "terminate",
             "continue_all", "terminate_all" }
     end
     return {}

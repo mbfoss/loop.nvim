@@ -2,8 +2,7 @@ local class = require('loop.tools.class')
 local ItemListPage = require('loop.pages.ItemListPage')
 local config = require('loop.config')
 local selector = require('loop.selector')
-local uitools = require('loop.tools.uitools')
-local filetools = require('loop.tools.file')
+local Trackers = require("loop.tools.Trackers")
 
 ---@class loop.pages.StackTracePage : loop.pages.ItemListPage
 ---@field new fun(self: loop.pages.StackTracePage, name:string): loop.pages.StackTracePage
@@ -45,22 +44,29 @@ function StackTracePage:init(name)
         formatter = _item_formatter,
     })
 
+    self._frametrackers = Trackers:new()
     self:add_tracker({
         on_selection = function(item)
             if item and item.data then
                 if item.id == 0 then
+                    -- title line
                     self:_select_n_load_stacktrace(item.data.thread_data)
                 else
                     ---@type loop.dap.proto.StackFrame
                     local frame = item.data.frame
-                    if frame and frame.source and frame.source.path then
-                        if filetools.file_exists(frame.source.path) then
-                            uitools.smart_open_file(frame.source.path, frame.line, frame.column)
-                        end
-                    end
+                    vim.schedule(function ()
+                        self._frametrackers:invoke("frame_selected", frame)
+                    end)
                 end
             end
         end
+    })
+end
+
+---@param callback fun(frame:loop.dap.proto.StackFrame)
+function StackTracePage:add_frame_tracker(callback)
+    self._frametrackers:add_tracker({
+        frame_selected = callback
     })
 end
 

@@ -425,6 +425,23 @@ function Session:debug_stepOver()
     end)
 end
 
+function Session:debug_stepBack()
+    if not self._capabilities or self._capabilities["supportsStepBack"] ~= true then
+        self._log:debug("step-back not supported by this debugger")
+        return
+    end
+    local thread_id = self._stopped_thread
+    if not thread_id then
+        self._log:debug("no thread to step-back")
+        return
+    end
+    self._base_session:request_stepBack({ threadId = thread_id, granularity = "line" }, function(err)
+        if err then
+            self:_trace_notification("stepBack error: " .. tostring(err), "error")
+        end
+    end)
+end
+
 function Session:debug_terminate()
     self._fsm:trigger(fsmdata.trigger.disconnect)
 end

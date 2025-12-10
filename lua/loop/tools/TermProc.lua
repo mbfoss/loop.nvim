@@ -1,6 +1,6 @@
-local class          = require('loop.tools.class')
-local uitools        = require('loop.tools.uitools')
-local strtools       = require('loop.tools.strtools')
+local class    = require('loop.tools.class')
+local uitools  = require('loop.tools.uitools')
+local strtools = require('loop.tools.strtools')
 
 ---@class loop.tools.TermProc
 ---@field new fun(self: loop.tools.TermProc) : loop.tools.TermProc
@@ -80,7 +80,13 @@ function TermProc:start(bufnr, args)
 
     local previous_win = vim.api.nvim_get_current_win()
     local width = vim.api.nvim_win_get_width(0)
-    local win_opts = { relative = "editor", width = width, height = 10, row = 0, col = 0, style = "minimal" }
+    local win_opts = { relative = "editor", width = width, height = 10, row = 0, col = 0 }
+
+    local was_in_insert = vim.fn.mode():sub(1, 1) == 'i'
+    if was_in_insert then
+        vim.cmd.stopinsert()
+    end
+
     local temp_win = vim.api.nvim_open_win(bufnr, true, win_opts)
     vim.api.nvim_set_current_win(temp_win)
 
@@ -95,10 +101,14 @@ function TermProc:start(bufnr, args)
         end
     )
 
-    vim.api.nvim_win_set_cursor(temp_win, {vim.api.nvim_buf_line_count(bufnr), 0})
+    vim.api.nvim_win_set_cursor(temp_win, { vim.api.nvim_buf_line_count(bufnr), 0 })
 
     vim.api.nvim_set_current_win(previous_win)
     vim.api.nvim_win_close(temp_win, true)
+
+    if was_in_insert then
+        vim.cmd.startinsert()
+    end
 
     if not call_ok then
         vim.api.nvim_buf_delete(bufnr, { force = true })

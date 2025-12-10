@@ -19,7 +19,7 @@ local setup_done = false
 
 ---@type number
 local _loop_win = -1
-local _original_pell
+local _original_spell
 local _original_winbar
 
 ---@type number
@@ -309,7 +309,7 @@ local function create_window()
     vim.api.nvim_set_option_value('winfixheight', true, { scope = 'local', win = _loop_win })
     vim.api.nvim_set_current_win(prev_win)
     _original_winbar = vim.wo[_loop_win].winbar
-    _original_pell = vim.wo[_loop_win].spell
+    _original_spell = vim.wo[_loop_win].spell
     vim.wo[_loop_win].spell = false
 
     _setup_tabs()
@@ -468,7 +468,7 @@ function M.setup(_)
                 local buf = vim.api.nvim_win_get_buf(win)
                 if not Page.is_page(buf) then
                     vim.wo[_loop_win].winbar = _original_winbar
-                    vim.wo[_loop_win].spell = _original_pell
+                    vim.wo[_loop_win].spell = _original_spell
                 end
             end
         end,
