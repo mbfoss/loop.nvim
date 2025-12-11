@@ -207,9 +207,6 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
             return startup_callback(nil, "macro resolution failed: " .. tostring(resolve_err))
         end
 
-        -- Create and register the page
-        local page = Page:new("term", task.name or "Tool Task")
-
         -- Your original args — unchanged, just using the resolved values
         ---@type loop.tools.TermProc.StartArgs
         local start_args = {
@@ -218,23 +215,17 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
             command_env = resolved.env,
             command_cwd = resolved.cwd,
             output_handler = output_handler,
-            on_exit_handler = function(code)
-                local symbols = config.current.window.symbols
-                page:set_ui_flags(code == 0 and symbols.success or symbols.failure)
-                exit_handler(code)
-            end,
+            on_exit_handler = exit_handler,
         }
 
-        --notifications.notify("Starting job:\n" .. vim.inspect(start_args))
-        local job = TermJob:new()
-        local bufnr, err = job:start(page:get_or_create_buf(), start_args)
-        if not bufnr or bufnr == -1 then
-            return startup_callback(nil, err or "failed to start terminal job")
-        end
 
         local tabtype = task.type == "run" and "run" or "build"
-        window.add_page(tabtype, page)
-
+        local proc, err_msg = window.add_term_page(tabtype, task.name, start_args)
+        if not proc then
+            return startup_callback(nil, err_msg or "failed to start terminal job")
+        end
+        --notifications.notify("Starting job:\n" .. vim.inspect(start_args))
+        local job = TermJob:new(proc)
         startup_callback(job, nil)
     end)
 end

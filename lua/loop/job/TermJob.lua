@@ -3,13 +3,13 @@ local class    = require('loop.tools.class')
 local TermProc = require('loop.tools.TermProc')
 
 ---@class loop.job.TermJob : loop.job.Job
----@field new fun(self: loop.job.TermJob) : loop.job.TermJob
+---@field new fun(self: loop.job.TermJob, proc:loop.tools.TermProc) : loop.job.TermJob
 ---@field _proc loop.tools.TermProc
 local TermJob  = class(Job)
 
----Initializes the TermJob instance.
-function TermJob:init()
-    self._proc = TermProc:new()
+---@param proc loop.tools.TermProc
+function TermJob:init(proc)
+    self._proc = proc
 end
 
 ---@return boolean
@@ -19,23 +19,6 @@ end
 
 function TermJob:kill()
     self._proc:kill();
-end
-
----@class loop.TermJob.StartArgs
----@field name string
----@field command string|string[]
----@field command_env table<string,string>|nil
----@field command_cwd string|nil
----@field output_handler fun(stream: "stdout"|"stderr", data: string[])|nil
----@field on_exit_handler fun(code : number)
-
----Starts a new terminal job.
----@param bufnr number
----@param args loop.tools.TermProc.StartArgs
----@return boolean success
----@return string|nil error msg or nil
-function TermJob:start(bufnr, args)
-    return  self._proc:start(bufnr, args)
 end
 
 return TermJob

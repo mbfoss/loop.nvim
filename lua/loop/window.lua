@@ -108,7 +108,7 @@ local function _setup_tabs()
             if #tab.pages == 1 then
                 if is_active_tab then tab.changed_pages[1] = nil end
                 local change_flag = tab.changed_pages[1] and symbols.change or ''
-                uiflags1 = (tab.pages[1]:get_ui_flags() or "") .. (change_flag or "") 
+                uiflags1 = (tab.pages[1]:get_ui_flags() or "") .. (change_flag or "")
             end
             local str1 = ("[%s%s]"):format(tab.label, uiflags1)
             table.insert(winbar_parts, string.format("%%%d@v:lua.LoopProject._winbar_click@%s%%T", arr_idx * 1000, str1))
@@ -119,7 +119,7 @@ local function _setup_tabs()
                 local active_page = is_active_tab and idx == page_idx
                 if active_page then tab.changed_pages[idx] = nil end
                 local change_flag = tab.changed_pages[idx] and symbols.change or ''
-                local uiflags2 = (page:get_ui_flags() or "") .. (change_flag or "") 
+                local uiflags2 = (page:get_ui_flags() or "") .. (change_flag or "")
                 local str2 = '[' .. tostring(idx) .. (uiflags2 or "") .. ']'
                 if active_page then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
                 table.insert(winbar_parts,
@@ -415,6 +415,42 @@ function M.add_page(type, page)
         _set_active_tab(_get_tab_index(tab), nil)
         create_window()
     end
+end
+
+---@param type "build"|"run"|"debugoutput"
+---@apram name string
+---@param args loop.tools.TermProc.StartArgs
+---@return loop.tools.TermProc|nil,string|nil
+function M.add_term_page(type, name, args)
+    -- Create and register the page
+    local page = Page:new("term", name)
+    M.add_page(type, page)
+
+    create_window()
+    assert(_loop_win ~= -1)
+
+    local TermProc = require('loop.tools.TermProc')
+    local proc = TermProc:new()
+
+    ---@type loop.tools.TermProc.StartArgs
+    local args_cpy = vim.fn.copy(args)
+
+    args_cpy.on_exit_handler = function(code)
+        args.on_exit_handler(code)
+        local symbols = config.current.window.symbols
+        page:set_ui_flags(code == 0 and symbols.success or symbols.failure)
+    end
+
+    args_cpy.output_handler = function(stream, data)
+        args.output_handler(stream, data)
+        page:send_change_notification()
+    end
+
+    local proc_ok, proc_err = proc:start(_loop_win, page:get_or_create_buf(), args_cpy)
+    if not proc_ok then
+        return nil, proc_err
+    end
+    return proc, nil
 end
 
 ---@param config_dir string

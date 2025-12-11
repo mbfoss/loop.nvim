@@ -190,22 +190,17 @@ end
 ---@param args loop.dap.proto.RunInTerminalRequestArguments
 ---@param cb fun(pid: number|nil, err: string|nil)
 local function _on_session_new_term_req(jobdata, name, args, cb)
-    local page = Page:new("term", name)
-    window.add_page("debugoutput", page)
-    local proc = TermProc:new()
-    local started, proc_err = proc:start(page:get_or_create_buf(), {
+    ---@type loop.tools.TermProc.StartArgs
+    local start_args = {
         name = name,
         command = args.args,
         env = args.env,
         cwd = args.cwd,
-        on_exit_handler = function(code)
-            page:set_ui_flags(code == 0 and '✔' or '✖')
-        end,
-        output_handler = function(_, _)
-            page:send_change_notification()
-        end
-    })
-    if started then
+        on_exit_handler = function(code) end,
+    }
+
+    local proc, proc_err = window.add_term_page("debugoutput", name, start_args)
+    if proc then
         cb(proc:get_pid(), nil)
     else
         cb(nil, proc_err or "term err")

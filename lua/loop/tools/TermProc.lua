@@ -36,11 +36,12 @@ end
 ---@field on_exit_handler fun(code : number)
 
 ---Starts a new terminal job.
+---@param winid number
 ---@param bufnr number
 ---@param args loop.tools.TermProc.StartArgs
 ---@return boolean success
 ---@return string|nil error msg or nil
-function TermProc:start(bufnr, args)
+function TermProc:start(winid, bufnr, args)
     if self.job_id ~= -1 then
         return false, "already started"
     end
@@ -79,16 +80,12 @@ function TermProc:start(bufnr, args)
     vim.keymap.set('t', '<Esc>', function() vim.cmd('stopinsert') end, { buffer = bufnr })
 
     local previous_win = vim.api.nvim_get_current_win()
-    local width = vim.api.nvim_win_get_width(0)
-    local win_opts = { relative = "editor", width = width, height = 10, row = 0, col = 0 }
-
     local was_in_insert = vim.fn.mode():sub(1, 1) == 'i'
     if was_in_insert then
         vim.cmd.stopinsert()
     end
 
-    local temp_win = vim.api.nvim_open_win(bufnr, true, win_opts)
-    vim.api.nvim_set_current_win(temp_win)
+    vim.api.nvim_set_current_win(winid)
 
     -- Call risky_function safely
     local call_ok, result = xpcall(
@@ -101,22 +98,19 @@ function TermProc:start(bufnr, args)
         end
     )
 
-    vim.api.nvim_win_set_cursor(temp_win, { vim.api.nvim_buf_line_count(bufnr), 0 })
+    vim.api.nvim_win_set_cursor(winid, { vim.api.nvim_buf_line_count(bufnr), 0 })
 
     vim.api.nvim_set_current_win(previous_win)
-    vim.api.nvim_win_close(temp_win, true)
 
     if was_in_insert then
         vim.cmd.startinsert()
     end
 
     if not call_ok then
-        vim.api.nvim_buf_delete(bufnr, { force = true })
         return false, result
     end
     local started, start_err = result[1], result[2]
     if not started then
-        vim.api.nvim_buf_delete(bufnr, { force = true })
         return false, start_err
     end
 
