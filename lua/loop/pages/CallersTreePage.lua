@@ -1,6 +1,7 @@
 local class = require('loop.tools.class')
 local ItemTreePage = require('loop.pages.ItemTreePage')
 local uitools = require('loop.tools.uitools')
+local config = require('loop.config')
 
 ---@alias loop.pages.CallersTreePage.Item loop.pages.ItemTreePage.Item
 
@@ -72,13 +73,10 @@ function CallersTreePage:_load_callers(win_id, bufnr, item_or_position, callback
         item.selectionRange.start.line,
         item.selectionRange.start.character)
 
-    if visited[key] then
-        callback({ {
-            id = {},
-            expanded = true,
-            data = { name = "<cycle>", filename = "", lnum = 1 },
-        } })
-        return
+    local is_cycle = visited[key]
+    local cycle_symbol = '' 
+    if is_cycle then
+        cycle_symbol = config.current.window.symbols.cycle .. ' '
     end
 
     local function on_prepare(err, prepared_items)
@@ -108,7 +106,7 @@ function CallersTreePage:_load_callers(win_id, bufnr, item_or_position, callback
                     id = {},
                     expanded = false,
                     data = {
-                        name = from.name or "<anonymous>",
+                        name = cycle_symbol .. (from.name or "<anonymous>"),
                         filename = filename,
                         lnum = lnum,
                         col = col,

@@ -13,6 +13,7 @@ local builtin_qfmatchers = require("loop.task.qfmatchers")
 ---@field failure string
 ---@field running string
 ---@field paused string
+---@field cycle string
 
 ---@class loop.Config.Window
 ---@field symbols loop.Config.Window.Symbols
@@ -36,6 +37,7 @@ M.current = {
             failure = '✗', -- light x
             running = '▶',
             paused  = '⏸',
+            cycle   = '♻'
         }
     },
     debug = {
