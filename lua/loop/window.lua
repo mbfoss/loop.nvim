@@ -47,7 +47,8 @@ local _tabs = {
     variables = { label = "Variables", pages = {}, changed_pages = {}, list_prefix = "Variables - " },
     ---@type loop.TabInfo
     varwatch = { label = "Watch", pages = {}, changed_pages = {}, list_prefix = "Watch - " },
-
+    ---@type loop.TabInfo
+    callers = { label = "Callers", pages = {}, changed_pages = {}, list_prefix = "Callers - " },
 }
 
 ---@type loop.TabInfo[]
@@ -59,7 +60,8 @@ local _tabs_arr = {
     _tabs.debug_output,
     _tabs.stacktrace,
     _tabs.variables,
-    _tabs.varwatch
+    _tabs.varwatch,
+    _tabs.callers,
 }
 
 ---@type number
@@ -385,9 +387,10 @@ function M.remove_task_pages()
     _delete_tab_pages(_tabs.varwatch)
 end
 
----@param type "build"|"run"|"debug"|"debugoutput"|"stacktrace"|"variables"|"varwatch"
+---@param type "build"|"run"|"debug"|"debugoutput"|"stacktrace"|"variables"|"varwatch"|"callers"
 ---@param page loop.pages.Page
-function M.add_page(type, page)
+---@param replace_existing boolean|nil
+function M.add_page(type, page, replace_existing)
     assert(setup_done)
     local tab
     local activate
@@ -408,8 +411,14 @@ function M.add_page(type, page)
         tab = _tabs.variables
     elseif type == "varwatch" then
         tab = _tabs.varwatch
+    elseif type == "callers" then
+        tab = _tabs.callers
+        activate = true
     end
     assert(tab)
+    if replace_existing then
+        _delete_tab_pages(tab)
+    end
     _add_tab_page(tab, page)
     if activate then
         _set_active_tab(_get_tab_index(tab), nil)
