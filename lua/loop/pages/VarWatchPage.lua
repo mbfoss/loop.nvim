@@ -240,7 +240,7 @@ function VarWatchPage:_load_expr_value(expr)
     }
     if not self._cur_thread_data or not self._cur_frame then
         ---@diagnostic disable-next-line: undefined-field
-        var_item.id = "na_" .. vim.loop.hrtime()
+        var_item.id = {}
         var_item.data.value = "not available"
         var_item.data.is_na_value = true
         self:upsert_item(var_item)

@@ -2,7 +2,6 @@ local class = require('loop.tools.class')
 local throttle = require('loop.tools.throttle')
 local Trackers = require('loop.tools.Trackers')
 
-
 ---@alias loop.pages.page.KeyMaps table<string,loop.pages.page.KeyMap>
 
 ---@class loop.pages.Pages.Tracker
@@ -113,7 +112,9 @@ function Page:_setup_buf(own_buf)
 
     vim.api.nvim_buf_set_var(buf, buffer_flag_key, 1)
 
-    local bufname = "loop://" .. tostring(buf)
+    ---@diagnostic disable-next-line: undefined-field
+    local timestamp = vim.uv.hrtime()
+    local bufname = "loop://" .. tostring(buf) .. tostring(timestamp)
     if self._name and #self._name > 0 then
         bufname = bufname .. '/' .. self._name
     end

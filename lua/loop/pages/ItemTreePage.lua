@@ -80,7 +80,7 @@ local function _refresh_tree(tree, async_update)
                 ---@type loop.pages.ItemTreePage.ItemData
                 local loading_item = {
                     ---@diagnostic disable-next-line: undefined-field
-                    id = "loading_" .. vim.loop.hrtime(),
+                    id = {},
                     is_loading = true
                 }
                 ---@type loop.tools.Tree.FlatNode
