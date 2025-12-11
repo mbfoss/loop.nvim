@@ -134,6 +134,12 @@ function ItemTreePage:init(name, args)
     local function on_select()
         local id, itemdata = self:_cur_item_data()
         if not id or not itemdata then return end
+        self._trackers:invoke("on_selection", id, itemdata.userdata)
+    end
+    
+    local function on_expand_select()
+        local id, itemdata = self:_cur_item_data()
+        if not id or not itemdata then return end
         local have_children = self._tree:have_children(id)
         if have_children or itemdata.children_callback then
             self:toggle_expand(id)
@@ -151,8 +157,9 @@ function ItemTreePage:init(name, args)
         end
     end
 
-    self:add_keymap('<CR>', { callback = on_select, desc = "Select or expand/collapse" })
-    self:add_keymap('<2-LeftMouse>', { callback = on_select, desc = "Select or expand/collapse" })
+    self:add_keymap('<CR>', { callback = on_expand_select, desc = "Select or expand/collapse" })
+    self:add_keymap('gf', { callback = on_select, desc = "Open location under the cursor" })
+    self:add_keymap('<2-LeftMouse>', { callback = on_expand_select, desc = "Select or expand/collapse" })
     self:add_keymap('zo', { callback = on_toggle, desc = "Expand node" })
     self:add_keymap('zc', { callback = on_toggle, desc = "Collapse node" })
     self:add_keymap('za', { callback = on_toggle, desc = "Toggle expand/collapse" })
