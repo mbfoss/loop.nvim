@@ -36,47 +36,16 @@ function CallersTreePage:_add_keymaps()
     })
 end
 
-function CallersTreePage:_load_callers(win_id, item, callback, visited, retry_data)
+function CallersTreePage:_load_callers(win_id, item, callback, visited)
     visited = visited or {}
 
-    if self:get_buf() <= 0 then
-        return
-    end
-    
-    vim.notify(item.data)
     -- prevent cycles using the opaque data token
     local key = item.data
     if visited[key] then
-        vim.notify(tostring(key))
-        local child_node = {
-            id = {},
-            expanded = true,
-            data = { name = "<cycle>", filename = "", lnum = 0, col = 0 },
-        }
-        callback({ child_node })
+        callback({})
         return
     end
-    
-    assert(retry_data.expired ~= nil)
-    assert(retry_data.nb_retries ~= nil)
-    local retry = function()
-        if retry_data.expired or retry_data.nb_retries > 10 then
-            visited[key] = true
-            callback({})
-            return
-        end
-        local child_node = {
-            id = {},
-            expanded = true,
-            data = { name = "Loading...", filename = "", lnum = 0, col = 0 },
-        }
-        callback({ child_node })
-        vim.defer_fn(function()
-                retry_data.nb_retries = retry_data.nb_retries + 1
-                self:_load_callers(win_id, item, callback, visited, retry_data)
-            end,
-            1000)
-    end
+    visited[key]              = true
 
     -- convert LSP range to position for prepareCallHierarchy
     local bufnr               = vim.uri_to_bufnr(item.uri)
@@ -89,12 +58,7 @@ function CallersTreePage:_load_callers(win_id, item, callback, visited, retry_da
     -- call prepareCallHierarchy fresh for this symbol
     vim.lsp.buf_request(bufnr, "textDocument/prepareCallHierarchy", params, function(err, items)
         if err or not items or #items == 0 then
-            local child_node = {
-                id = {},
-                expanded = true,
-                data = { name = "error " .. tostring(err), filename = "", lnum = 0, col = 0 },
-            }
-            callback({ child_node })
+            callback({})
             return
         end
 
@@ -103,20 +67,11 @@ function CallersTreePage:_load_callers(win_id, item, callback, visited, retry_da
         -- now fetch incoming calls
         vim.lsp.buf_request(bufnr, "callHierarchy/incomingCalls", { item = root_item }, function(err2, calls)
             if err2 or not calls then
-                local child_node = {
-                    id = {},
-                    expanded = true,
-                    data = { name = "error " .. tostring(err), filename = "", lnum = 0, col = 0 },
-                }
-                callback({ child_node })
+                callback({})
                 return
             end
 
             local children = {}
-            if #calls == 0 then
-                retry()
-                return
-            end
 
             for _, call in ipairs(calls) do
                 local from = call.from -- original LSP item
@@ -139,9 +94,8 @@ function CallersTreePage:_load_callers(win_id, item, callback, visited, retry_da
                         col = col,
                     },
                     children_callback = function(cb)
-                        retry_data = {expired = false, nb_retries = 0}
                         -- recurse by preparing hierarchy again
-                        self:_load_callers(win_id, from, cb, visited, retry_data)
+                        self:_load_callers(win_id, from, cb, visited)
                     end,
                 }
 
@@ -184,8 +138,7 @@ function CallersTreePage:load()
         }
 
         root.children_callback = function(cb)
-            retry_data = {expired = false, nb_retries = 0}
-            self:_load_callers(win_id, target, cb, {}, retry_data)
+            self:_load_callers(win_id, target, cb)
         end
 
         self:upsert_item(root)
