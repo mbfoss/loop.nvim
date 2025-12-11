@@ -5,13 +5,13 @@ local M                 = {}
 
 local _setup_done       = false
 
----@class loop.debugui.TrackerCallbacks
+---@class loop.debugui.Tracker
 ---@field on_bp_added fun(bp:loop.dap.SourceBreakpoint, verified:boolean)|nil
 ---@field on_bp_removed fun(bp:loop.dap.SourceBreakpoint)|nil
 ---@field on_all_bp_removed fun(bpts:loop.dap.SourceBreakpoint[])|nil
 ---@field on_bp_state_update fun(bp:loop.dap.SourceBreakpoint, verified:boolean)
 
----@type loop.tools.Trackers<loop.debugui.TrackerCallbacks>
+---@type loop.tools.Trackers<loop.debugui.Tracker>
 local _trackers         = Trackers:new()
 
 ---@class loop.debug_ui.Breakpointata
@@ -129,7 +129,7 @@ function M.track_new_debugjob(task_name)
     return tracker
 end
 
----@param callbacks loop.debugui.TrackerCallbacks
+---@param callbacks loop.debugui.Tracker
 ---@return number
 function M.add_tracker(callbacks)
     local tracker_id = _trackers:add_tracker(callbacks)

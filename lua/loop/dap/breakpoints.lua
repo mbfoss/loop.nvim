@@ -13,7 +13,7 @@ local M        = {}
 ---@field logMessage string|nil
 
 
----@class loop.dap.breakpoints.TrackerCallbacks
+---@class loop.dap.breakpoints.Tracker
 ---@field on_added fun(bp:loop.dap.SourceBreakpoint)|nil
 ---@field on_removed fun(bp:loop.dap.SourceBreakpoint)|nil
 ---@field on_all_removed fun(bpts:loop.dap.SourceBreakpoint[])|nil
@@ -26,7 +26,7 @@ local _source_breakpoints = {}
 ---@type table<number,loop.dap.SourceBreakpoint>
 local _by_id = {} -- breakpoints by unique id
 
----@type loop.tools.Trackers<loop.dap.breakpoints.TrackerCallbacks>
+---@type loop.tools.Trackers<loop.dap.breakpoints.Tracker>
 local _trackers = Trackers:new()
 
 --- Tracks whether breakpoints need to be saved to disk.
@@ -251,7 +251,7 @@ function M.for_each(handler)
     end
 end
 
----@param callbacks loop.dap.breakpoints.TrackerCallbacks
+---@param callbacks loop.dap.breakpoints.Tracker
 ---@return number
 function M.add_tracker(callbacks)
     local tracker_id = _trackers:add_tracker(callbacks)

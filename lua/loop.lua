@@ -105,6 +105,7 @@ M.setup = function(args)
         show = project.show_window,
         hide = project.hide_window,
 
+        callers = project.lsp_callers_tree,
         task = project.task_command,
         debug_mode = project.toggle_debug_mode,
         debug = project.debug_command,

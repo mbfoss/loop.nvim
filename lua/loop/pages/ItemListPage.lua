@@ -11,7 +11,7 @@ local Trackers = require("loop.tools.Trackers")
 ---@field id any
 ---@field data any
 
----@class loop.pages.ItemListPage.TrackerCallbacks
+---@class loop.pages.ItemListPage.Tracker : loop.pages.Pages.Tracker
 ---@field on_selection fun(item:loop.pages.ItemListPage.Item|nil)
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
@@ -27,7 +27,7 @@ local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListPage')
 ---@field _items loop.pages.ItemListPage.Item[]
 ---@field _index table<any,number>
 ---@field _select_handler fun(item:loop.pages.ItemListPage.Item|nil)
----@field _trackers loop.tools.Trackers<loop.pages.ItemListPage.TrackerCallbacks>
+---@field _trackers loop.tools.Trackers<loop.pages.ItemListPage.Tracker>
 ---@field _current_item loop.pages.ItemListPage.Item|nil   # NEW: currently active item
 ---@field _current_prefix string                            # NEW: resolved prefix
 local ItemListPage = class(Page)
@@ -40,7 +40,6 @@ function ItemListPage:init(name, args)
     self._args = args
     self._items = {}
     self._index = {}
-    self._trackers = Trackers:new()
 
     -- NEW: current item tracking
     self._current_item = nil
@@ -75,9 +74,11 @@ function ItemListPage:get_current_item()
     return self._current_item
 end
 
----@param callbacks loop.pages.ItemListPage.TrackerCallbacks
+---@param callbacks loop.pages.ItemListPage.Tracker
+---@return number
 function ItemListPage:add_tracker(callbacks) return self._trackers:add_tracker(callbacks) end
 
+---@return boolean
 function ItemListPage:remove_tracker(id) return self._trackers:remove_tracker(id) end
 
 function ItemListPage:set_items(items)

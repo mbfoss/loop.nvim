@@ -23,7 +23,7 @@ local Tree = require("loop.tools.Tree")
 ---@field children_loading boolean|nil
 ---@field is_loading boolean|nil
 
----@class loop.pages.ItemTreePage.TrackerCallbacks
+---@class loop.pages.ItemTreePage.Tracker : loop.pages.Pages.Tracker
 ---@field on_selection fun(id:any,data:any)
 
 ---@class loop.pages.ItemTreePage.InitArgs
@@ -126,8 +126,6 @@ function ItemTreePage:init(name, args)
     self._loading_text = args.loading_text or "Loading..."
     self._render_delay_ms = args.render_delay_ms or 100
 
-    self._trackers = Trackers:new()
-
     self._tree = Tree:new()
 
     ---@type loop.tools.Tree.FlatNode[]
@@ -163,8 +161,12 @@ end
 ---------------------------------------------------------
 -- TRACKERS
 ---------------------------------------------------------
+---@param cb loop.pages.ItemTreePage.Tracker
+---@return number
 function ItemTreePage:add_tracker(cb) return self._trackers:add_tracker(cb) end
 
+---@param id number
+---@return boolean
 function ItemTreePage:remove_tracker(id) return self._trackers:remove_tracker(id) end
 
 ---------------------------------------------------------

@@ -11,6 +11,7 @@ local runner = require("loop.runner")
 local uitools = require('loop.tools.uitools')
 local dapbreakpoints = require('loop.dap.breakpoints')
 local extensions = require('loop.ext.extensions')
+local CallersTreePage = require('loop.pages.CallersTreePage')
 
 local _setup_done = false
 local _project_dir = nil
@@ -387,10 +388,17 @@ function M.save_project_files()
     return saved
 end
 
+function M.lsp_callers_tree()
+    local page =  CallersTreePage:new("Callers")
+    window.add_page("callers", page)
+    page:load()
+end
+
 function M.winbar_click(id, clicks, button, mods)
     assert(_setup_done)
     window.winbar_click(id, clicks, button, mods)
 end
+
 
 ---@param config loop.Config
 function M.setup(config)
