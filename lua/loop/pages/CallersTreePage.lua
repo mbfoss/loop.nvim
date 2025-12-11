@@ -14,6 +14,10 @@ local CallersTreePage = class(ItemTreePage)
 ---@return string
 local function _caller_node_formatter(id, data, highlights)
     if not data then return "" end
+    if not data.filename or data.filename == "" then 
+        table.insert(highlights, { group = "@comment" })
+        return data.name or "" 
+    end
     table.insert(highlights, { group = "@function", start_col = 0, end_col = #data.name })
     table.insert(highlights, { group = "@comment", start_col = #data.name + 1 })
     return string.format("%s (%s:%d)", data.name, data.filename, data.lnum or 0)
@@ -30,17 +34,18 @@ end
 function CallersTreePage:_add_keymaps()
     self:add_tracker({
         on_selection = function(id, data)
-            if not data or not data.filename then return end
+            if not data or not data.filename or data.filename == "" then return end
             uitools.smart_open_file(data.filename, data.lnum, data.col)
         end
     })
 end
 
 ---@param win_id any
+---@param bufnr any
 ---@param item any
 ---@param callback fun(items:loop.pages.ItemTreePage.Item[],retry:boolean|nil)
 ---@param visited any
-function CallersTreePage:_load_callers(win_id, item, callback, visited)
+function CallersTreePage:_load_callers(win_id, bufnr, item, callback, visited)
     visited = visited or {}
 
     -- prevent cycles using the opaque data token
@@ -56,7 +61,6 @@ function CallersTreePage:_load_callers(win_id, item, callback, visited)
     end
 
     -- convert LSP range to position for prepareCallHierarchy
-    local bufnr               = vim.uri_to_bufnr(item.uri)
     local line                = item.selectionRange.start.line
     local col                 = item.selectionRange.start.character
     local params              = vim.lsp.util.make_position_params(win_id, "utf-8")
@@ -103,7 +107,7 @@ function CallersTreePage:_load_callers(win_id, item, callback, visited)
                     },
                     children_callback = function(cb)
                         -- recurse by preparing hierarchy again
-                        self:_load_callers(win_id, from, cb, visited)
+                        self:_load_callers(win_id, bufnr, from, cb, visited)
                     end,
                 }
 
@@ -150,7 +154,7 @@ function CallersTreePage:load()
         }
 
         root.children_callback = function(cb)
-            self:_load_callers(win_id, target, cb)
+            self:_load_callers(win_id, bufnr, target, cb)
         end
 
         self:upsert_item(root)
