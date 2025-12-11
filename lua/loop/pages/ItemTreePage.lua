@@ -12,12 +12,12 @@ local Tree = require("loop.tools.Tree")
 ---@field id any
 ---@field data any
 ---@field parent_id any
----@field children_callback nil|fun(cb:fun(items:loop.pages.ItemTreePage.ItemData[]))
+---@field children_callback nil|fun(cb:fun(items:loop.pages.ItemTreePage.ItemData[],retry:boolean|nil))
 ---@field expanded boolean|nil
 
 ---@class loop.pages.ItemTreePage.ItemData
 ---@field userdata any
----@field children_callback nil|fun(cb:fun(items:loop.pages.ItemTreePage.Item[]))
+---@field children_callback nil|fun(cb:fun(items:loop.pages.ItemTreePage.Item[],retry:boolean|nil))
 ---@field expanded boolean|nil
 ---@field reload_children boolean|nil
 ---@field children_loading boolean|nil
@@ -92,7 +92,7 @@ local function _refresh_tree(tree, async_update)
 
                 vim.schedule(function()
                     -- Trigger async load
-                    item.children_callback(function(loaded_children)
+                    item.children_callback(function(loaded_children, retry)
                         ---@type loop.tools.Tree.Item[]
                         local treeitems = {}
                         for _, child in ipairs(loaded_children or {}) do
@@ -101,8 +101,12 @@ local function _refresh_tree(tree, async_update)
                             table.insert(treeitems, basetreeitem)
                         end
                         tree:set_children(item_id, treeitems)
-                        item.reload_children = false
                         item.children_loading = false
+                        item.reload_children = false
+                        if retry == true then
+                            item.reload_children = true
+                            item.expanded = false
+                        end
                         async_update()
                     end)
                 end)
@@ -136,7 +140,7 @@ function ItemTreePage:init(name, args)
         if not id or not itemdata then return end
         self._trackers:invoke("on_selection", id, itemdata.userdata)
     end
-    
+
     local function on_expand_select()
         local id, itemdata = self:_cur_item_data()
         if not id or not itemdata then return end

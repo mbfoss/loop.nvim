@@ -36,6 +36,10 @@ function CallersTreePage:_add_keymaps()
     })
 end
 
+---@param win_id any
+---@param item any
+---@param callback fun(items:loop.pages.ItemTreePage.Item[],retry:boolean|nil)
+---@param visited any
 function CallersTreePage:_load_callers(win_id, item, callback, visited)
     visited = visited or {}
 
@@ -45,7 +49,6 @@ function CallersTreePage:_load_callers(win_id, item, callback, visited)
         callback({})
         return
     end
-    visited[key]              = true
 
     -- convert LSP range to position for prepareCallHierarchy
     local bufnr               = vim.uri_to_bufnr(item.uri)
@@ -102,7 +105,11 @@ function CallersTreePage:_load_callers(win_id, item, callback, visited)
                 table.insert(children, node)
             end
 
-            callback(children)
+            local retry = #children == 0
+            if not retry then
+                visited[key] = true
+            end
+            callback(children, retry)
         end)
     end)
 end
@@ -127,7 +134,7 @@ function CallersTreePage:load()
 
         local target = items[1] -- Root CallHierarchyItem
         local root = {
-            id = "<root>",
+            id = {},
             expanded = true,
             data = {
                 name = target.name or "<symbol>",
