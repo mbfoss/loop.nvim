@@ -37,7 +37,7 @@ M.current = {
             failure = '✗', -- light x
             running = '▶',
             paused  = '⏸',
-            cycle   = '↻'
+            cycle   = '⟳'
         }
     },
     debug = {
