@@ -390,7 +390,7 @@ end
 
 function M.lsp_callers_tree()
     local page =  CallersTreePage:new("Callers")
-    window.add_page("callers", page)
+    window.add_page("callers", page, true)
     page:load()
 end
 
