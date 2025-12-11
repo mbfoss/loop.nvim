@@ -46,7 +46,12 @@ function CallersTreePage:_load_callers(win_id, item, callback, visited)
     -- prevent cycles using the opaque data token
     local key = item.data
     if visited[key] then
-        callback({})
+        local child_node = {
+            id = {},
+            expanded = true,
+            data = { name = "<cycle>", filename = "", lnum = 0, col = 0 },
+        }
+        callback({ child_node })
         return
     end
 
