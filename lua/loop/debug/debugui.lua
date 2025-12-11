@@ -1,3 +1,4 @@
+local config         = require("loop.config")
 local signs          = require('loop.debug.signs')
 local debugmode      = require('loop.debug.debugmode')
 local window         = require('loop.window')
@@ -108,15 +109,16 @@ end
 
 ---@param jobdata loop.debugui.DebugJobData
 local function _refresh_task_page(jobdata)
+    local symbols = config.current.window.symbols
     local uiflags = ''
     local items = jobdata.task_page:get_items()
     for _, item in ipairs(items) do
         local flag = ''
         if item.data.state ~= 'ended' then
             if item.data.nb_paused_threads and item.data.nb_paused_threads > 0 then
-                flag = ' ⏸'
+                flag = symbols.paused
             else
-                flag = ' ▶'
+                flag = symbols.running
             end
         end
         uiflags = uiflags .. flag

@@ -18,10 +18,6 @@ local function get_task_cwd(task)
     return task.cwd or vim.fn.getcwd()
 end
 
----@class loop.Config.Debug
----@field stack_levels_limit number
----@field sign_priority table<string,number>
-
 ---@class loop.Config.Debugger
 ---@field dap          loop.dap.session.Args.DAP
 ---@field launch_args  table<string,any>|nil

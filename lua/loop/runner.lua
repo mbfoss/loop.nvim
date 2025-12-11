@@ -219,7 +219,8 @@ local function _create_tool_job(task, startup_callback, output_handler, exit_han
             command_cwd = resolved.cwd,
             output_handler = output_handler,
             on_exit_handler = function(code)
-                page:set_ui_flags(code == 0 and '✔' or '✖')
+                local symbols = config.current.window.symbols
+                page:set_ui_flags(code == 0 and symbols.success or symbols.failure)
                 exit_handler(code)
             end,
         }
@@ -334,7 +335,7 @@ end
 ---@return loop.job.Job|nil, string|nil
 ---@param startup_callback fun(job: loop.job.DebugJob|nil, err: string|nil)
 ---@param task_exit_handler fun(exit_code : number)
-local function _start_one_task(task, startup_callback, task_exit_handler)
+local function _start_one_task_resolved(task, startup_callback, task_exit_handler)
     --notifications.notify("Starting task:\n" .. vim.inspect(task))
 
     if task.type ~= "debug" then
@@ -370,6 +371,19 @@ local function _start_one_task(task, startup_callback, task_exit_handler)
     return nil, "Unhandled task type: " .. tasktype
 end
 
+---@param task loop.Task
+---@return loop.job.Job|nil, string|nil
+---@param startup_callback fun(job: loop.job.DebugJob|nil, err: string|nil)
+---@param task_exit_handler fun(exit_code : number)
+local function _start_one_task(task, startup_callback, task_exit_handler)
+    resolver.resolve_macros(task, function(success, resolved_task, err)
+        if resolved_task then
+            _start_one_task_resolved(task, startup_callback, task_exit_handler)
+        else
+            startup_callback(nil, err or "Uknown error")
+        end
+    end)
+end
 
 ---@param new_chain loop.runner.TaskChain|nil
 ---@return boolean scheduled
@@ -439,10 +453,9 @@ local function _start_task_chain(tasks, on_complete)
                     notifications.notify({ "Invalid task status for " .. task.name }, vim.log.levels.ERROR)
                     chain.interrupted = true
                 elseif exit_code == 0 then
-                    notifications.notify({ "Task ended: " .. task.name })
                 else
                     chain.interrupted = true
-                    notifications.notify({ "Task ended: " .. task.name .. ', exit code: ' .. tostring(exit_code) })
+                    notifications.notify({ "Task failed: " .. task.name .. ', exit code: ' .. tostring(exit_code) })
                 end
                 vim.schedule(function()
                     if chain == _current_task_chain then
@@ -479,45 +492,11 @@ function M.start_task_chain(tasks, on_complete)
         return
     end
 
-    -- Work on a deep copy so original config stays clean
+    -- Deep copy so the originals remain untouched
     local chain = vim.deepcopy(tasks)
 
-    local pending = #chain
-    local had_error = false
-
-    for i, task in ipairs(tasks) do
-        local original_name = task.name or ("task#" .. i)
-
-        resolver.resolve_macros(task, function(success, resolved_task, err)
-            if had_error then
-                pending = pending - 1
-                return
-            end
-
-            if not success then
-                had_error = true
-                notifications.notify({
-                    "Failed to resolve macro(s) in task '" .. original_name .. "'",
-                    tostring(err)
-                }, vim.log.levels.WARN)
-                pending = pending - 1
-                if pending == 0 and on_complete then
-                    vim.schedule(on_complete)
-                end
-                return
-            end
-
-            -- Replace the task with the fully resolved one
-            chain[i] = resolved_task
-
-            pending = pending - 1
-            if pending == 0 then
-                if not had_error then
-                    _start_task_chain(chain, on_complete)
-                end
-            end
-        end)
-    end
+    -- Simply run the task chain — no resolving!
+    _start_task_chain(chain, on_complete)
 end
 
 function M.terminate_task_chain()

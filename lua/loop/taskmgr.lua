@@ -98,7 +98,17 @@ function M.import_task(config_dir, source)
             notifications.notify(strtools.indent_errors(errors, "Failed to import tasks"), vim.log.levels.ERROR)
             return
         end
-        _select_and_add_task(config_dir, tasks, "Choose a task to import")
+        ---@type loop.taskTemplate[]
+        local templates = {}
+        for _,task in ipairs(tasks) do
+            ---@type loop.taskTemplate
+            local item = {
+                name = task.name,
+                task = task
+            }
+            table.insert(templates, item)
+        end
+        _select_and_add_task(config_dir, templates, "Choose a task to import")
     end)
 end
 

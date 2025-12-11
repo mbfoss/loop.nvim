@@ -1,4 +1,5 @@
 local M = {}
+local config = require("loop.config")
 local Page = require('loop.pages.Page')
 local OutputPage = require('loop.pages.OutputPage')
 local BreakpointsPage = require('loop.pages.BreakpointsPage')
@@ -86,7 +87,7 @@ local function _setup_tabs()
     local page_idx = active_tab.active_page_idx or 1
     assert(page_idx > 0 and page_idx <= #active_tab.pages)
 
-    local change_symbol = ' ●'
+    local symbols = config.current.window.symbols
     -- update window if visible
     local win = _loop_win
     local winbar_parts = { "%#LoopPluginInactiveTab#" }
@@ -106,7 +107,7 @@ local function _setup_tabs()
             local uiflags1 = ''
             if #tab.pages == 1 then
                 if is_active_tab then tab.changed_pages[1] = nil end
-                local change_flag = tab.changed_pages[1] and change_symbol or ''
+                local change_flag = tab.changed_pages[1] and symbols.change or ''
                 uiflags1 = (tab.pages[1]:get_ui_flags() or "") .. (change_flag or "") 
             end
             local str1 = ("[%s%s]"):format(tab.label, uiflags1)
@@ -117,7 +118,7 @@ local function _setup_tabs()
             for idx, page in ipairs(tab.pages) do
                 local active_page = is_active_tab and idx == page_idx
                 if active_page then tab.changed_pages[idx] = nil end
-                local change_flag = tab.changed_pages[idx] and change_symbol or ''
+                local change_flag = tab.changed_pages[idx] and symbols.change or ''
                 local uiflags2 = (page:get_ui_flags() or "") .. (change_flag or "") 
                 local str2 = '[' .. tostring(idx) .. (uiflags2 or "") .. ']'
                 if active_page then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
