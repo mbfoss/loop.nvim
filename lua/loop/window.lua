@@ -451,7 +451,9 @@ function M.add_term_page(type, name, args)
     end
 
     args_cpy.output_handler = function(stream, data)
-        args.output_handler(stream, data)
+        if args.output_handler then
+            args.output_handler(stream, data)
+        end
         page:send_change_notification()
     end
 

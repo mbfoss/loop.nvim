@@ -85,36 +85,23 @@ function TermProc:start(winid, bufnr, args)
         vim.cmd.stopinsert()
     end
 
+    local prev_buf = vim.api.nvim_win_get_buf(winid)
     vim.api.nvim_set_current_win(winid)
+    vim.api.nvim_win_set_buf(winid, bufnr)
 
-    -- Call risky_function safely
-    local call_ok, result = xpcall(
-        function()
-            return { self:_start_term_job(bufnr, cmd_and_args, command_env, command_cwd, args.output_handler,
-                args.on_exit_handler) }
-        end,
-        function(_)
-            return debug.traceback()
-        end
-    )
+    local ok, err = self:_start_term_job(bufnr, cmd_and_args, command_env, command_cwd, args.output_handler,
+        args.on_exit_handler)
 
     vim.api.nvim_win_set_cursor(winid, { vim.api.nvim_buf_line_count(bufnr), 0 })
 
+    vim.api.nvim_win_set_buf(winid, prev_buf)
     vim.api.nvim_set_current_win(previous_win)
 
     if was_in_insert then
         vim.cmd.startinsert()
     end
 
-    if not call_ok then
-        return false, result
-    end
-    local started, start_err = result[1], result[2]
-    if not started then
-        return false, start_err
-    end
-
-    return true, nil
+    return ok, err
 end
 
 ---@param bufnr number

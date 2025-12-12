@@ -234,13 +234,22 @@ function DebugJob:add_debug_term(name, args, on_success, on_failure)
     assert(type(on_success) == "function")
     assert(type(on_failure) == "function")
 
-    self._trackers:invoke("on_new_term", name, args, function(pid, err)
-        if err then
-            on_failure(err)
-        else
-            on_success(pid)
-        end
-    end)
+    local cb_error = function(err)
+        on_failure("reversed request handler error")
+        self._log:error("Error in on_new_term tracker\n" ..
+            debug.traceback("Error: " .. tostring(err) .. "\n", 2))
+    end
+
+    xpcall(function()
+        self._trackers:invoke("on_new_term", name, args, function(pid, err)
+            if err then
+                on_failure(err)
+                self._log:error("Error in on_new_term handling\n" .. err)
+            else
+                on_success(pid)
+            end
+        end)
+    end, cb_error)
 end
 
 ---@param sess_id number
