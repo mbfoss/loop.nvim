@@ -98,7 +98,7 @@ debuggers["lua:remote"] = {
         name = "Lua Remote Debugger",
         type = "server",
         host = "127.0.0.1",
-        port = 8086,
+        port = 0,
     },
     attach_args = {
         request = "attach",
@@ -148,7 +148,7 @@ debuggers["js-debug"] = {
         name = "js-debug",
         type = "server",
         host = "::1",
-        port = 8123,
+        port = 0,
         cwd = os.getenv("HOME"),
     },
     launch_args = {
@@ -167,7 +167,7 @@ debuggers["js-debug"] = {
         request = "attach",
         name = "Attach to Node (localhost)",
         address = "127.0.0.1",
-        port = "${prompt:Inspector port:}",
+        port = 0,
         cwd = "${projdir}",
         restart = true,      -- auto-reconnect if process restarts
         localRoot = "${projdir}",
@@ -202,7 +202,7 @@ debuggers["debugpy:remote"] = {
         name = "Python Remote Debugger",
         type = "server",
         host = "127.0.0.1",
-        port = 8086,
+        port = 0,
     },
     attach_args = {
         justMyCode = false,
@@ -253,7 +253,7 @@ debuggers.chrome = { -- untested
     attach_args = {
         type = "chrome",
         program = "${file}",
-        port = 9222,
+        port = 0,
         webRoot = "${projdir}",
     },
 }
@@ -296,7 +296,7 @@ debuggers.php = { -- untested
     launch_args = {
         name = "Listen for Xdebug",
         type = "php",
-        port = 9003,
+        port = 0,
         pathMappings = {
             ["/var/www/html"] = "${projdir}",
         },
@@ -312,7 +312,7 @@ debuggers.java = { -- untested
         name = "Java (jdtls)",
         type = "server",
         host = "127.0.0.1",
-        port = 9000,
+        port = 0,
     },
     attach_args = {}
 }

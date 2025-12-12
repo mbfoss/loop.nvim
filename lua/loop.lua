@@ -104,6 +104,8 @@ M.setup = function(args)
         toggle = project.toggle_window,
         show = project.show_window,
         hide = project.hide_window,
+        page = project.switch_page,
+        open_page = project.open_page,
 
         callers = project.lsp_callers_tree,
         task = project.task_command,
@@ -113,6 +115,15 @@ M.setup = function(args)
     }
 
     _setup_user_command(_G.LoopProject)
+
+    vim.keymap.set("n", "<leader>lp", ":Loop page<CR>", { desc = "Switch main page" })
+    vim.keymap.set("n", "<leader>lP", ":Loop open_page<CR>", { desc = "Open page in current window" })
+    vim.keymap.set("n", "<leader>lt", ":Loop task<CR>", { desc = "Run task", silent = true })
+    vim.keymap.set("n", "<leader>lr", ":Loop task repeat<CR>", { desc = "Repeat last task", silent = true })
+    vim.keymap.set("n", "<leader>dm", ":Loop debug_mode<CR>", { desc = "Toggle debug mode" })
+    vim.keymap.set("n", "<leader>db", ":Loop breakpoint<CR>", { desc = "Toggle breakpoint" })
+    vim.keymap.set("n", "<leader>dc", ":Loop debug continue<CR>", { desc = "Debug continue", silent = true })
+    vim.keymap.set("n", "<leader>dT", ":Loop debug terminate<CR>", { desc = "Debug terminate session", silent = true })
 end
 
 return M

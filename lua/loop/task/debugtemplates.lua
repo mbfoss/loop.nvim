@@ -24,6 +24,10 @@ return {
             name = "Attach",
             type = "debug",
             debugger = "lua:remote",
+            debugger_config = {
+                host = "127.0.0.1",
+                port = 8086,
+            },
             debug_request = "attach",
             debug_args = {
                 host = "127.0.0.1",
@@ -40,7 +44,7 @@ return {
         task = {
             name = "Debug",
             type = "debug",
-            command = "${prompt:Select binary:}",
+            command = "${prompt:Select binary: }",
             cwd = "${projdir}",
             depends_on = {},
             debugger = "lldb",
@@ -91,10 +95,14 @@ return {
             type = "debug",
             depends_on = {},
             debugger = "js-debug",
+            debugger_config = {
+                host = "127.0.0.1",
+                port = 8086,
+            },            
             debug_request = "attach",
             debug_args = {
                 address = "127.0.0.1",
-                port = "${prompt:Inspector port}",
+                port = "${prompt:Inspector port: }",
                 restart = true,
             },
         }
@@ -131,7 +139,7 @@ return {
             debugger = "debugpy:remote",
             debugger_config = {
                 host = "127.0.0.1",
-                port = 8086,
+                port = 0,
             },
             debug_request = "attach",
             debug_args = {

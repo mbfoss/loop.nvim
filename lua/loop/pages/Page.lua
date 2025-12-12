@@ -114,10 +114,12 @@ function Page:_setup_buf(own_buf)
     vim.api.nvim_buf_set_var(buf, buffer_flag_key, 1)
 
     ---@diagnostic disable-next-line: undefined-field
-    local timestamp = vim.uv.hrtime()
-    local bufname = "loop://" .. tostring(buf) .. tostring(timestamp)
+    local timestamp = ("%d"):format(vim.uv.hrtime())
+    local bufname = "loop://" .. tostring(buf) .. timestamp
     if self._name and #self._name > 0 then
         bufname = bufname .. '/' .. self._name
+    else
+        bufname = bufname .. '/'
     end
     --vim.notify(bufname)
     vim.api.nvim_buf_set_name(buf, bufname)

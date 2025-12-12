@@ -27,8 +27,6 @@ local _original_winbar
 local _loop_win_height_ratio
 ---@type fun(action: "next"|"prev")
 local _cycle_pages
----@type fun()
-local _ui_select_page
 
 local _tabs = {
     ---@type loop.TabInfo
@@ -183,27 +181,6 @@ _cycle_pages = function(action)
     _set_active_tab(tabidx, pageidx)
 end
 
-_ui_select_page = function()
-    local choices = {}
-    for tabidx, tab in ipairs(_tabs_arr) do
-        for pageidx, page in ipairs(tab.pages) do
-            local label = tab.list_prefix or ''
-            label = label .. page:get_name()
-            ---@type loop.SelectorItem
-            local item = {
-                label = label,
-                data = { tabidx = tabidx, pageidx = pageidx },
-            }
-            table.insert(choices, item)
-        end
-    end
-    selector.select("Select page", choices, nil, function(data)
-        if data and data.tabidx then
-            _set_active_tab(data.tabidx, data.pageix)
-        end
-    end)
-end
-
 ---@return table<string,loop.pages.page.KeyMap>
 local function get_page_keymap()
     --- set keymaps
@@ -224,14 +201,6 @@ local function get_page_keymap()
                 end
             end,
             desc = "Move to previous page",
-        },
-        ["<c-l>"] = {
-            callback = function()
-                if vim.api.nvim_get_current_win() == _loop_win then
-                    _ui_select_page()
-                end
-            end,
-            desc = "Select page",
         },
     }
     return keymaps
@@ -273,19 +242,13 @@ function M.winbar_click(id, clicks, button, mods)
         _set_active_tab(tab_idx, nil)
     else
         local tab = _tabs_arr[tab_idx]
-        if tab then
-            if page_idx and page_idx > 0 then
-                _set_active_tab(tab_idx, page_idx)
-            else
-                local pageidx = tab.active_page_idx + 1
-                if pageidx > #tab.pages then pageidx = 1 end
-                _set_active_tab(tab_idx, pageidx)
-            end
+        if tab and page_idx and page_idx > 0 then
+            _set_active_tab(tab_idx, page_idx)
         end
     end
 end
 
-local function create_window()
+local function _create_window()
     if _loop_win ~= -1 then
         return
     end
@@ -352,9 +315,43 @@ local function _ensure_breakpoints_page()
     end
 end
 
+---@param target_winid? number|nil
+local function _select_and_show_page(target_winid)
+    local choices = {}
+    for tabidx, tab in ipairs(_tabs_arr) do
+        for pageidx, page in ipairs(tab.pages) do
+            local label = tab.list_prefix or ''
+            label = label .. page:get_name()
+            ---@type loop.SelectorItem
+            local item = {
+                label = label,
+                data = { tabidx = tabidx, pageidx = pageidx },
+            }
+            table.insert(choices, item)
+        end
+    end
+    selector.select("Select page", choices, nil, function(data)
+        if data and data.tabidx then
+            if not target_winid or target_winid == _loop_win then
+                _set_active_tab(data.tabidx, data.pageix)
+                _create_window()
+            else
+                local req_tab = _tabs_arr[data.tabidx]
+                local page_idx = data.pageix or 1
+                if req_tab and req_tab.pages[page_idx] then
+                    local buf = req_tab.pages[page_idx]:get_or_create_buf()
+                    if buf and buf > 0 then
+                        vim.api.nvim_win_set_buf(target_winid, buf)
+                    end
+                end
+            end
+        end
+    end)
+end
+
 function M.show_window()
     assert(setup_done)
-    create_window()
+    _create_window()
 end
 
 function M.hide_window()
@@ -376,6 +373,18 @@ function M.toggle_window()
         return true
     end
 end
+
+function M.switch_page()
+    assert(setup_done)
+    _select_and_show_page()
+end
+
+---@param target_winid number
+function M.open_page(target_winid)
+    assert(setup_done)
+    _select_and_show_page(target_winid)
+end
+
 
 function M.remove_task_pages()
     _delete_tab_pages(_tabs.build)
@@ -422,7 +431,7 @@ function M.add_page(type, page, replace_existing)
     _add_tab_page(tab, page)
     if activate then
         _set_active_tab(_get_tab_index(tab), nil)
-        create_window()
+        _create_window()
     end
 end
 
@@ -435,7 +444,7 @@ function M.add_term_page(type, name, args)
     local page = Page:new("term", name)
     M.add_page(type, page)
 
-    create_window()
+    _create_window()
     assert(_loop_win ~= -1)
 
     local TermProc = require('loop.tools.TermProc')

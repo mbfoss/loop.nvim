@@ -318,6 +318,16 @@ function M.toggle_window()
     window.toggle_window()
 end
 
+function M.switch_page()
+    assert(_setup_done)
+    window.switch_page()
+end
+
+function M.open_page()
+    assert(_setup_done)
+    window.open_page(vim.api.nvim_get_current_win())
+end
+
 function M.save_project_files()
     assert(_setup_done)
 
@@ -389,7 +399,7 @@ function M.save_project_files()
 end
 
 function M.lsp_callers_tree()
-    local page =  CallersTreePage:new("Callers")
+    local page = CallersTreePage:new("Callers")
     window.add_page("callers", page, true)
     page:load()
 end
@@ -398,7 +408,6 @@ function M.winbar_click(id, clicks, button, mods)
     assert(_setup_done)
     window.winbar_click(id, clicks, button, mods)
 end
-
 
 ---@param config loop.Config
 function M.setup(config)
