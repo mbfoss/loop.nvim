@@ -242,17 +242,21 @@ local function _create_debug_job(task, startup_callback, output_handler, exit_ha
     if task.type ~= "debug" then
         return startup_callback(nil, "task.type must be 'debug'")
     end
-    if not task.debug_adapter or task.debug_adapter == "" then
-        return startup_callback(nil, "task.debug_adapter is required for debug tasks")
+    if not task.debugger or task.debugger == "" then
+        return startup_callback(nil, "task.debugger is required for debug tasks")
     end
     if task.debug_request ~= "launch" and task.debug_request ~= "attach" then
         return startup_callback(nil, "task.debug_request must be 'launch' or 'attach'")
     end
 
-    local debugger = config.current.debuggers[task.debug_adapter]
+    ---@type loop.Config.Debugger
+    local debugger = config.current.debuggers[task.debugger]
     if not debugger then
-        return startup_callback(nil, ("no debug_adapter config found for '%s'"):format(tostring(task.debug_adapter)))
+        return startup_callback(nil, ("no debugger config found for '%s'"):format(tostring(task.debugger)))
     end
+
+    -- Merge task-specific config (override lua config)
+    debugger.adapter_config = vim.tbl_deep_extend("force", debugger.adapter_config, task.debugger_config or {})
 
     -- Resolve default args based on request type
     local default_args
@@ -280,9 +284,10 @@ local function _create_debug_job(task, startup_callback, output_handler, exit_ha
         end
 
         -- Final DAP type validation
-        if debugger.dap.type ~= "executable" and debugger.dap.type ~= "server" then
+        if debugger.adapter_config.type ~= "executable" and debugger.adapter_config.type ~= "server" then
             return startup_callback(nil,
-                ("invalid dap.type '%s' — must be 'executable' or 'server'"):format(tostring(debugger.dap.type)))
+                ("invalid dap.type '%s' — must be 'executable' or 'server'"):format(tostring(debugger.adapter_config
+                .type)))
         end
 
         -- Build final start args
@@ -290,7 +295,7 @@ local function _create_debug_job(task, startup_callback, output_handler, exit_ha
         local start_args = {
             name = task.name,
             debug_args = {
-                dap = debugger.dap,
+                adapter = debugger.adapter_config,
                 request = task.debug_request,
                 request_args = resolved_args,
                 terminate_debuggee = debugger.terminate_debuggee,
@@ -369,7 +374,7 @@ end
 local function _start_one_task(task, startup_callback, task_exit_handler)
     resolver.resolve_macros(task, function(success, resolved_task, err)
         if resolved_task then
-            _start_one_task_resolved(task, startup_callback, task_exit_handler)
+            _start_one_task_resolved(resolved_task, startup_callback, task_exit_handler)
         else
             startup_callback(nil, err or "Uknown error")
         end

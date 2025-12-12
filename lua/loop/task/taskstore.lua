@@ -47,7 +47,7 @@ end
 
 local function task_order_handler(path, attrs)
     return { "name", "type", "command", "cwd",
-        "env", "quickfix_matcher", "debug_adapter", "debug_request", "debug_args", "depends_on" }
+        "env", "quickfix_matcher", "debugger", "debugger_config", "debug_request", "debug_args", "depends_on" }
 end
 
 local function order_handler(path, attrs)

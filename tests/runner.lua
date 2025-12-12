@@ -3,9 +3,6 @@ require("plenary.busted")
 local runner = require("loop.runner")
 local resolver = require("loop.tools.resolver")
 
-require('loop.window').setup()
-require('loop.debug.breakpoints').setup()
-
 -- Mock the heavy dependencies so tests run instantly and safely
 package.preload["loop.job.TermJob"] = function()
     return {
@@ -35,7 +32,7 @@ end
 package.loaded["loop.config"] = package.loaded["loop.config"] or {}
 package.loaded["loop.config"].current = {
     macros = {},
-    debuggers = { gdb = { dap = { type = "executable" } } },
+    debuggers = { gdb = { adapter_config = { type = "executable" } } },
     qfmatchers = {}
 }
 
@@ -152,7 +149,7 @@ describe("loop.task.runner", function()
                 {
                     name = "debugme",
                     type = "debug",
-                    debug_adapter = "gdb",
+                    debugger = "gdb",
                     debug_request = "launch",
                     debug_args = {},
                 }

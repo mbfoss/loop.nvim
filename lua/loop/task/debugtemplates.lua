@@ -12,7 +12,7 @@ return {
             type = "debug",
             command = "${file:lua}",
             cwd = "${projdir}",
-            debug_adapter = "lua",
+            debugger = "lua",
             debug_request = "launch",
             -- everything else (program.file, cwd, etc.) is filled automatically
         }
@@ -23,7 +23,7 @@ return {
         task = {
             name = "Attach",
             type = "debug",
-            debug_adapter = "lua:remote",
+            debugger = "lua:remote",
             debug_request = "attach",
             debug_args = {
                 host = "127.0.0.1",
@@ -40,9 +40,10 @@ return {
         task = {
             name = "Debug",
             type = "debug",
-            command = "${select-file:Select binary:}",
+            command = "${prompt:Select binary:}",
             cwd = "${projdir}",
-            debug_adapter = "lldb",
+            depends_on = {},
+            debugger = "lldb",
             debug_request = "launch",
             debug_args = {
                 runInTerminal = true, -- most people want this
@@ -56,7 +57,8 @@ return {
         task = {
             name = "Attach",
             type = "debug",
-            debug_adapter = "lldb",
+            depends_on = {},
+            debugger = "lldb",
             debug_request = "attach",
             debug_args = { pid = "${select-pid}" },
         }
@@ -72,7 +74,8 @@ return {
             type = "debug",
             command = "${file:javascript}",
             cwd = "${projdir}",
-            debug_adapter = "js-debug",
+            depends_on = {},
+            debugger = "js-debug",
             debug_request = "launch",
             debug_args = {
                 sourceMaps = true,
@@ -86,7 +89,8 @@ return {
         task = {
             name = "Attach",
             type = "debug",
-            debug_adapter = "js-debug",
+            depends_on = {},
+            debugger = "js-debug",
             debug_request = "attach",
             debug_args = {
                 address = "127.0.0.1",
@@ -106,7 +110,29 @@ return {
             type = "debug",
             command = "${file:python}",
             cwd = "${projdir}",
-            debug_adapter = "debugpy",
+            depends_on = {},
+            debugger = "debugpy",
+            debug_request = "launch",
+            debug_args = {
+                justMyCode = false,
+            },
+        }
+    },
+
+    -- ==================================================================
+    -- Python
+    -- ==================================================================
+    {
+        name = "Attach to Python debug server (debugpy)",
+        task = {
+            name = "Debug",
+            type = "debug",
+            depends_on = {},
+            debugger = "debugpy:remote",
+            debugger_config = {
+                host = "127.0.0.1",
+                port = 8086,
+            },
             debug_request = "launch",
             debug_args = {
                 justMyCode = false,
@@ -123,7 +149,8 @@ return {
             name = "Debug Go program (delve)",
             type = "debug",
             cwd = "${projdir}",
-            debug_adapter = "go",
+            depends_on = {},
+            debugger = "go",
             debug_request = "launch",
             debug_args = { mode = "debug" }, -- program is auto-filled from cwd
         }
@@ -134,7 +161,8 @@ return {
         task = {
             name = "Attach",
             type = "debug",
-            debug_adapter = "go",
+            depends_on = {},
+            debugger = "go",
             debug_request = "attach",
             debug_args = {
                 mode = "local",
@@ -151,7 +179,8 @@ return {
         task = {
             name = "Launch",
             type = "debug",
-            debug_adapter = "chrome",
+            depends_on = {},
+            debugger = "chrome",
             debug_request = "launch",
             debug_args = {
                 url = "http://localhost:3000",
@@ -167,7 +196,8 @@ return {
         task = {
             name = "Attach",
             type = "debug",
-            debug_adapter = "chrome",
+            depends_on = {},
+            debugger = "chrome",
             debug_request = "attach",
             debug_args = {
                 port = 9222,
@@ -186,7 +216,8 @@ return {
             type = "debug",
             command = "${file}",
             cwd = "${projdir}",
-            debug_adapter = "bash",
+            depends_on = {},
+            debugger = "bash",
             debug_request = "launch",
             -- program and cwd are auto-filled
         }
@@ -200,7 +231,8 @@ return {
         task = {
             name = "Listen",
             type = "debug",
-            debug_adapter = "php",
+            depends_on = {},
+            debugger = "php",
             debug_request = "launch",
             debug_args = {
                 port = 9003,
@@ -217,7 +249,8 @@ return {
         task = {
             name = "Debug",
             type = "debug",
-            debug_adapter = "netcoredbg",
+            depends_on = {},
+            debugger = "netcoredbg",
             debug_request = "launch",
             debug_args = {
                 program = function()
@@ -232,7 +265,8 @@ return {
         task = {
             name = "Attach",
             type = "debug",
-            debug_adapter = "netcoredbg",
+            depends_on = {},
+            debugger = "netcoredbg",
             debug_request = "attach",
             debug_args = { processId = "${select-pid}" },
         }
@@ -246,7 +280,8 @@ return {
         task = {
             name = "Attach",
             type = "debug",
-            debug_adapter = "java",
+            depends_on = {},
+            debugger = "java",
             debug_request = "attach",
             debug_args = {
                 hostName = "127.0.0.1",

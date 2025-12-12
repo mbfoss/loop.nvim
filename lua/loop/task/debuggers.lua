@@ -19,9 +19,9 @@ local function get_task_cwd(task)
 end
 
 ---@class loop.Config.Debugger
----@field dap          loop.dap.session.Args.DAP
----@field launch_args  table<string,any>|nil
----@field attach_args  table<string,any>|nil
+---@field adapter_config loop.dap.AdapterConfig
+---@field launch_args    table<string,any>|nil
+---@field attach_args    table<string,any>|nil
 ---@field server_command string|string[]|nil
 ---@field terminate_debuggee boolean|nil
 ---@field launch_post_configure boolean|nil
@@ -62,7 +62,7 @@ end
 -- Lua (local debugging inside Neovim or standalone scripts)
 -- ==================================================================
 debuggers.lua = {
-    dap = {
+    adapter_config = {
         adapter_id = "lua",
         name = "Local Lua Debugger",
         type = "executable",
@@ -93,8 +93,8 @@ debuggers.lua = {
 
 
 debuggers["lua:remote"] = {
-    dap = {
-        adapter_id = "lua:remote",
+    adapter_config = {
+        adapter_id = "lua",
         name = "Lua Remote Debugger",
         type = "server",
         host = "127.0.0.1",
@@ -114,7 +114,7 @@ debuggers["lua:remote"] = {
 -- C / C++ / Rust / Objective-C
 -- ==================================================================
 debuggers.lldb = {
-    dap = {
+    adapter_config = {
         adapter_id = "lldb",
         name = "LLDB (via lldb-dap)",
         type = "executable",
@@ -143,7 +143,7 @@ debuggers.lldb = {
 -- server command: node dapDebugServer.js
 -- ──────────────────────────────────────────────────────────────
 debuggers["js-debug"] = {
-    dap = {
+    adapter_config = {
         adapter_id = "js-debug",
         name = "js-debug",
         type = "server",
@@ -167,7 +167,7 @@ debuggers["js-debug"] = {
         request = "attach",
         name = "Attach to Node (localhost)",
         address = "127.0.0.1",
-        port = "${prompt:Inspector port: }",
+        port = "${prompt:Inspector port:}",
         cwd = "${projdir}",
         restart = true,      -- auto-reconnect if process restarts
         localRoot = "${projdir}",
@@ -180,7 +180,7 @@ debuggers["js-debug"] = {
 -- Python
 -- ==================================================================
 debuggers.debugpy = { -- tested
-    dap = {
+    adapter_config = {
         adapter_id = "debugpy",
         name = "debugpy",
         type = "executable",
@@ -196,11 +196,25 @@ debuggers.debugpy = { -- tested
     },
 }
 
+debuggers["debugpy:remote"] = {
+    adapter_config = {
+        adapter_id = "debugpy",
+        name = "Python Remote Debugger",
+        type = "server",
+        host = "127.0.0.1",
+        port = 8086,
+    },
+    launch_args = {
+        justMyCode = false,
+        console = "integratedTerminal",
+    },
+}
+
 -- ==================================================================
 -- Go
 -- ==================================================================
 debuggers.go = { -- untested
-    dap = {
+    adapter_config = {
         adapter_id = "go",
         name = "Delve (dlv)",
         type = "executable",
@@ -222,7 +236,7 @@ debuggers.go = { -- untested
 -- Chrome / Edge / Web (Browser)
 -- ==================================================================
 debuggers.chrome = { -- untested
-    dap = {
+    adapter_config = {
         adapter_id = "chrome",
         name = "Chrome",
         type = "executable",
@@ -248,7 +262,7 @@ debuggers.chrome = { -- untested
 -- Bash
 -- ==================================================================
 debuggers.bash = { -- untested
-    dap = {
+    adapter_config = {
         adapter_id = "bash",
         name = "bashdb",
         type = "executable",
@@ -273,7 +287,7 @@ debuggers.bash = { -- untested
 -- PHP
 -- ==================================================================
 debuggers.php = { -- untested
-    dap = {
+    adapter_config = {
         adapter_id = "php",
         name = "PHP Debug (vscode-php-debug)",
         type = "executable",
@@ -293,7 +307,7 @@ debuggers.php = { -- untested
 -- Java
 -- ==================================================================
 debuggers.java = { -- untested
-    dap = {
+    adapter_config = {
         adapter_id = "java",
         name = "Java (jdtls)",
         type = "server",
@@ -307,7 +321,7 @@ debuggers.java = { -- untested
 -- C# / .NET
 -- ==================================================================
 debuggers.csharp = { -- untested
-    dap = {
+    adapter_config = {
         adapter_id = "netcoredbg",
         name = "netcoredbg",
         type = "executable",

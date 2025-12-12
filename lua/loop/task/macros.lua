@@ -105,9 +105,15 @@ function M.timestamp(cb)
     cb(os.date("%Y-%m-%dT%H:%M:%S"))
 end
 
-function M.prompt(cb, text)
+function M.prompt(cb, text, default)
     assert(text, "prompt macro require prompt text")
-    vim.ui.input({ prompt = text }, cb)
+    vim.ui.input({ prompt = text, default = default, completion = "file" }, cb)
+end
+
+function M.env(cb, varname)
+    assert(varname, "env macro requires environment variable name")
+    local value = vim.fn.getenv(varname)
+    cb(value ~= vim.NIL and value or nil)
 end
 
 -- Async process selector (now works!)

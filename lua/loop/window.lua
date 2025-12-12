@@ -389,7 +389,7 @@ end
 
 ---@param type "build"|"run"|"debug"|"debugoutput"|"stacktrace"|"variables"|"varwatch"|"callers"
 ---@param page loop.pages.Page
----@param replace_existing boolean|nil
+---@param replace_existing? boolean|nil
 function M.add_page(type, page, replace_existing)
     assert(setup_done)
     local tab

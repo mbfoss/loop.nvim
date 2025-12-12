@@ -1,3 +1,5 @@
+require('loop.dap.sessiondef')
+
 ---@alias loop.TaskType "build"|"run"|"debug"|"vimcmd"|"composite"
 
 ---@class loop.Task
@@ -8,7 +10,8 @@
 ---@field env table<string,string>? # optional environment variables
 ---@field quickfix_matcher string|nil
 ---@field depends_on string[]? # optional list of dependent task names
----@field debug_adapter string|nil
+---@field debugger string|nil
+---@field debugger_config table<string,any>|nil
 ---@field debug_request "launch"|"attach"|nil
 ---@field debug_args table<string,any>|nil
 

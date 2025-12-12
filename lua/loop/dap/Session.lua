@@ -1,101 +1,13 @@
+require('loop.dap.sessiondef')
+
 local class = require('loop.tools.class')
 local strtools = require('loop.tools.strtools')
-local daptools = require('loop.dap.daptools')
 
 local BaseSession = require("loop.dap.BaseSession")
 local FSM = require("loop.tools.FSM")
 
 local fsmdata = require('loop.dap.fsmdata')
 local breakpoints = require('loop.dap.breakpoints')
-
----@class loop.dap.session.SourceBPData
----@field user_data loop.dap.SourceBreakpoint
----@field verified boolean
----@field dap_id number|nil
-
----@class loop.dap.session.SourceBreakpointsData
----@field by_location table<string, table<number, loop.dap.session.SourceBPData>>
----@field by_usr_id table<number, loop.dap.session.SourceBPData>
----@field by_dap_id table<number, loop.dap.session.SourceBPData>
----@field pending_files table<string,boolean>
-
----@class loop.dap.session.notify.Trace
----@field level nil|"warn"|"error"
----@field text string
-
-
----@class loop.dap.session.notify.BreakpointState
----@field breakpoint_id number
----@field verified boolean
----@field removed boolean|nil
-
----@alias loop.dap.session.notify.BreakpointsEvent loop.dap.session.notify.BreakpointState[]
-
----@class loop.dap.session.Args.DAP
----@field adapter_id string
----@field type "executable"|"server"
----@field host string|nil
----@field port number|nil
----@field name string
----@field command string|string[]|nil
----@field env table<string,string>|nil
----@field cwd string|nil
-
----@alias loop.session.TrackerEvent
----|"trace"
----|"state"
----|"output"
----|"runInTerminal_request"
----|"threads_paused"
----|"threads_continued"
----|"breakpoints"
----|"debuggee_exit"
----|"subsession_request"
----@alias loop.session.Tracker fun(session:loop.dap.Session, event:loop.session.TrackerEvent, args:any)
-
----@class loop.dap.session.DebugArgs
----@field dap          loop.dap.session.Args.DAP
----@field request      "launch" | "attach"
----@field request_args  loop.dap.proto.AttachRequestArguments|loop.dap.proto.LaunchRequestArguments|nil
----@field launch_post_configure boolean|nil
----@field terminate_debuggee boolean|nil
-
----@class loop.dap.session.Args
----@field debug_args loop.dap.session.DebugArgs|nil
----@field tracker loop.session.Tracker
----@field exit_handler fun(code:number)
-
----@class loop.dap.session.notify.SubsessionRequest
----@field name string
----@field debug_args loop.dap.session.DebugArgs
----@field on_success fun(resp_body:any)
----@field on_failure fun(reason:string)
-
----@class loop.dap.session.notify.StateData
----@field state "initializing"|"starting"|"running"|"disconnecting"|"terminating"|"ended"
-
----@alias loop.dap.session.StackProvider fun(args:loop.dap.proto.StackTraceArguments, callback:fun(err:string|nil, data: loop.dap.proto.StackTraceResponse | nil))
----@alias loop.dap.session.ScopesProvider fun(args:loop.dap.proto.ScopesArguments, callback:fun(err:string|nil, data: loop.dap.proto.ScopesResponse | nil))
----@alias loop.dap.session.VariablesProvider fun(args:loop.dap.proto.VariablesArguments, callback:fun(err:string|nil, data: loop.dap.proto.VariablesResponse | nil))
----@alias loop.dap.session.EvaluateProvider fun(args:loop.dap.proto.EvaluateArguments, callback:fun(err:string|nil, data: loop.dap.proto.EvaluateResponse | nil))
-
----@class loop.dap.session.DataProvidersExpiry
----@field expired boolean
-
----@class loop.dap.session.DataProviders
----@field expiry_info loop.dap.session.DataProvidersExpiry
----@field stack_provider loop.dap.session.StackProvider
----@field scopes_provider loop.dap.session.ScopesProvider
----@field variables_provider loop.dap.session.VariablesProvider
----@field evaluate_provider loop.dap.session.EvaluateProvider
-
----@class loop.dap.session.notify.ThreadData
----@field thread_id number
----@field threads loop.dap.proto.Thread[]
----@field stack_provider loop.dap.session.StackProvider
----@field scopes_provider loop.dap.session.ScopesProvider
----@field variables_provider loop.dap.session.VariablesProvider
----@field evaluate_provider loop.dap.session.EvaluateProvider
 
 ---@class loop.dap.Session
 ---@field new fun(self: loop.dap.Session, name:string) : loop.dap.Session
@@ -139,13 +51,13 @@ function Session:start(args)
     self._args = args
 
     assert(args.debug_args)
-    assert(args.debug_args.dap)
+    assert(args.debug_args.adapter)
 
-    local debuggername = args.debug_args.dap.name or "Debugger"
+    local debuggername = args.debug_args.adapter.name or "Debugger"
 
     self._log:debug("Starting - args: " .. vim.inspect(args))
 
-    local dap = args.debug_args.dap
+    local adapter = args.debug_args.adapter
 
     self._capabilities = {}
     self._process_ended = false
@@ -166,8 +78,8 @@ function Session:start(args)
         end
     end
 
-    if dap.type ~= "server" then
-        local cmd_and_args = strtools.cmd_to_string_array(dap.command)
+    if adapter.type ~= "server" then
+        local cmd_and_args = strtools.cmd_to_string_array(adapter.command)
         if #cmd_and_args == 0 then
             return false, "Missing DAP process command"
         end
@@ -189,20 +101,20 @@ function Session:start(args)
             dap_mode = "executable",
             dap_cmd = dap_path,  -- dap process
             dap_args = dap_args, -- dap args
-            dap_env = dap.env,
-            dap_cwd = dap.cwd,
+            dap_env = adapter.env,
+            dap_cwd = adapter.cwd,
             on_stderr = stderr_handler,
             on_exit = exit_handler,
         })
     else
-        if not dap.host or dap.host == "" or not dap.port then
+        if not adapter.host or adapter.host == "" or not adapter.port then
             return false, "Missing remote DAP host name or port"
         end
         self._base_session = BaseSession:new(self._name)
         self._base_session:start({
             dap_mode = "server",
-            dap_host = dap.host,
-            dap_port = dap.port,
+            dap_host = adapter.host,
+            dap_port = adapter.port,
             on_stderr = stderr_handler,
             on_exit = exit_handler,
         })
@@ -474,7 +386,7 @@ function Session:_on_startDebugging_request(req_args, on_success, on_failure)
     local data = {
         name = name,
         debug_args = {
-            dap = vim.deepcopy(self._args.debug_args.dap),
+            adapter = vim.deepcopy(self._args.debug_args.adapter),
             request = req_args.request,
             request_args = req_args.configuration
         },
@@ -588,7 +500,7 @@ end
 
 ---@param on_complete fun(success:boolean)
 function Session:_send_initialize(on_complete)
-    local adapter_id = self._args.debug_args.dap.adapter_id
+    local adapter_id = self._args.debug_args.adapter.adapter_id
     if type(adapter_id) ~= "string" or adapter_id == "" then
         self:_trace_notification("Missing or invalid adapter_id in debugger configuration")
         on_complete(false)

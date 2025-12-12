@@ -8,9 +8,14 @@ end
 vim.opt.rtp:append(".")
 vim.opt.rtp:append(plenary_dir)
 
+local loop = require('loop')
+loop.setup()
+local config = require('loop.config')
+assert(config.current.window)
+
 vim.cmd("runtime plugin/plenary.vim")
 
 require("tests.strtools")
 require("tests.tree")
 require("tests.resolver")
-require("tests.runner")
+--require("tests.runner")

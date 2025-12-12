@@ -12,7 +12,7 @@ local notifications = require("loop.notifications")
 local function _task_as_json(task)
     local function order_handler(_, _)
         return { "name", "type", "command", "cwd",
-            "env", "quickfix_matcher", "debug_adapter", "debug_request", "debug_args", "depends_on" }
+            "env", "quickfix_matcher", "debugger", "debugger_config", "debug_request", "debug_args", "depends_on" }
     end
     return jsontools.to_string(task, order_handler)
 end
