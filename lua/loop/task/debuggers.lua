@@ -204,7 +204,7 @@ debuggers["debugpy:remote"] = {
         host = "127.0.0.1",
         port = 8086,
     },
-    launch_args = {
+    attach_args = {
         justMyCode = false,
         console = "integratedTerminal",
     },

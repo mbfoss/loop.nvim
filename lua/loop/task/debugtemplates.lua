@@ -133,7 +133,7 @@ return {
                 host = "127.0.0.1",
                 port = 8086,
             },
-            debug_request = "launch",
+            debug_request = "attach",
             debug_args = {
                 justMyCode = false,
             },
