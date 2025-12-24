@@ -12,15 +12,21 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Install Neovim
+      - name: Install latest Neovim (>= 0.10)
         run: |
-          sudo apt update
-          sudo apt install -y neovim
+          # Download latest stable Neovim AppImage
+          curl -LO https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux-arm64.appimage
+          
+          # Make it executable
+          chmod u+x nvim.appimage
+          
+          # Extract and install
+          ./nvim.appimage --appimage-extract
+          sudo mv squashfs-root /opt/neovim
+          sudo ln -s /opt/neovim/AppRun /usr/bin/nvim
 
-      #- name: Install luarocks + dependencies
-      #  run: |
-      #    sudo apt install -y luarocks
-      #    luarocks install luabitop || true
+          # Check version
+          nvim --version
 
       - name: Run tests
         run: make test
