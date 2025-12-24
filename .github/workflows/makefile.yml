@@ -14,18 +14,21 @@ jobs:
 
       - name: Install latest Neovim (>= 0.10)
         run: |
-          # Download latest stable Neovim AppImage
-          curl -LO https://github.com/neovim/neovim/releases/download/v0.11.5/nvim-linux-arm64.appimage
-          
-          # Make it executable
+          # Get latest release tag from GitHub API
+          LATEST=$(curl -s https://api.github.com/repos/neovim/neovim/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+
+          # Download the x86_64 AppImage for that release
+          curl -L -o nvim.appimage "https://github.com/neovim/neovim/releases/download/${LATEST}/nvim-linux-x86_64.appimage"
+
+          # Make executable
           chmod u+x nvim.appimage
-          
+
           # Extract and install
           ./nvim.appimage --appimage-extract
           sudo mv squashfs-root /opt/neovim
           sudo ln -s /opt/neovim/AppRun /usr/bin/nvim
 
-          # Check version
+          # Verify version
           nvim --version
 
       - name: Run tests
