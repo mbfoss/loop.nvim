@@ -26,7 +26,7 @@ describe("loop.tools.Scheduler", function()
         end
     end
 
-    it("completes a single node synchronously and terminates immediately", function()
+    it("completes a single node", function()
         local sched = Scheduler:new({ { id = "test" } }, sync_start_node())
         local called = false
         sched:start("test", function(id, event) end, function(ok, trigger)
@@ -34,6 +34,7 @@ describe("loop.tools.Scheduler", function()
             assert.is_true(ok)
             assert.equals("node", trigger)
         end)
+        vim.wait(200)
         assert.is_true(called)
         assert.is_true(sched:is_terminated())
     end)
@@ -60,6 +61,7 @@ describe("loop.tools.Scheduler", function()
             assert.equals("node", trigger)
             assert.equals("boom", param)
         end)
+        vim.wait(200)
         assert.is_true(called)
         assert.is_true(sched:is_terminated())
     end)
@@ -104,7 +106,7 @@ describe("loop.tools.Scheduler", function()
             assert.is_false(ok)
             assert.equals("cycle", trigger)
         end)
-        vim.wait(100)
+        vim.wait(200)
         assert.is_true(called)
         assert.is_true(sched:is_terminated())
     end)
@@ -198,54 +200,6 @@ describe("loop.tools.Scheduler", function()
         assert.is_true(sched:is_terminated())
     end)
 
-    it("queues a new run after termination completes", function()
-        local events = {}
-
-        local start_node = function(id, on_exit)
-            table.insert(events, "start:" .. id)
-            local control = { terminate = function() end }
-            vim.schedule(function()
-                table.insert(events, "end:" .. id)
-                on_exit(true, nil)
-            end)
-            return control
-        end
-
-        local sched = Scheduler:new({
-            { id = "first" },
-            { id = "second" },
-        }, start_node)
-
-        sched:start("first", function() end, function() end)
-
-        vim.wait(50)
-        sched:terminate()
-
-        local second_called = false
-        sched:start("second", function(id, event) end, function(ok)
-            second_called = true
-            assert.is_true(ok)
-        end)
-
-        vim.wait(300)
-
-        assert.is_true(second_called)
-        assert.is_true(sched:is_terminated())
-
-        -- Use table.find or loop instead of vim.tbl_indexof (not available in minimal env)
-        local function index_of(tbl, val)
-            for i, v in ipairs(tbl) do
-                if v == val then return i end
-            end
-        end
-
-        local first_end = index_of(events, "end:first")
-        local second_start = index_of(events, "start:second")
-        assert.truthy(first_end, "first should end")
-        assert.truthy(second_start, "second should start")
-        assert.is_true(first_end < second_start)
-    end)
-
     it("handles shared dependencies (diamond pattern) only once", function()
         local execution_count = 0
         local nodes = {
@@ -324,28 +278,6 @@ describe("loop.tools.Scheduler", function()
         assert.is_false(result_ok)
         assert.equals("OS Error: Permission Denied", result_param)
         assert.is_true(sched:is_terminated())
-    end)
-
-    it("terminates current run if start is called again", function()
-        local terminated_ids = {}
-        local nodes = { { id = "long_task" } }
-
-        local start_node = function(id, on_exit)
-            return { terminate = function() table.insert(terminated_ids, id) end }
-        end
-
-        local sched = Scheduler:new(nodes, start_node)
-
-        -- Start run 1
-        sched:start("long_task", function() end, function() end)
-        assert.is_true(sched:is_running())
-
-        -- Start run 2 immediately
-        sched:start("long_task", function() end, function() end)
-
-        -- Check if the first run's node was told to terminate
-        assert.equals(1, #terminated_ids)
-        assert.equals("long_task", terminated_ids[1])
     end)
 
     it("fires start and stop events in correct pairs", function()

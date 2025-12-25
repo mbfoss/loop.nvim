@@ -208,7 +208,7 @@ end
 ---@param root string
 ---@param page_manager_fact loop.PageManagerFactory
 ---@param on_exit? fun(success:boolean, reason?:string)
-function TaskScheduler:start(tasks, root, dry_run, page_manager_fact, on_exit)
+function TaskScheduler:start(tasks, root, page_manager_fact, on_exit)
     on_exit = on_exit or function(success, reason) end
     dry_run = dry_run == true
 

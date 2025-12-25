@@ -72,7 +72,6 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
             _scheduler:start(
                 resolved_tasks,
                 root_name,
-                false, -- dry_run = false
                 page_manager_fact,
                 function(success, reason)
                     if success then

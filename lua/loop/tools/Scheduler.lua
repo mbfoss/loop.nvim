@@ -21,7 +21,6 @@ local class = require("loop.tools.class")
 ---@field _pending_running integer
 ---@field _terminated boolean
 ---@field _terminating boolean
----@field _pending_start { root:loop.scheduler.NodeId, on_exit:loop.scheduler.exit_fn, on_node_event:loop.scheduler.NodeEventFn }|nil
 ---@field _run_id integer
 local Scheduler = class()
 
@@ -46,7 +45,6 @@ function Scheduler:init(nodes, start_node)
     self._pending_running = 0
     self._terminated = true
     self._terminating = false
-    self._pending_start = nil
     self._run_id = 0
 end
 
@@ -57,15 +55,25 @@ end
 ---@param on_exit loop.scheduler.exit_fn
 ---@param on_node_event loop.scheduler.NodeEventFn
 function Scheduler:start(root, on_node_event, on_exit)
-    self._pending_start = { root = root, on_node_event = on_node_event, on_exit = on_exit }
-
-    if self._terminating then return end
-    if not self._terminated then
-        self:_begin_termination()
+    if self:is_running() then
+        on_exit(false, "interrupt", "another schedule is running")
         return
     end
+    self._run_id = self._run_id + 1
+    local my_run = self._run_id
 
-    self:_start_pending()
+    self._terminated = false
+    self._visiting = {}
+    self._running = {}
+    self._done = {}
+    self._inflight = {}
+    self._pending_running = 0
+
+    self:_run_node(root, on_node_event, function(ok, trigger, param)
+        if my_run ~= self._run_id then return end
+        on_exit(ok, trigger, param)
+        self:_check_termination_complete()
+    end)
 end
 
 function Scheduler:terminate()
@@ -94,30 +102,6 @@ function Scheduler:_check_termination_complete()
     self._running = {}
     self._visiting = {}
     self._done = {}
-
-    self:_start_pending()
-end
-
-function Scheduler:_start_pending()
-    local p = self._pending_start
-    if not p then return end
-    self._pending_start = nil
-
-    self._run_id = self._run_id + 1
-    local my_run = self._run_id
-
-    self._terminated = false
-    self._visiting = {}
-    self._running = {}
-    self._done = {}
-    self._inflight = {}
-    self._pending_running = 0
-
-    self:_run_node(p.root, p.on_node_event, function(ok, trigger, param)
-        if my_run ~= self._run_id then return end
-        p.on_exit(ok, trigger, param)
-        self:_check_termination_complete()
-    end)
 end
 
 --──────────────────────────────────────────────────────────────────────────────
@@ -254,13 +238,13 @@ function Scheduler:_run_leaf(id, on_exit)
     local my_run = self._run_id
 
     local ctl, err = self._start_node(id, function(ok, reason)
-        if my_run ~= self._run_id then return end
-
-        self._running[id] = nil
-        self._pending_running = math.max(0, self._pending_running - 1)
-
-        self:_check_termination_complete()
-        on_exit(ok, "node", reason)
+        vim.schedule(function()
+            if my_run ~= self._run_id then return end
+            self._running[id] = nil
+            self._pending_running = math.max(0, self._pending_running - 1)
+            self:_check_termination_complete()
+            on_exit(ok, "node", reason)
+        end)
     end)
 
     if not ctl then
