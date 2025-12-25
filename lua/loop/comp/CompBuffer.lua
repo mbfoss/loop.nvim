@@ -185,7 +185,7 @@ function CompBuffer:_setup_buf()
         local b = vim.bo[buf]
         b.buftype = "nofile"
         b.modifiable = false
-        b.bufhidden = "wipe"
+        b.bufhidden = "hide"
         b.swapfile = false
         b.undolevels = -1   -- buffer can't become "modified"
         b.buflisted = false -- hide from :ls
