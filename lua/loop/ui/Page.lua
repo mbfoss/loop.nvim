@@ -13,9 +13,8 @@ function Page.is_page(buf)
     return have_var
 end
 
----@param own_buf boolean
-function Page:_setup_buf(own_buf)
-    CompBuffer._setup_buf(self, own_buf)
+function Page:_setup_buf()
+    CompBuffer._setup_buf(self)
     assert(self._buf > 0)
     local buf = self._buf
     vim.api.nvim_buf_set_var(buf, buffer_flag_key, 1)
