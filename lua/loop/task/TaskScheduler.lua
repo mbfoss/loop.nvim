@@ -2,12 +2,14 @@ local class = require("loop.tools.class")
 local Scheduler = require("loop.tools.Scheduler")
 local taskmgr = require("loop.task.taskmgr")
 
+---@alias loop.TaskScheduler.TaskEventFn fun(taskname: string, event: loop.scheduler.NodeEvent, success:boolean,reason?:string)
+
 ---@class loop.TaskPlan
 ---@field tasks loop.Task[]
 ---@field root string
 ---@field page_manager_fact loop.PageManagerFactory
 ---@field on_start fun()
----@field on_task_event fun(name: string, event: "start"|"stop", success:boolean)
+---@field on_task_event loop.TaskScheduler.TaskEventFn
 ---@field on_exit fun(success:boolean, reason?:string)
 
 ---@class loop.TaskTreeNode
@@ -23,12 +25,28 @@ local taskmgr = require("loop.task.taskmgr")
 local TaskScheduler = class()
 
 
+---@param trigger  loop.scheduler.exit_trigger
+---@param param string?
+local function _get_failure_message(trigger, param)
+    local reason
+    if trigger == "cycle" then
+        reason = "Task dependency loop detected in task: " .. tostring(param)
+    elseif trigger == "invalid_node" then
+        reason = "Invalid task name: " .. tostring(param)
+    elseif trigger == "interrupt" then
+        reason = "Task interrupted"
+    else
+        reason = param or "Task failed"
+    end
+    return reason
+end
+
 ---@param task_name string
 ---@param name_to_task table<string, loop.Task>
 ---@param visiting table<string, boolean>
 ---@param visited table<string, boolean>
 ---@return loop.TaskTreeNode? node, string? error
-local function build_task_tree(task_name, name_to_task, visiting, visited)
+local function _build_task_tree(task_name, name_to_task, visiting, visited)
     -- True cycle (back-edge)
     if visiting[task_name] then
         return nil, "Cycle detected at task: " .. task_name
@@ -49,7 +67,7 @@ local function build_task_tree(task_name, name_to_task, visiting, visited)
     local deps = {}
     for _, dep_name in ipairs(task.depends_on or {}) do
         local dep_node, err =
-            build_task_tree(dep_name, name_to_task, visiting, visited)
+            _build_task_tree(dep_name, name_to_task, visiting, visited)
         if err then
             return nil, err
         end
@@ -114,7 +132,7 @@ function TaskScheduler:generate_task_plan(tasks, root)
     end
     local visited = {}
     local visiting = {}
-    local tree, err = build_task_tree(root, name_to_task, visiting, visited)
+    local tree, err = _build_task_tree(root, name_to_task, visiting, visited)
     if err then return nil, nil, err end
 
     local used_tasks = vim.tbl_map(function(name) return name_to_task[name] end, vim.tbl_keys(visited))
@@ -160,25 +178,15 @@ function TaskScheduler:_run_plan(plan)
     local final_cb = vim.schedule_wrap(plan.on_exit)
 
     ---@type loop.scheduler.NodeEventFn
-    local function on_node_event(id, event, success)
-        plan.on_task_event(id, event, success)
+    local function on_node_event(id, event, success, reason, param)
+        plan.on_task_event(id, event, success, _get_failure_message(reason, param))
     end
 
     ---@type loop.scheduler.exit_fn
     local on_plan_end = function(success, trigger, param)
-        local reason
-        if trigger == "cycle" then
-            reason = "Task dependency loop detected in task: " .. tostring(param)
-        elseif trigger == "invalid_node" then
-            reason = "Invalid task name: " .. tostring(param)
-        elseif trigger == "interrupt" then
-            reason = "Task interrupted"
-        else
-            reason = param or "Task failed"
-        end
+        local reason = _get_failure_message(trigger, param)
 
         final_cb(success, reason)
-
         if self._pending_plan then
             self:_start_current_plan()
         end
@@ -212,7 +220,7 @@ end
 ---@param root string
 ---@param page_manager_fact loop.PageManagerFactory
 ---@param on_start fun()
----@param on_task_event fun(name: string, event: "start"|"stop", success:boolean)
+---@param on_task_event loop.TaskScheduler.TaskEventFn
 ---@param on_exit? fun(success:boolean, reason?:string)
 function TaskScheduler:start(tasks, root, page_manager_fact, on_start, on_task_event, on_exit)
     on_exit = on_exit or function(success, reason) end

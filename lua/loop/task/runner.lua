@@ -1,11 +1,29 @@
-local M                      = {}
+local M             = {}
 
-local taskmgr                = require("loop.task.taskmgr")
-local resolver               = require("loop.tools.resolver")
-local notifications          = require("loop.notifications")
-local TaskScheduler          = require("loop.task.TaskScheduler")
-local ItemTreeComp           = require("loop.comp.ItemTree")
-local config                 = require("loop.config")
+local taskmgr       = require("loop.task.taskmgr")
+local resolver      = require("loop.tools.resolver")
+local notifications = require("loop.notifications")
+local TaskScheduler = require("loop.task.TaskScheduler")
+local ItemTreeComp  = require("loop.comp.ItemTree")
+local config        = require("loop.config")
+
+
+_status_node_id = "\027STATUS\027"
+
+-- Example state-to-highlight mapping
+local _highlights = {
+    pending = "LoopPluginTaskPending",
+    running = "LoopPluginTaskRunning",
+    success = "LoopPluginTaskSuccess",
+    warning = "LoopPluginTaskWarning",
+    failure = "LoopPluginTaskFailure",
+}
+
+vim.api.nvim_set_hl(0, _highlights.pending, { link = "Comment" })
+vim.api.nvim_set_hl(0, _highlights.running, { link = "DiffChange" })
+vim.api.nvim_set_hl(0, _highlights.success, { link = "DiffAdd" })
+vim.api.nvim_set_hl(0, _highlights.warning, { link = "WarningMsg" })
+vim.api.nvim_set_hl(0, _highlights.failure, { link = "ErrorMsg" })
 
 ---@type loop.TaskScheduler
 local _scheduler             = TaskScheduler:new()
@@ -57,19 +75,38 @@ local function _convert_task_tree(node, tree_comp, parent_id)
 end
 
 ---@param page_manager_fact loop.PageManagerFactory
----@param plural boolean
-local function _create_progress_page(page_manager_fact, plural)
+local function _create_progress_page(page_manager_fact)
     local symbols = config.current.window.symbols
     ---@type loop.comp.ItemTree.InitArgs
     local comp_args = {
         formatter = function(id, data, out_highlights)
+            if data.log_message then
+                if data.log_level == vim.log.levels.ERROR then
+                    table.insert(out_highlights, { group = _highlights.failure })
+                end
+                return data.log_message
+            end
+            hl = _highlights.pending
             local icon = symbols.waiting
             if data.event == "start" then
                 icon = symbols.running
+                hl = _highlights.running
             elseif data.event == "stop" then
-                icon = data.success and symbols.success or symbols.failure
+                if data.success then
+                    icon = symbols.success
+                    hl = _highlights.success
+                else
+                    icon = symbols.failure
+                    hl = _highlights.failure
+                end
             end
-            return icon .. " " .. data.name
+            local prefix = "[" .. icon .. "]"
+            table.insert(out_highlights, { group = hl, end_col = #prefix })
+            local text = prefix .. data.name
+            if data.error_msg then
+                text = text .. '\n' .. data.error_msg
+            end
+            return text
         end,
     }
     local comp = ItemTreeComp:new(comp_args)
@@ -78,7 +115,7 @@ local function _create_progress_page(page_manager_fact, plural)
         _current_progress_pmgr.delete_all_groups(true)
     end
     _current_progress_pmgr = page_manager_fact()
-    local group = _current_progress_pmgr.add_page_group("status", plural and "Tasks" or "Task")
+    local group = _current_progress_pmgr.add_page_group("status", "Status")
     local page = group.add_page("status", "Status", true)
     comp:link_to_buffer(page)
     return comp, page
@@ -93,19 +130,7 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
         if not root_name or not all_tasks then
             return
         end
-
-        taskmgr.save_last_task_name(root_name, config_dir)
-
-        if #all_tasks == 0 then
-            notifications.notify({ "No tasks found" }, vim.log.levels.WARN)
-            return
-        end
-
-        local node_tree, used_tasks, plan_error_msg = _scheduler:generate_task_plan(all_tasks, root_name)
-        if not node_tree or not used_tasks then
-            notifications.notify(plan_error_msg or "Failed to build task plan", vim.log.levels.ERROR)
-            return
-        end
+        local symbols = config.current.window.symbols
 
         local progress_info = {
             ---@type loop.comp.ItemTree|nil
@@ -113,13 +138,33 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
             ---@type loop.BufferController|nil
             page = nil
         }
+        progress_info.tree_comp, progress_info.page = _create_progress_page(page_manager_fact)
+        progress_info.page.set_ui_flags(symbols.waiting)
+
+        local function report_failure(msg)
+            progress_info.tree_comp:upsert_item({ id = _status_node_id, data = { log_message = msg, log_level = vim.log.levels.ERROR } })
+            progress_info.page.set_ui_flags(symbols.failure)
+        end
+
+        if #all_tasks == 0 then
+            report_failure("No tasks found")
+            return
+        end
+
+        taskmgr.save_last_task_name(root_name, config_dir)
+
+        local node_tree, used_tasks, plan_error_msg = _scheduler:generate_task_plan(all_tasks, root_name)
+        if not node_tree or not used_tasks then
+            report_failure(plan_error_msg or "Failed to build task plan")
+            return
+        end
+
+        progress_info.tree_comp:upsert_item({ id = _status_node_id, data = { log_message = "Resolving macros" } })
 
         -- Resolve macros only on the tasks that will be used
         resolver.resolve_macros(used_tasks, function(resolve_ok, resolved_tasks, resolve_error)
             if not resolve_ok or not resolved_tasks then
-                notifications.notify({
-                    resolve_error or "Failed to resolve macros in tasks"
-                }, vim.log.levels.ERROR)
+                report_failure(resolve_error or "Failed to resolve macros in tasks")
                 return
             end
 
@@ -129,39 +174,24 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
                 root_name,
                 page_manager_fact,
                 function() -- on start
-                    progress_info.tree_comp, progress_info.page = _create_progress_page(page_manager_fact,#all_tasks > 1)
+                    progress_info.tree_comp:clear_items()
                     _convert_task_tree(node_tree, progress_info.tree_comp)
                     progress_info.page.set_ui_flags(config.current.window.symbols.running)
-                    --notifications.notify("Task plan: \n" .. print_task_tree(node_tree))
                 end,
-                function(name, event, success) -- on stask event
+                function(name, event, success, reason) -- on stask event
                     local tree_comp = progress_info.tree_comp
                     if tree_comp then
                         local item = tree_comp:get_item(name)
                         if item then
                             item.data.event = event
                             item.data.success = success
+                            item.data.error_msg = (not success) and reason or nil
                             tree_comp:refresh_content()
                         end
                     end
                 end,
                 function(success, reason) -- on exit
-                    if success then
-                        notifications.notify({
-                            string.format("Task completed successfully: %s", root_name)
-                        }, vim.log.levels.INFO)
-                    else
-                        local msg = string.format("Task failed: %s", root_name)
-                        if reason then
-                            local first_line = reason:match("([^\n]*)") -- Get the first line
-                            msg = msg .. " (" .. first_line .. ")"
-                        end
-                        notifications.notify({ msg }, vim.log.levels.ERROR)
-                    end
-                    if progress_info.page then
-                        local symbols = config.current.window.symbols
-                        progress_info.page.set_ui_flags(success and symbols.success or symbols.failure)
-                    end
+                    progress_info.page.set_ui_flags(success and symbols.success or symbols.failure)
                 end
             )
         end)
@@ -177,7 +207,6 @@ end
 --- Terminate the currently running task plan (if any)
 function M.terminate_tasks()
     if _scheduler:is_running() or _scheduler:is_terminating() then
-        notifications.notify({ "Terminating tasks" }, vim.log.levels.INFO)
         _scheduler:terminate()
     end
 end

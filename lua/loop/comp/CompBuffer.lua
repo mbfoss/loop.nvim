@@ -70,7 +70,6 @@ function CompBuffer:destroy()
     end
     self._destroyed = true
     if self._buf > 0 then
-        --vim.notify("deleting buffer " .. tostring(self._buf))
         vim.api.nvim_buf_delete(self._buf, { force = true })
         assert(self._buf == -1)
     end
@@ -151,7 +150,6 @@ function CompBuffer:get_or_create_buf()
     end
 
     self._buf = vim.api.nvim_create_buf(false, true)
-    --vim.notify("created buffer " .. tostring(self._buf))
     self:_setup_buf(true)
     if self._renderer then
         self._renderer.render(self._buf)
@@ -174,7 +172,6 @@ function CompBuffer:_setup_buf(own_buf)
         bufname = "loop://" .. tostring(buf) .. timestamp .. '/' .. self._name
     end
 
-    --vim.notify(bufname)
     vim.api.nvim_buf_set_name(buf, bufname)
 
     do
@@ -248,7 +245,6 @@ function CompBuffer:_apply_keymap(key, item)
         local modes = { "n" }
         --local ok =
         pcall(function() vim.keymap.del(modes, key, { buffer = self._buf }) end)
-        --vim.notify("keymap removed " .. tostring(ok))
         vim.keymap.set(modes, key, function() item.callback() end, { buffer = self._buf, desc = item.desc })
     end
 end
