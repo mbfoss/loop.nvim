@@ -1,0 +1,156 @@
+{
+  "$schema": "./tasksschema.json",
+  "tasks": [
+    {
+      "name": "full-workflow",
+      "type": "composite",
+      "depends_on": [
+        "setup",
+        "lint-and-format",
+        "build",
+        "test-all",
+        "cleanup"
+      ],
+      "depends_order": "sequence"
+    },
+    {
+      "name": "setup",
+      "type": "composite",
+      "depends_on": [
+        "create-temp-dir",
+        "install-deps"
+      ],
+      "depends_order": "parallel"
+    },
+    {
+      "name": "create-temp-dir",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Creating temp dir'); vim.wait(800)",
+      "depends_on": []
+    },
+    {
+      "name": "install-deps",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Installing dependencies'); vim.wait(1500)",
+      "depends_on": []
+    },
+    {
+      "name": "lint-and-format",
+      "type": "composite",
+      "depends_on": [
+        "lua-lint",
+        "format-buffer"
+      ],
+      "depends_order": "parallel"
+    },
+    {
+      "name": "lua-lint",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Running luacheck'); vim.wait(1200)",
+      "depends_on": [
+        "install-deps"
+      ]
+    },
+    {
+      "name": "format-buffer",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Formatting with stylua'); vim.wait(900)",
+      "depends_on": [
+        "install-deps"
+      ]
+    },
+    {
+      "name": "build",
+      "type": "composite",
+      "depends_on": [
+        "compile-lua",
+        "generate-docs"
+      ],
+      "depends_order": "parallel"
+    },
+    {
+      "name": "compile-lua",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Bytecode compilation'); vim.wait(1800)",
+      "depends_on": [
+        "lua-lint"
+      ]
+    },
+    {
+      "name": "generate-docs",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Generating LDoc'); vim.wait(2000)",
+      "depends_on": [
+        "format-buffer"
+      ]
+    },
+    {
+      "name": "test-all",
+      "type": "composite",
+      "depends_on": [
+        "unit-tests",
+        "integration-tests"
+      ],
+      "depends_order": "parallel"
+    },
+    {
+      "name": "unit-tests",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Running plenary unit tests'); vim.wait(2500)",
+      "depends_on": [
+        "compile-lua"
+      ]
+    },
+    {
+      "name": "integration-tests",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Running integration suite – this is long!'); vim.wait(5000)",
+      "depends_on": [
+        "start-test-server",
+        "compile-lua"
+      ]
+    },
+    {
+      "name": "start-test-server",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Starting mock LSP/server'); vim.wait(3000)",
+      "depends_on": []
+    },
+    {
+      "name": "cleanup",
+      "type": "vimcmd",
+      "command": "lua vim.notify('Cleaning up temp files'); vim.wait(600)",
+      "depends_on": []
+    },
+    {
+      "name": "failing-task",
+      "type": "vimcmd",
+      "command": "lua vim.notify('This task will fail'); vim.wait(1000); error('Intentional failure')",
+      "depends_on": []
+    },
+    {
+      "name": "cycle error check 2",
+      "type": "vimcmd",
+      "command": "lua vim.notify('THIS SHOULD NEVER RUN')",
+      "depends_on": [
+        "cycle error check 1"
+      ]
+    },
+    {
+      "name": "cycle error check 1",
+      "type": "vimcmd",
+      "command": "lua vim.notify('THIS SHOULD NEVER RUN')",
+      "depends_on": [
+        "cycle error check 2"
+      ]
+    },
+    {
+      "name": "should-not-run",
+      "type": "vimcmd",
+      "command": "lua vim.notify('THIS SHOULD NEVER RUN')",
+      "depends_on": [
+        "failing-task"
+      ]
+    }
+  ]
+}

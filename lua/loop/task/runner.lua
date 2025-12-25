@@ -81,7 +81,8 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
                     else
                         local msg = string.format("Task failed: %s", root_name)
                         if reason then
-                            msg = msg .. " (" .. reason .. ")"
+                            local first_line = reason:match("([^\n]*)")  -- Get the first line
+                            msg = msg .. " (" .. first_line .. ")"
                         end
                         notifications.notify({ msg }, vim.log.levels.ERROR)
                     end
