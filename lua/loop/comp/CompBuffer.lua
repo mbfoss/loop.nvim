@@ -59,10 +59,7 @@ function CompBuffer:make_controller()
         get_cursor = function()
             return self:get_cursor()
         end,
-        follow_last_line = function()
-            self:follow_last_line()
-        end,
-        disable_change_events = function ()
+        disable_change_events = function()
             self:disable_change_events()
         end
     }
@@ -109,10 +106,6 @@ end
 
 function CompBuffer:disable_change_events()
     self._no_change_events = true
-end
-
-function CompBuffer:follow_last_line()
-    self._follow = true
 end
 
 function CompBuffer:_on_buf_enter()

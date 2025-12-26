@@ -46,7 +46,6 @@ error('Cannot require a meta file')
 ---@field set_ui_flags fun(flags:string)
 ---@field add_keymap fun(key:string,keymap:loop.KeyMap)
 ---@field get_cursor fun():integer[]|nil
----@field follow_last_line fun()
 ---@field disable_change_events fun()
 
 ---@class loop.PageGroup
