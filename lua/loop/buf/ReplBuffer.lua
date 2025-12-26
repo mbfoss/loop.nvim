@@ -22,8 +22,17 @@ function ReplBuffer:init(type, name)
     self._history_idx = 0
     self._prompt = COLORS.BOLD .. COLORS.GREEN .. "> " .. COLORS.RESET
 
+    ---@type {request_counter:number,current_request:number}
+    self._completion = {
+        request_counter = 0, -- Tracks the unique ID of the latest request
+        current_request = -1,
+    }
+
     ---@type fun(input:string)?
     self._input_handler = nil
+
+    ---@type loop.ReplCompletionHandler?
+    self._completion_handler = nil
 end
 
 ---@return loop.ReplController
@@ -33,6 +42,9 @@ function ReplBuffer:make_controller()
         set_input_handler = function(handler)
             self._input_handler = handler
         end,
+        set_completion_handler = function(handler)
+            self._completion_handler = handler
+        end,
         add_output = function(text)
             self:send_line(text)
         end
@@ -41,6 +53,8 @@ end
 
 ---@param line string
 function ReplBuffer:on_input(line)
+    line = vim.fn.trim(line, "", 1) -- trim left
+    if line == "" then return end
     if self._input_handler then
         self._input_handler(line)
     else
@@ -48,11 +62,24 @@ function ReplBuffer:on_input(line)
     end
 end
 
----@param line string
----@return string[]
-function ReplBuffer:on_complete(line)
-    --TODO: implement tab completion here
-    return {}
+function ReplBuffer:on_complete(line, callback)
+    if self._completion_handler then
+        -- Increment counter: every Tab press gets a unique ID
+        local request_id = self._completion.request_counter + 1
+
+        self._completion.request_counter = request_id
+        self._completion.current_request = request_id
+
+        self._completion_handler(line, function(suggestions)
+            -- Only proceed if this is still the most recent request
+            -- AND the line hasn't changed since we started
+            if self._completion.current_request == self._completion.request_counter and line == self._current_line then
+                callback(suggestions)
+            end
+        end)
+    else
+        callback({})
+    end
 end
 
 function ReplBuffer:send_line(text)
@@ -68,7 +95,6 @@ end
 
 ---Refreshes the current input line in the terminal
 function ReplBuffer:_redraw_line()
-    -- \r: carriage return, \27[K: clear line from cursor right
     vim.api.nvim_chan_send(self._chan, "\r\27[K" .. self._prompt .. self._current_line)
 end
 
@@ -82,8 +108,7 @@ function ReplBuffer:_setup_buf()
             self:_handle_raw_input(data)
         end
     })
-    vim.api.nvim_chan_send(self._chan,
-        COLORS.GREEN .. "REPL Ready (Arrows for history, Tab for complete)" .. COLORS.RESET .. "\r\n" .. self._prompt)
+   self:_redraw_line()    
 end
 
 function ReplBuffer:_handle_raw_input(data)
@@ -112,14 +137,19 @@ function ReplBuffer:_handle_raw_input(data)
 
         -- 2. Tab (Complete)
     elseif data == "\t" then
-        local suggestions = self:on_complete(self._current_line)
-        if #suggestions == 1 then
-            self._current_line = suggestions[1]
-            self:_redraw_line()
-        elseif #suggestions > 1 then
-            vim.api.nvim_chan_send(self._chan, "\r\n" .. table.concat(suggestions, "  ") .. "\r\n")
-            self:_redraw_line()
-        end
+        -- Capture the line state at the exact moment Tab was pressed
+        local line_at_request = self._current_line
+
+        self:on_complete(line_at_request, function(suggestions)
+            if #suggestions == 1 then
+                self._current_line = suggestions[1]
+                self:_redraw_line()
+            elseif #suggestions > 1 then
+                -- Multi-line suggestions printout
+                vim.api.nvim_chan_send(self._chan, "\r\n" .. table.concat(suggestions, "  ") .. "\r\n")
+                self:_redraw_line()
+            end
+        end)
 
         -- 3. Arrow Keys (History)
         -- Up: \27[A, Down: \27[B

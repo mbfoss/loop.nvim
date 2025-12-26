@@ -2,11 +2,6 @@ local class = require('loop.tools.class')
 local Tree = require("loop.tools.Tree")
 local Trackers = require("loop.tools.Trackers")
 
----@class loop.comp.ItemTree.Highlight
----@field group string
----@field start_col number|nil 0-based
----@field end_col number|nil 0-based
-
 ---@alias loop.comp.ItemTree.ChildrenCallback fun(items:loop.comp.ItemTree.Item[])
 
 ---@class loop.comp.ItemTree.Item
@@ -30,7 +25,7 @@ local Trackers = require("loop.tools.Trackers")
 ---@field on_toggle? fun(id:any,data:any,expanded:boolean)
 
 ---@class loop.comp.ItemTree.InitArgs
----@field formatter fun(id:any,data:any,out_highlights:loop.comp.ItemTree.Highlight[]):string
+---@field formatter fun(id:any,data:any,out_highlights:loop.Highlight[]):string
 ---@field expand_char string?
 ---@field collapse_char string?
 ---@field indent_string string?
@@ -367,12 +362,12 @@ end
 ---@param node_data table The flatnode
 ---@param prefix string Indent + Expand/Collapse char
 ---@param text string Raw text from formatter
----@param highlights loop.comp.ItemTree.Highlight[]
----@return string[] lines, any[] flat_mappings, loop.comp.ItemTree.Highlight[][] line_highlights
+---@param highlights loop.Highlight[]
+---@return string[] lines, any[] flat_mappings, loop.Highlight[][] line_highlights
 function ItemTree:_process_node_lines(node_data, prefix, text, highlights)
     local lines = {}
     local mappings = {}
-    ---@type loop.comp.ItemTree.Highlight[][]
+    ---@type loop.Highlight[][]
     local line_highlights = {} -- This will be a list of lists
 
     local node_lines = vim.split(text, "\n", { trimempty = false })
@@ -386,7 +381,7 @@ function ItemTree:_process_node_lines(node_data, prefix, text, highlights)
         table.insert(lines, current_prefix .. line_content)
         table.insert(mappings, node_data)
 
-        ---@type loop.comp.ItemTree.Highlight[]
+        ---@type loop.Highlight[]
         local current_line_hls = {}
         local line_start = current_offset
         local line_end = current_offset + #line_content

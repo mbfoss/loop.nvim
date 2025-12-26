@@ -7,6 +7,7 @@ local jsontools = require('loop.tools.json')
 local selector = require("loop.tools.selector")
 local notifications = require("loop.notifications")
 local BaseBuffer = require('loop.buf.BaseBuffer')
+local OutputBuffer = require('loop.buf.OutputBuffer')
 local CompBuffer = require('loop.buf.CompBuffer')
 local ReplBuffer = require('loop.buf.ReplBuffer')
 
@@ -493,9 +494,12 @@ local function _create_term(page, args)
     local proc = TermProc:new()
     local proc_ok, proc_err = proc:start(args_cpy)
 
-    vim.keymap.set('t', '<Esc>', function() vim.cmd('stopinsert') end, { buffer = bufnr })
-    vim.api.nvim_win_set_cursor(_loop_win, { vim.api.nvim_buf_line_count(bufnr), 0 })
+    -- trick to set the buffer to auto scroll
+    vim.cmd.startinsert()
+    vim.cmd.stopinsert()
 
+    vim.keymap.set('t', '<Esc>', function() vim.cmd('stopinsert') end, { buffer = bufnr })
+ 
     vim.api.nvim_set_current_win(prev_win)
     if prev_win ~= _loop_win then
         vim.api.nvim_set_current_buf(prev_buf)
@@ -574,7 +578,15 @@ local function _add_tab_page(tab, opts)
         ---@type loop.PageData
         return { page = page:make_controller(), term_proc = proc }
     end
-    if opts.type == "comp_buf" then
+    if opts.type == "output" then
+        local output_buf = OutputBuffer:new(opts.buftype, opts.label)
+        local page = Page:new(output_buf)
+        _assign_tab_page(tab, page, opts.activate)
+        local ctrl = output_buf:make_controller()
+        ---@type loop.PageData
+        return { page = page:make_controller(), base_buf = ctrl, output_buf = ctrl }
+    end    
+    if opts.type == "comp" then
         local comp_buf = CompBuffer:new(opts.buftype, opts.label)
         local page = Page:new(comp_buf)
         _assign_tab_page(tab, page, opts.activate)
@@ -582,7 +594,7 @@ local function _add_tab_page(tab, opts)
         ---@type loop.PageData
         return { page = page:make_controller(), base_buf = ctrl, comp_buf = ctrl }
     end
-    if opts.type == "repl_buf" then
+    if opts.type == "repl" then
         local repl_buf = ReplBuffer:new(opts.buftype, opts.label)
         local page = Page:new(repl_buf)
         _assign_tab_page(tab, page, opts.activate)

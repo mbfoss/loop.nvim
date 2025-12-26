@@ -1,11 +1,6 @@
 local class = require('loop.tools.class')
 local Trackers = require("loop.tools.Trackers")
 
----@class loop.comp.ItemList.Highlight
----@field group string
----@field start_col number|nil 0-based
----@field end_col number|nil 0-based
-
 ---@class loop.comp.ItemList.Item
 ---@field id any
 ---@field data any
@@ -17,7 +12,7 @@ local Trackers = require("loop.tools.Trackers")
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListComp')
 
 ---@class loop.comp.ItemList.InitArgs
----@field formatter fun(item:loop.comp.ItemList.Item,out_highlights:loop.comp.ItemList.Highlight[]):string
+---@field formatter fun(item:loop.comp.ItemList.Item,out_highlights:loop.Highlight[]):string
 ---@field show_current_prefix boolean|nil            # NEW: whether to show ">" prefix on current item
 ---@field current_prefix string|nil                  # NEW: custom prefix, defaults to "> "
 ---@field render_delay_ms number|nil
@@ -186,7 +181,7 @@ end
 
 ---@param buf number
 ---@param idx number
----@param highlights loop.comp.ItemList.Highlight[]
+---@param highlights loop.Highlight[]
 function ItemList:_highlight(buf, idx, highlights)
     local item = self._items[idx]
     if #highlights > 0 then
@@ -225,7 +220,7 @@ end
 function ItemList:render(buf)
     vim.api.nvim_buf_clear_namespace(buf, _ns_id, 0, -1)
 
-    ---@type loop.comp.ItemList.Highlight[][]
+    ---@type loop.Highlight[][]
     local all_highlights = {}
     local lines = {}
     for _, item in ipairs(self._items) do

@@ -121,7 +121,7 @@ local function _create_progress_page(page_manager_fact)
     assert(group, "page mgr error")
     local page_data = group.add_page({
         id = "status",
-        type = "comp_buf",
+        type = "comp",
         label = "Status",
         buftype = "status",
         activate = true,
