@@ -58,7 +58,7 @@ error('Cannot require a meta file')
 ---@field set_renderer fun(renderer:loop.CompRenderer)
 ---@field request_refresh fun()
 
----@alias loop.ReplCompletionHandler fun(input:string, callback:fun(suggestions:string[]))
+---@alias loop.ReplCompletionHandler fun(input:string, callback:fun(suggestions:string[]?,err:string?))
 
 ---@class loop.ReplController
 ---@field set_input_handler fun(handler:fun(input:string))
