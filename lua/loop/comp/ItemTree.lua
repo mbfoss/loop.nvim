@@ -145,12 +145,8 @@ end
 -- TRACKERS
 ---------------------------------------------------------
 ---@param cb loop.comp.ItemTree.Tracker
----@return number
+---@return loop.TrackerRef
 function ItemTree:add_tracker(cb) return self._trackers:add_tracker(cb) end
-
----@param id number
----@return boolean
-function ItemTree:remove_tracker(id) return self._trackers:remove_tracker(id) end
 
 --- linked comp ---
 ---@param buf_ctrl loop.CompBufferController

@@ -168,7 +168,7 @@ end
 
 ---@param config_dir string
 ---@param name string
----@return any
+---@return table?
 function M.load_provider_state(config_dir, name)
     assert(name and name:match("[_%a][_%w]*") ~= nil, "invalid input")
     local filepath = vim.fs.joinpath(config_dir, "state." .. name .. ".json")
@@ -182,11 +182,12 @@ end
 
 ---@param config_dir string
 ---@param name string
----@param state any
+---@param state table
 function M.save_provider_state(config_dir, name, state)
     assert(name and name:match("[_%a][_%w]*") ~= nil, "invalid input")
+    assert(state)
     local filepath = vim.fs.joinpath(config_dir, "state." .. name .. ".json")
-    jsontools.save_to_file(filepath, state or {})
+    jsontools.save_to_file(filepath, state)
 end
 
 ---@param config_dir string

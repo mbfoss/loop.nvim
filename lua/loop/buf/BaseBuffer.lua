@@ -74,15 +74,9 @@ function BaseBuffer:get_user_data()
 end
 
 ---@param callbacks loop.comp.Tracker>
----@return number
+---@return loop.TrackerRef
 function BaseBuffer:add_tracker(callbacks)
     return self._trackers:add_tracker(callbacks)
-end
-
----@param id number
----@return boolean
-function BaseBuffer:remove_tracker(id)
-    return BaseBuffer._trackers:remove_tracker(id)
 end
 
 function BaseBuffer:disable_change_events()

@@ -112,11 +112,8 @@ function ItemList:get_current_item()
 end
 
 ---@param callbacks loop.comp.ItemList.Tracker
----@return number
+---@return loop.TrackerRef
 function ItemList:add_tracker(callbacks) return self._trackers:add_tracker(callbacks) end
-
----@return boolean
-function ItemList:remove_tracker(id) return self._trackers:remove_tracker(id) end
 
 function ItemList:set_items(items)
     self._items = items

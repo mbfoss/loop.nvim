@@ -1,5 +1,8 @@
 local class = require("loop.tools.class") -- your utility
 
+---@class loop.TrackerRef
+---@field cancel fun()
+
 ---@generic T  -- T = user-defined callbacks type
 ---@class loop.tools.Trackers<T>
 ---@field private _next_id integer
@@ -15,22 +18,17 @@ end
 ---Add a tracker and return its unique id
 ---@generic T
 ---@param callbacks T
----@return integer
+---@return loop.TrackerRef
 function Trackers:add_tracker(callbacks)
     local id = self._next_id + 1
     self._next_id = id
     self._items[id] = callbacks
-    return id
-end
-
----Remove a tracker by ID
----@param id integer
----@return boolean
-function Trackers:remove_tracker(id)
-    local exists = self._items[id] ~= nil
-    assert(exists)
-    self._items[id] = nil
-    return exists
+    ---@type loop.TrackerRef
+    return {
+        cancel = function()
+            self._items[id] = nil
+        end
+    }
 end
 
 ---Invoke a callback on each tracker if that callback exists

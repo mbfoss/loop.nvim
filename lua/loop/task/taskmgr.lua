@@ -7,6 +7,9 @@ local providers = require("loop.task.providers")
 local selector = require("loop.tools.selector")
 local notifications = require("loop.notifications")
 
+---@type table<string,table>
+local _provider_states = {}
+
 ---@params task loop.Task
 ---@return string,string
 local function _task_preview(task)
@@ -135,15 +138,21 @@ end
 
 ---@param ws_dir string
 ---@param config_dir string
+---@return loop.TaskProviderStore
 function M.on_workspace_open(ws_dir, config_dir)
     local names = providers.names()
     for _, name in ipairs(names) do
+        _provider_states[name] = nil
         local provider = M.get_provider(name)
         if provider and provider.on_workspace_open then
-            local state = taskstore.load_provider_state(config_dir, name)
-            if state then
-                provider.on_workspace_open(ws_dir, state)
-            end
+            local state = taskstore.load_provider_state(config_dir, name) or {}
+            _provider_states[name] = state
+            ---@type loop.TaskProviderStore
+            local store = {
+                set_field = function(fieldname, fieldvalue) state[fieldname] = fieldvalue end,
+                get_field = function(fieldname) return state[fieldname] end
+            }
+            provider.on_workspace_open(ws_dir, store)
         end
     end
 end
@@ -152,6 +161,7 @@ end
 function M.on_workspace_closed(ws_dir)
     local names = providers.names()
     for _, name in ipairs(names) do
+        _provider_states[name] = nil
         local provider = M.get_provider(name)
         if provider and provider.on_workspace_closed then
             provider.on_workspace_closed(ws_dir)
@@ -163,9 +173,8 @@ end
 function M.save_provider_states(config_dir)
     local names = providers.names()
     for _, name in ipairs(names) do
-        local provider = M.get_provider(name)
-        if provider and provider.get_state then
-            local state = provider.get_state()
+        local state = _provider_states[name]
+        if state then
             taskstore.save_provider_state(config_dir, name, state)
         end
     end
