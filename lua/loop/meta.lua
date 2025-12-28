@@ -22,8 +22,9 @@ error('Cannot require a meta file')
 ---@alias loop.TaskExitHandler fun(success:boolean,reason:string|nil)
 
 ---@class loop.TaskProvider
----@field on_workspace_loaded? fun(ws_dir:string,state:any)
----@field get_state? fun():any
+---@field on_workspace_open? fun(ws_dir:string,state:any) -- thread the initial state
+---@field get_state? fun():any -- for frequent saving
+---@field on_workspace_closed? fun(ws_dir:string)
 ---@field get_config_schema (fun():table)|nil
 ---@field get_config_template (fun():table)|nil
 ---@field get_task_schema fun():table
@@ -36,7 +37,7 @@ error('Cannot require a meta file')
 
 ---@class loop.CompRenderer
 ---@field render fun(bufnr:number):boolean -- return true if changed
----@field dispose? fun()
+---@field dispose fun()
 
 ---@class loop.Highlight
 ---@field group string

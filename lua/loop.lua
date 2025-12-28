@@ -108,7 +108,7 @@ function M.select_command()
         { vimcmd = "Loop show",                 help = "Show Loop window" },
         { vimcmd = "Loop hide",                 help = "Hide Loop window" },
         { vimcmd = "Loop page",                 help = "Switch page" },
-        { vimcmd = "Loop open_page",            help = "Open a page" },
+        { vimcmd = "Loop page open",            help = "Open a page" },
     }
 
     ------------------------------------------------------------------

@@ -184,6 +184,9 @@ function ItemTree:link_to_buffer(buf_ctrl)
     self._linked_buf.set_renderer({
         render = function(bufnr)
             return self:_on_render_request(bufnr)
+        end,
+        dispose = function ()
+            return self:dispose()            
         end
     })
 
@@ -195,6 +198,9 @@ function ItemTree:link_to_buffer(buf_ctrl)
     self._linked_buf.add_keymap('za', { callback = on_toggle, desc = "Toggle expand/collapse" })
 
     buf_ctrl:request_refresh()
+end
+
+function ItemTree:dispose()
 end
 
 ---------------------------------------------------------

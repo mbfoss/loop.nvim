@@ -59,6 +59,9 @@ function ItemList:link_to_buffer(buf_ctrl)
     self._linked_buf.set_renderer({
         render = function(bufnr)
             return self:render(bufnr)
+        end,
+        dispose = function()
+            return self:dispose()
         end
     })
 
@@ -92,6 +95,9 @@ function ItemList:set_current_item(item)
     if self._args.show_current_prefix then
         self:refresh_content() -- rebuild lines with updated prefixes
     end
+end
+
+function ItemList:dispose()
 end
 
 ---@param id any

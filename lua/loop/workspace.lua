@@ -55,11 +55,17 @@ end
 
 ---@param quiet? boolean
 local function _close_workspace(quiet)
+    if not _workspace_dir then
+        return false
+    end
+
     runner.terminate_tasks()
 
     _save_workspace()
 
     persistence.close()
+
+    taskmgr.on_workspace_closed(_workspace_dir)
 
     if not quiet then notifications.notify("Workspace closed") end
     _workspace_dir = nil
@@ -144,7 +150,7 @@ local function _load_workspace(dir, quiet)
 
     window.load_settings(config_dir)
 
-    taskmgr.on_workspace_loaded(dir, config_dir)
+    taskmgr.on_workspace_open(dir, config_dir)
 
     if not _save_timer then
         -- Create and start the repeating timer

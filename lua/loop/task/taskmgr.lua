@@ -135,15 +135,26 @@ end
 
 ---@param ws_dir string
 ---@param config_dir string
-function M.on_workspace_loaded(ws_dir, config_dir)
+function M.on_workspace_open(ws_dir, config_dir)
     local names = providers.names()
     for _, name in ipairs(names) do
         local provider = M.get_provider(name)
-        if provider and provider.on_workspace_loaded then
+        if provider and provider.on_workspace_open then
             local state = taskstore.load_provider_state(config_dir, name)
             if state then
-                provider.on_workspace_loaded(ws_dir, state)
+                provider.on_workspace_open(ws_dir, state)
             end
+        end
+    end
+end
+
+---@param ws_dir string
+function M.on_workspace_closed(ws_dir)
+    local names = providers.names()
+    for _, name in ipairs(names) do
+        local provider = M.get_provider(name)
+        if provider and provider.on_workspace_closed then
+            provider.on_workspace_closed(ws_dir)
         end
     end
 end

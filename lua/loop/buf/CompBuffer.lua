@@ -19,7 +19,7 @@ end
 
 function CompBuffer:destroy()
     BaseBuffer.destroy(self)
-    if self._renderer and self._renderer.dispose then
+    if self._renderer then
         self._renderer.dispose()
     end
 end
@@ -33,18 +33,8 @@ function CompBuffer:make_controller()
         get_cursor = function() return self:get_cursor() end,
         set_user_data = function(...) return self:set_user_data(...) end,
         get_user_data = function() return self:get_user_data() end,
-        set_renderer = function(renderer)
-            assert(getmetatable(self) == CompBuffer)
-            local rb = self
-            ---@cast rb loop.comp.CompBuffer
-            rb:set_renderer(renderer)
-        end,
-        request_refresh = function()
-            assert(getmetatable(self) == CompBuffer)
-            local rb = self
-            ---@cast rb loop.comp.CompBuffer
-            rb:render()
-        end,
+        set_renderer = function(renderer) self:set_renderer(renderer) end,
+        request_refresh = function() self:render() end,
     }
 end
 
@@ -60,6 +50,9 @@ end
 
 ---@param renderer loop.CompRenderer
 function CompBuffer:set_renderer(renderer)
+    if self._renderer then
+        self._renderer.dispose()
+    end
     self._renderer = renderer
 end
 
