@@ -62,7 +62,7 @@ function TermProc:start(args)
     end
 
     -- get the real path (no symlinks etc...)
-    cwd = vim.fn.fnamemodify(vim.fn.resolve(args.cwd), ':p')
+    local cwd = vim.fn.fnamemodify(vim.fn.resolve(args.cwd), ':p')
 
     ---@type table<string,string>
     local env = vim.deepcopy(args.env or {})

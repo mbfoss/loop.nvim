@@ -49,7 +49,7 @@ function OutputBuffer:_setup_buf()
             local buf = args.buf
             local winid = vim.fn.bufwinid(buf)
             if winid ~= -1 then
-                line_count = vim.api.nvim_buf_line_count(bufnr)
+                local line_count = vim.api.nvim_buf_line_count(bufnr)
                 vim.api.nvim_win_set_cursor(winid, { line_count, 0 })
             end
         end,

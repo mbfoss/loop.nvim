@@ -8,7 +8,7 @@ local ItemTreeComp  = require("loop.comp.ItemTree")
 local config        = require("loop.config")
 
 
-_status_node_id = "\027STATUS\027"
+local _status_node_id = "\027STATUS\027"
 
 -- Example state-to-highlight mapping
 local _highlights = {
@@ -87,7 +87,7 @@ local function _create_progress_page(page_manager_fact)
                 end
                 return data.log_message
             end
-            hl = _highlights.pending
+            local hl = _highlights.pending
             local icon = symbols.waiting
             if data.event == "start" then
                 icon = symbols.running

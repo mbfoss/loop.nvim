@@ -216,7 +216,7 @@ end
 ---@param items loop.SelectorItem[] List of items with label and data table
 ---@param formatter (fun(data:any):string)|nil Convert the data into text for display in the preview
 ---@param callback loop.SelectorCallback
-function _builtin_select(prompt, items, formatter, callback)
+local function _builtin_select(prompt, items, formatter, callback)
     if #items == 0 then return callback(nil) end
     local callback_called = false
     local has_preview = type(formatter) == "function"

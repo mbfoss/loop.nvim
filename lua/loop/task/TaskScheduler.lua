@@ -224,12 +224,10 @@ end
 ---@param on_exit? fun(success:boolean, reason?:string)
 function TaskScheduler:start(tasks, root, page_manager_fact, on_start, on_task_event, on_exit)
     on_exit = on_exit or function(success, reason) end
-    dry_run = dry_run == true
 
     self._pending_plan = {
         tasks = tasks,
         root = root,
-        dry_run = dry_run,
         page_manager_fact = page_manager_fact,
         on_start = on_start,
         on_task_event = on_task_event,

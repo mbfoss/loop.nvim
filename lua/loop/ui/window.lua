@@ -606,7 +606,7 @@ end
 
 
 ---@return loop.PageManager
-function _create_page_manager()
+local function _create_page_manager()
     assert(_init_done, "init not done")
 
     local is_expired = false
