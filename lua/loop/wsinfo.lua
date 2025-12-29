@@ -4,6 +4,7 @@ local M = {}
 ---@field name string
 ---@field root_dir string
 ---@field config_dir string
+---@field config loop.WorkspaceConfig
 
 
 ---@type loop.ws.WorkspaceInfo?

@@ -110,7 +110,7 @@ The primary interaction is through the `:Loop` user command.
 | `:Loop workspace open` | Open the workspace from the current directory. |
 | `:Loop workspace configure` | Open/check the current `workspace.json` configuration. |
 | `:Loop workspace close` | Close the current workspace and terminate running tasks. |
-| `:Loop workspace save_files` | Save workspace files (as defined in the workspace configuration). |
+| `:Loop workspace save` | Save workspace buffers (as defined in the workspace configuration). |
 
 ### Task Commands
 

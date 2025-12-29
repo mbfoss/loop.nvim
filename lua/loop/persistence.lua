@@ -67,11 +67,8 @@ function M.open(config_dir, flags)
 end
 
 function M.close()
+    assert(vim.v.exiting ~= vim.NIL, "can only save when vim is exiting")
     if not _state or not _originals then return end
-
-    if vim.v.exiting ~= vim.NIL then
-        return
-    end
 
     -- === Close Undo ===
     if _state.flags.undo then

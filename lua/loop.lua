@@ -98,17 +98,16 @@ function M.select_command()
 
     ---@type loop.tools.Cmd[]
     local all_cmds = {
-        { vimcmd = "Loop workspace",            help = "Show current workspace path" },
-        { vimcmd = "Loop workspace create",     help = "Create a new workspace in the current working directory" },
-        { vimcmd = "Loop workspace open",       help = "Open the workspace form the current working directory" },
-        { vimcmd = "Loop workspace configure",  help = "Configure the current working or check the current the current configuration" },
-        { vimcmd = "Loop workspace close",      help = "Close the current workspace" },
-        { vimcmd = "Loop workspace save_files", help = "Save workspace files" },
-        { vimcmd = "Loop toggle",               help = "Toggle Loop window" },
-        { vimcmd = "Loop show",                 help = "Show Loop window" },
-        { vimcmd = "Loop hide",                 help = "Hide Loop window" },
-        { vimcmd = "Loop page",                 help = "Switch page" },
-        { vimcmd = "Loop page open",            help = "Open a page" },
+        { vimcmd = "Loop workspace info",      help = "Show information about the current workspace" },
+        { vimcmd = "Loop workspace create",    help = "Create a new workspace in the current working directory" },
+        { vimcmd = "Loop workspace open",      help = "Open the workspace in the current working directory" },
+        { vimcmd = "Loop workspace configure", help = "Create/Open the workspace configuration file" },
+        { vimcmd = "Loop workspace save",      help = "Save workspace buffers (as defined in the workspace configuration)" },
+        { vimcmd = "Loop toggle",              help = "Toggle Loop window" },
+        { vimcmd = "Loop show",                help = "Show Loop window" },
+        { vimcmd = "Loop hide",                help = "Hide Loop window" },
+        { vimcmd = "Loop page",                help = "Switch page" },
+        { vimcmd = "Loop page open",           help = "Open a page" },
     }
 
     ------------------------------------------------------------------

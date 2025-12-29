@@ -4,8 +4,8 @@ return {
     name = "",
     save = {
         __order = {"include", "exclude", "follow_symlinks"},
-        include = { "**/*.lua" },
-        exclude = { "**/test/**" },
+        include = { "**/*" },
+        exclude = { },
         follow_symlinks = false,
     },
     persistence = {

@@ -9,26 +9,25 @@ local runner = require("loop.task.runner")
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local jsonschema = require('loop.tools.jsonschema')
+local strtools = require('loop.tools.strtools')
 local filetools = require('loop.tools.file')
 local persistence = require('loop.persistence')
 
 local _init_done = false
 local _init_err_msg = "init() not called"
 
----@type string?
-local _workspace_dir = nil
-
 ---@type loop.ws.WorkspaceInfo?
 local _workspace_info = nil
 
 local _save_timer = nil
 
-local function _get_ws_dir_or_warn()
-    if not _workspace_dir then
+---@return loop.ws.WorkspaceInfo?
+local function _get_ws_info_or_warn()
+    if not _workspace_info then
         notifications.notify("No active workspace", vim.log.levels.WARN)
         return
     end
-    return _workspace_dir
+    return _workspace_info
 end
 
 local function _get_config_dir(workspace_dir)
@@ -44,20 +43,21 @@ local function _is_workspace_dir(dir)
 end
 
 local function _save_workspace()
-    if not _workspace_dir or not _workspace_info then
+    if not _workspace_info then
         return false
     end
     assert(_init_done, _init_err_msg)
-    local config_dir = _get_config_dir(_workspace_dir)
-    window.save_settings(config_dir)
+    window.save_settings(_workspace_info.config_dir)
     taskmgr.save_provider_states(_workspace_info)
 end
 
 ---@param quiet? boolean
 local function _close_workspace(quiet)
-    if not _workspace_dir or not _workspace_info then
+    if not _workspace_info then
         return false
     end
+
+    assert(vim.v.exiting ~= vim.NIL, "can only close ws when vim is exiting")
 
     runner.terminate_tasks()
 
@@ -68,7 +68,6 @@ local function _close_workspace(quiet)
     taskmgr.on_workspace_close(_workspace_info)
 
     if not quiet then notifications.notify("Workspace closed") end
-    _workspace_dir = nil
     _workspace_info = nil
     wsinfo.set_ws_info(nil)
 end
@@ -120,7 +119,7 @@ local function _load_workspace(dir, quiet)
     dir = dir or vim.fn.getcwd()
     dir = vim.fn.fnamemodify(dir, ":p")
 
-    if dir == _workspace_dir then
+    if _workspace_info and dir == _workspace_info.root_dir then
         if not quiet then
             notifications.notify("Workspace is already open")
             return true
@@ -128,7 +127,7 @@ local function _load_workspace(dir, quiet)
         return true
     end
 
-    if _workspace_dir and dir ~= _workspace_dir then
+    if _workspace_info and dir ~= _workspace_info.root_dir then
         return false, { "Another workspace is already open" }
     end
 
@@ -142,11 +141,11 @@ local function _load_workspace(dir, quiet)
         return false, config_errors, true, config_dir
     end
 
-    _workspace_dir = dir
     _workspace_info = {
         name = ws_config.name,
         root_dir = dir,
         config_dir = config_dir,
+        config = ws_config,
     }
     if not _workspace_info.name or _workspace_info.name == "" then
         _workspace_info.name = vim.fn.fnamemodify(dir, ":p:h:t")
@@ -175,10 +174,11 @@ local function _load_workspace(dir, quiet)
     return true, nil
 end
 
+---@param dir string?
 function M.create_workspace(dir)
     assert(_init_done, _init_err_msg)
-    if _workspace_dir then
-        if dir == _workspace_dir then
+    if _workspace_info then
+        if dir == _workspace_info.root_dir then
             notifications.notify("Workspace already exists")
         else
             notifications.notify("Another workspace is already open")
@@ -193,11 +193,17 @@ function M.create_workspace(dir)
         return
     end
 
+    -- important check because the user may pass garbage data
+    if not filetools.dir_exists(dir) then
+        notifications.notify("Invalid directory " .. tostring(dir), vim.log.levels.ERROR)
+        return
+    end
+
     local config_dir = _get_config_dir(dir)
     vim.fn.mkdir(config_dir, "p")
 
     _load_workspace(dir)
-    if not _workspace_dir then
+    if not _workspace_info then
         notifications.notify("Failed to create workspace")
         return
     end
@@ -207,14 +213,16 @@ function M.create_workspace(dir)
     end
 end
 
----@param dir string
+---@param dir string?
 ---@param at_startup boolean
 function M.open_workspace(dir, at_startup)
     assert(_init_done, _init_err_msg)
     dir = dir or vim.fn.getcwd()
     local ok, errors, config_err, config_dir = _load_workspace(dir, at_startup)
-    if ok and _workspace_dir then
-        notifications.log("Workspace loaded " .. _workspace_dir)
+    if ok and _workspace_info then
+        local label = _workspace_info.name
+        if not label or label == "" then label = _workspace_info.root_dir end
+        notifications.log("Workspace loaded: " .. label)
     elseif not at_startup then
         errors = errors or {}
         table.insert(errors, 1, "Failed to load workspace")
@@ -226,12 +234,11 @@ function M.open_workspace(dir, at_startup)
 end
 
 function M.configure_workspace()
-    if not _workspace_dir then
+    if not _workspace_info then
         notifications.notify("No active workspace", vim.log.levels.WARN)
         return
     end
-    local config_dir = _get_config_dir(_workspace_dir)
-    local ok, configfile = _init_or_open_ws_config(config_dir)
+    local ok, configfile = _init_or_open_ws_config(_workspace_info.config_dir)
     if not ok or not configfile then
         notifications.notify("Failed to setup configuration file")
         return
@@ -252,12 +259,6 @@ function M.configure_workspace()
     if errors then
         notifications.notify("Workspace configuration error\n" .. table.concat(errors, '\n'))
     end
-end
-
----@param quiet? boolean
-function M.close_workspace(quiet)
-    assert(_init_done, _init_err_msg)
-    _close_workspace(quiet)
 end
 
 --[[
@@ -290,15 +291,19 @@ end
 ---@return string[]
 function M.workspace_subcommands(args)
     if #args == 0 then
-        return { "show", "create", "open", "configure", "close", "save_files" }
+        return { "info", "open", "create", "configure", "save" }
     end
     return {}
 end
 
 ---@param command string|nil
-function M.workspace_cmmand(command, ...)
-    if not command or command == "" or command == "show" then
-        print(_workspace_dir or "No active workspace")
+function M.workspace_cmmand(command)
+    if not command or command == "" or command == "info" then
+        if _workspace_info then
+            vim.notify(("Name: %s\nDirectory: %s"):format(_workspace_info.name, _workspace_info.root_dir))
+        else
+            vim.notify("No active workspace")
+        end
         return
     end
     if command == "create" then
@@ -306,26 +311,18 @@ function M.workspace_cmmand(command, ...)
         return
     end
     if command == "open" then
-        M.open_workspace(vim.fn.getcwd(), false)
+        M.open_workspace(nil, false)
         return
     end
     if command == "configure" then
         M.configure_workspace()
         return
     end
-    if command == "close" then
-        M.close_workspace()
-        return
-    end
-    if command == "save_files" then
-        M.save_workspace_files()
+    if command == "save" then
+        M.save_workspace_buffers()
         return
     end
     notifications.notify("Invalid command: " .. command)
-end
-
-function M.get_ws_dir()
-    return _workspace_dir
 end
 
 ---@param args string[]
@@ -348,8 +345,8 @@ end
 ---@param arg2? string|nil
 function M.task_command(command, arg1, arg2)
     assert(_init_done, _init_err_msg)
-    local ws_dir = _get_ws_dir_or_warn()
-    if not ws_dir then
+    local ws_info = _get_ws_info_or_warn()
+    if not ws_info then
         return
     end
 
@@ -357,7 +354,7 @@ function M.task_command(command, arg1, arg2)
     command = command and command:match("^%s*(.-)%s*$") or ""
     command = command ~= "" and command or "run"
 
-    local config_dir = _get_config_dir(ws_dir)
+    local config_dir = ws_info.config_dir
     if command == "run" then
         runner.run_task(config_dir, window.page_manger_factory(), "task", arg1)
     elseif command == "repeat" then
@@ -426,73 +423,129 @@ function M.open_page(group_label, page_pabel)
     window.open_page(vim.api.nvim_get_current_win(), group_label, page_pabel)
 end
 
-function M.save_workspace_files()
-    assert(_init_done, _init_err_msg)
+---Generates and displays a notification for the save operation.
+---@param saved_count number Total files saved.
+---@param excluded_count number Total modified files skipped.
+---@param saved_paths string[] List of relative paths that were saved.
+local function report_save_results(saved_count, excluded_count, saved_paths)
+    if saved_count == 0 and excluded_count == 0 then return end
 
-    local ws_dir = _get_ws_dir_or_warn()
-    if not ws_dir then return 0 end
+    local lines = {}
+    if saved_count > 0 then
+        table.insert(lines, ("󰄵 Saved %d file%s:"):format(saved_count, saved_count == 1 and "" or "s"))
+        for i = 1, math.min(saved_count, 5) do
+            table.insert(lines, ("  • %s"):format(saved_paths[i]))
+        end
+        if saved_count > 5 then
+            table.insert(lines, ("  … and %d more"):format(saved_count - 5))
+        end
+    end
 
-    local dir = vim.fs.normalize(ws_dir)
-    if not dir:match("/$") then dir = dir .. "/" end
+    if excluded_count > 0 then
+        table.insert(lines, ("✖ Excluded %d modified file%s via filter"):format(
+            excluded_count, excluded_count == 1 and "" or "s"
+        ))
+    end
 
-    local saved = 0
-    local saved_paths = {} -- Collect paths for nice notification
+    local level = saved_count > 0 and vim.log.levels.INFO or vim.log.levels.WARN
+    notifications.notify(lines, level)
+end
+
+function M.save_workspace_buffers()
+    local ws_info = _get_ws_info_or_warn()
+    if not ws_info then return 0 end
+
+    local filter = ws_info.config.save
+    -- Resolve the physical project root
+    local root_path = vim.fs.normalize(ws_info.root_dir)
+    local real_root = vim.uv.fs_realpath(root_path)
+    if not real_root then return 0 end
+
+    local saved, excluded, saved_paths = 0, 0, {}
 
     for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-        if not uitools.is_regular_buffer(bufnr) then goto continue end
-        if not vim.bo[bufnr].modified then goto continue end
+        if not uitools.is_regular_buffer(bufnr) or not vim.bo[bufnr].modified then
+            goto continue
+        end
 
-        local path = vim.api.nvim_buf_get_name(bufnr)
-        if path == "" then goto continue end
-        path = vim.fs.normalize(path)
+        local bname = vim.api.nvim_buf_get_name(bufnr)
+        if bname == "" then goto continue end
 
-        if not vim.startswith(path, dir) then goto continue end
+        local norm_path = vim.fs.normalize(bname)
+        local real_file_path = vim.uv.fs_realpath(norm_path)
+        if not real_file_path then goto continue end
 
-        local basename = vim.fs.basename(path)
-        if basename:match("^%.") then goto continue end
-
-        local has_hidden_parent = false
-        for parent in vim.fs.parents(path) do
-            local name = vim.fs.basename(parent)
-            if name == "" then break end
-            if name:match("^%.") then
-                has_hidden_parent = true
-                break
+        -- 1. PURE FS HIDDEN CHECK
+        -- We walk up from the file to the root. If ANY parent (or the file itself)
+        -- has a basename starting with a dot, it is hidden.
+        local is_hidden = false
+        -- Check the file itself first
+        if vim.fs.basename(norm_path):sub(1, 1) == "." then
+            is_hidden = true
+        else
+            -- Check all parents up to the root
+            for parent in vim.fs.parents(norm_path) do
+                if vim.fs.basename(parent):sub(1, 1) == "." then
+                    is_hidden = true
+                    break
+                end
+                if parent == root_path then break end
             end
         end
-        if has_hidden_parent then goto continue end
 
-        -- Save the buffer
-        vim.api.nvim_buf_call(bufnr, function()
-            vim.cmd("silent! write")
-        end)
+        if is_hidden then
+            excluded = excluded + 1
+            goto continue
+        end
 
-        -- Store relative path for display
-        local rel = path:sub(#dir + 1)
-        table.insert(saved_paths, rel)
+        -- 2. PURE FS BOUNDARY CHECK
+        -- Verify real_root is an ancestor of real_file_path
+        local is_inside = false
+        if real_file_path == real_root then
+            is_inside = true
+        else
+            for parent in vim.fs.parents(real_file_path) do
+                if parent == real_root then
+                    is_inside = true
+                    break
+                end
+            end
+        end
 
-        saved = saved + 1
+        if not is_inside then
+            excluded = excluded + 1
+            goto continue
+        end
+
+        -- 3. SYMLINK CHECK
+        -- If follow_symlinks is false, we ensure the paths are identical
+        -- after normalization (handles case-sensitivity/slash differences)
+        if not filter.follow_symlinks and (norm_path ~= vim.fs.normalize(real_file_path)) then
+            excluded = excluded + 1
+            goto continue
+        end
+
+        -- 4. GLOB FILTERS (Only string part remaining, required by glob logic)
+        local inc = #filter.include > 0 and strtools.matches_any(norm_path, filter.include)
+        local exc = #filter.exclude > 0 and strtools.matches_any(norm_path, filter.exclude)
+
+        if (#filter.include > 0 and not inc) or exc then
+            excluded = excluded + 1
+            goto continue
+        end
+
+        -- 5. SAVE
+        if pcall(function() vim.api.nvim_buf_call(bufnr, function() vim.cmd("silent! write") end) end) then
+            saved = saved + 1
+            table.insert(saved_paths, vim.fs.basename(norm_path))
+        else
+            excluded = excluded + 1
+        end
 
         ::continue::
     end
 
-    -- Beautiful notification with preview of saved files
-    if saved > 0 then
-        local max_show = 5
-        local shown = math.min(saved, max_show)
-        local lines = { ("Saved %d file%s"):format(saved, saved == 1 and "" or "s") }
-
-        for i = 1, shown do
-            table.insert(lines, ("  • %s"):format(saved_paths[i]))
-        end
-
-        if saved > max_show then
-            table.insert(lines, ("  … and %d more"):format(saved - max_show))
-        end
-
-        notifications.notify(lines, vim.log.levels.INFO)
-    end
-
+    report_save_results(saved, excluded, saved_paths)
     return saved
 end
 

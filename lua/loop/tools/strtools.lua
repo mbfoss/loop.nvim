@@ -16,6 +16,21 @@ function M.special_marker3()
     return "\240\159\188\130"
 end
 
+---Helper to check if a path matches a list of glob patterns
+---@param path string
+---@param patterns string[]
+---@return boolean
+function M.matches_any(path, patterns)
+    for _, pattern in ipairs(patterns) do
+        -- Convert glob to Lua regex: **/*.lua -> .*/.*%.lua
+        local regex = vim.fn.glob2regpat(pattern)
+        if vim.fn.match(path, regex) ~= -1 then
+            return true
+        end
+    end
+    return false
+end
+
 ---@param str string
 ---@return string
 function M.human_case(str)
