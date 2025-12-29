@@ -6,7 +6,7 @@ local uitools = require('loop.tools.uitools')
 ---@type {config_dir:string,flags:{shada:boolean, undo:boolean}} | nil
 local _state = nil
 
----@type {shadafile:string|nil, undodir:string|nil, undofile:boolean|nil}?
+---@type {shada:string?,shadafile:string|nil, undodir:string|nil, undofile:boolean|nil}?
 local _originals = nil
 
 local function ensure_dir(path)
@@ -15,43 +15,32 @@ local function ensure_dir(path)
     end
 end
 
--- Completely safe sessionoptions for workspace sessions
-local SAFE_SESSIONOPTIONS = "blank,buffers,folds,help,tabpages,winsize"
+local function _refresh_buffers()
+    -- === Refresh buffers ===
+    -- This ensures buffers pick up the new undo/shada context
+    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
+        if uitools.is_regular_buffer(bufnr) and vim.api.nvim_buf_is_loaded(bufnr) then
+            if not vim.bo[bufnr].modified then
+                vim.api.nvim_buf_call(bufnr, function()
+                    vim.cmd("silent! edit")
+                end)
+            end
+        end
+    end
+end
 
----@param config_dir string
----@param flags {shada:boolean,undo:boolean}
 function M.open(config_dir, flags)
     if not flags then return end
+
     ensure_dir(config_dir)
 
-    if _state then
-        M.close()
-    end
+    if _state then M.close() end
 
-    assert(not _state, "Workspace already open")
-
-    _state = {
-        flags = flags,
-        config_dir = config_dir,
-    }
+    _state = { flags = flags, config_dir = config_dir }
     _originals = {}
 
     -- === ShaDa Support ===
     if flags.shada then
-        vim.cmd("wshada!") -- Save global before switching
-
-        _originals.shadafile = vim.o.shadafile ~= "" and vim.o.shadafile or nil
-
-        local shada_path = vim.fs.joinpath(config_dir, "main.shada")
-        vim.opt.shadafile = shada_path
-
-        if filetools.file_exists(shada_path) then
-            vim.cmd("rshada!")
-        else
-            vim.cmd("clearjumps")
-            vim.v.hlsearch = 0
-            vim.fn.setreg('/', '')
-        end
     end
 
     -- === Undo Support ===
@@ -66,48 +55,29 @@ function M.open(config_dir, flags)
         vim.opt.undofile = true
     end
 
-    -- === Refresh buffers ===
     if flags.shada or flags.undo then
-        for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-            if uitools.is_regular_buffer(bufnr) then
-                if vim.api.nvim_buf_is_loaded(bufnr) and not vim.bo[bufnr].modified then
-                    vim.api.nvim_buf_call(bufnr, function()
-                        vim.cmd("silent! edit")
-                    end)
-                end
-            end
-        end
+        _refresh_buffers()
     end
 end
 
 function M.close()
-    if not _state or not _originals then
+    if not _state or not _originals then return end
+
+    if vim.v.exiting ~= vim.NIL then
         return
     end
 
-    -- === Save ShaDa ===
     if _state.flags.shada then
-        vim.cmd("wshada!")
     end
 
-    -- === Restore Original Settings ===
-    if _originals.shadafile ~= nil then
-        vim.opt.shadafile = _originals.shadafile
-    elseif _state.flags.shada then
-        vim.opt.shadafile = ""
-    end
-
-    if _originals.undodir ~= nil then
+    -- === Close Undo ===
+    if _state.flags.undo then
         vim.opt.undodir = _originals.undodir
-    end
-
-    if _originals.undofile ~= nil then
         vim.opt.undofile = _originals.undofile
     end
 
-    -- === Reload Global ShaDa ===
-    if _state.flags.shada then
-        vim.cmd("rshada!")
+    if _state.flags.shada or _state.flags.undo then
+        _refresh_buffers()
     end
 
     _state = nil

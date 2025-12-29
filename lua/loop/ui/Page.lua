@@ -37,7 +37,7 @@ function Page:request_change_notif()
 end
 
 ---@param callbacks loop.page.Tracker>
----@return number
+---@return loop.TrackerRef
 function Page:add_tracker(callbacks)
     return self._trackers:add_tracker(callbacks)
 end
