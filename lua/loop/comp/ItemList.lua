@@ -13,9 +13,10 @@ local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListComp')
 
 ---@class loop.comp.ItemList.InitArgs
 ---@field formatter fun(item:loop.comp.ItemList.Item,out_highlights:loop.Highlight[]):string
+---@field render_delay_ms number|nil
 ---@field show_current_prefix boolean|nil            # NEW: whether to show ">" prefix on current item
 ---@field current_prefix string|nil                  # NEW: custom prefix, defaults to "> "
----@field render_delay_ms number|nil
+---@field allow_selection boolean?
 
 ---@class loop.comp.ItemList
 ---@field new fun(self: loop.comp.ItemList, args:loop.comp.ItemList.InitArgs): loop.comp.ItemList
@@ -41,8 +42,8 @@ function ItemList:init(args)
     -- NEW: current item tracking
     self._current_item = nil
     if args.show_current_prefix then
-        self._current_prefix = args.current_prefix or "> "
-        self._noncurrent_prefix = (" "):rep(#self._current_prefix)
+        self._current_prefix = args.current_prefix or "›"
+        self._noncurrent_prefix = (" "):rep(vim.fn.strdisplaywidth(self._current_prefix))
     end
 end
 
@@ -68,7 +69,7 @@ function ItemList:link_to_buffer(buf_ctrl)
     local select_handler = function()
         local item = get_cur_item()
         if item then
-            self:set_current_item(item) -- will trigger prefix update if enabled
+            self:_set_current_item(item) -- will trigger prefix update if enabled
             self._trackers:invoke("on_selection", item.id, item.data)
         end
     end
@@ -80,8 +81,11 @@ function ItemList:link_to_buffer(buf_ctrl)
         end
     end
 
-    self._linked_buf.add_keymap('<CR>', { callback = select_handler, desc = "Select item" })
-    self._linked_buf.add_keymap('<2-LeftMouse>', { callback = select_handler, desc = "Select item" })
+    if self._args.allow_selection then
+        self._linked_buf.add_keymap('<CR>', { callback = select_handler, desc = "Select item" })
+        self._linked_buf.add_keymap('<2-LeftMouse>', { callback = select_handler, desc = "Select item" })
+    end
+    
     self._linked_buf.add_keymap('go', { callback = open_handler, desc = "Open details" })
 
     buf_ctrl:request_refresh()
@@ -89,7 +93,7 @@ end
 
 -- NEW: Public API to set current item (used by selection, or externally)
 ---@param item loop.comp.ItemList.Item|nil
-function ItemList:set_current_item(item)
+function ItemList:_set_current_item(item)
     if self._current_item == item then return end
     self._current_item = item
     if self._args.show_current_prefix then
@@ -101,8 +105,8 @@ function ItemList:dispose()
 end
 
 ---@param id any
-function ItemList:set_current_item_by_id(id)
-    self:set_current_item(self:get_item(id))
+function ItemList:set_current_id(id)
+    self:_set_current_item(self:get_item(id))
 end
 
 -- NEW: Get current item (cursor fallback if none explicitly set)
