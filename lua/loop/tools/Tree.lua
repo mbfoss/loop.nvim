@@ -334,6 +334,28 @@ function Tree:remove_item(id)
     self:_remove_subtree(id)
 end
 
+---Remove all children of a node but keep the node itself.
+---@param id any
+function Tree:remove_children(id)
+    assert(id ~= nil, "id is required")
+    local node = self._nodes[id]
+    
+    -- If node doesn't exist, there's nothing to clear
+    if not node then return end
+
+    local child = node.first_child
+    while child do
+        -- Grab the next sibling before removing the current child subtree
+        local next_child = self._nodes[child].next_sibling
+        self:_remove_subtree(child)
+        child = next_child
+    end
+
+    -- Clear the pointers on the parent so it no longer thinks it has children
+    node.first_child = nil
+    node.last_child = nil
+end
+
 --==============================================================
 -- Flattening (for UI)
 --==============================================================

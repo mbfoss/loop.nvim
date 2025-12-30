@@ -265,6 +265,12 @@ function ItemTree:remove_item(id)
     return true
 end
 
+function ItemTree:remove_children(id)
+    self._tree:remove_children(id)
+    self:_request_render()
+    return true
+end
+
 function ItemTree:_request_render()
     if self._linked_buf then
         self._linked_buf.request_refresh()
