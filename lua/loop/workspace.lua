@@ -70,18 +70,25 @@ local function _close_workspace(quiet)
 end
 
 ---@param ws_dir string
----@param config_dir string
 ---@return boolean
 ---@return string?
-local function _init_or_open_ws_config(ws_dir, config_dir)
+local function _init_or_open_ws_config(ws_dir)
+    local config_dir = _get_config_dir(ws_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
-    if not filetools.file_exists(config_file) then
+    local winid
+    if filetools.file_exists(config_file) then
+        winid = uitools.smart_open_file(config_file)
+    else
         local model = require('loop.ws.template')
         model = vim.fn.copy(model)
         model.name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
-        jsontools.save_to_file(config_file, model)
+        local bufnr = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_buf_set_name(bufnr, config_file)
+        local json_lines = vim.split(jsontools.to_string(model), "\n")
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, json_lines)
+        vim.bo[bufnr].filetype = 'json'
+        winid = uitools.smart_open_buffer(bufnr)
     end
-    local winid = uitools.smart_open_file(config_file)
     uitools.move_to_first_occurence(winid, '"name": "')
     return true, config_file
 end
@@ -91,7 +98,7 @@ end
 local function _load_workspace_config(config_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     if not filetools.file_exists(config_file) then
-        return nil, {"Config file not found"}
+        return nil, { "Config file not found" }
     end
     local loaded, data_or_err = jsontools.load_from_file(config_file)
     if not loaded then
@@ -202,7 +209,7 @@ function M.create_workspace(dir)
     local config_dir = _get_config_dir(dir)
     vim.fn.mkdir(config_dir, "p")
 
-    if not _init_or_open_ws_config(dir, config_dir) then
+    if not _init_or_open_ws_config(dir) then
         notifications.notify("Failed to setup configuration file")
     end
 end
@@ -222,7 +229,7 @@ function M.open_workspace(dir, at_startup)
         table.insert(errors, 1, "Failed to load workspace")
         notifications.notify(errors, vim.log.levels.ERROR)
         if config_err then
-            _init_or_open_ws_config(config_dir)
+            _init_or_open_ws_config(dir)
         end
     end
 end
@@ -232,7 +239,7 @@ function M.configure_workspace()
         notifications.notify("No active workspace", vim.log.levels.WARN)
         return
     end
-    local ok, configfile = _init_or_open_ws_config(_workspace_info.config_dir)
+    local ok, configfile = _init_or_open_ws_config(_workspace_info.root_dir)
     if not ok or not configfile then
         notifications.notify("Failed to setup configuration file")
         return
