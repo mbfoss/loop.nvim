@@ -69,13 +69,17 @@ local function _close_workspace(quiet)
     wsinfo.set_ws_info(nil)
 end
 
----@param config_dir any
+---@param ws_dir string
+---@param config_dir string
 ---@return boolean
 ---@return string?
-local function _init_or_open_ws_config(config_dir)
+local function _init_or_open_ws_config(ws_dir, config_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     if not filetools.file_exists(config_file) then
-        jsontools.save_to_file(config_file, require('loop.ws.template'))
+        local model = require('loop.ws.template')
+        model = vim.fn.copy(model)
+        model.name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
+        jsontools.save_to_file(config_file, model)
     end
     local winid = uitools.smart_open_file(config_file)
     uitools.move_to_first_occurence(winid, '"name": "')
@@ -87,8 +91,7 @@ end
 local function _load_workspace_config(config_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     if not filetools.file_exists(config_file) then
-        local default_config = vim.deepcopy(require('loop.ws.template'))
-        return default_config
+        return nil, {"Config file not found"}
     end
     local loaded, data_or_err = jsontools.load_from_file(config_file)
     if not loaded then
@@ -199,7 +202,7 @@ function M.create_workspace(dir)
     local config_dir = _get_config_dir(dir)
     vim.fn.mkdir(config_dir, "p")
 
-    if not _init_or_open_ws_config(config_dir) then
+    if not _init_or_open_ws_config(dir, config_dir) then
         notifications.notify("Failed to setup configuration file")
     end
 end
