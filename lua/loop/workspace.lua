@@ -1,6 +1,5 @@
 local M = {}
 
-require("loop.config")
 local notifications = require('loop.notifications')
 local taskmgr = require("loop.task.taskmgr")
 local window = require("loop.ui.window")
@@ -9,9 +8,9 @@ local runner = require("loop.task.runner")
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local jsonschema = require('loop.tools.jsonschema')
-local strtools = require('loop.tools.strtools')
 local filetools = require('loop.tools.file')
 local persistence = require('loop.persistence')
+local wssaveutil = require('loop.ws.saveutil')
 
 local _init_done = false
 local _init_err_msg = "init() not called"
@@ -78,7 +77,7 @@ end
 local function _init_or_open_ws_config(config_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     if not filetools.file_exists(config_file) then
-        jsontools.save_to_file(config_file, require('loop.wsconfig.template'))
+        jsontools.save_to_file(config_file, require('loop.ws.template'))
     end
     local winid = uitools.smart_open_file(config_file)
     uitools.move_to_first_occurence(winid, '"name": "')
@@ -90,7 +89,7 @@ end
 local function _load_workspace_config(config_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     if not filetools.file_exists(config_file) then
-        local default_config = vim.deepcopy(require('loop.wsconfig.template'))
+        local default_config = vim.deepcopy(require('loop.ws.template'))
         return default_config
     end
     local loaded, data_or_err = jsontools.load_from_file(config_file)
@@ -99,7 +98,7 @@ local function _load_workspace_config(config_dir)
         return nil, { data_or_err }
     end
     local config = data_or_err
-    local schema = require('loop.wsconfig.schema')
+    local schema = require('loop.ws.schema')
     local errors = jsonschema.validate(schema, config)
     if errors then
         return nil, errors
@@ -254,7 +253,7 @@ function M.configure_workspace()
         return
     end
     local config = config_or_err
-    local schema = require('loop.wsconfig.schema')
+    local schema = require('loop.ws.schema')
     local errors = jsonschema.validate(schema, config)
     if errors then
         notifications.notify("Workspace configuration error\n" .. table.concat(errors, '\n'))
@@ -423,130 +422,10 @@ function M.open_page(group_label, page_pabel)
     window.open_page(vim.api.nvim_get_current_win(), group_label, page_pabel)
 end
 
----Generates and displays a notification for the save operation.
----@param saved_count number Total files saved.
----@param excluded_count number Total modified files skipped.
----@param saved_paths string[] List of relative paths that were saved.
-local function report_save_results(saved_count, excluded_count, saved_paths)
-    if saved_count == 0 and excluded_count == 0 then return end
-
-    local lines = {}
-    if saved_count > 0 then
-        table.insert(lines, ("󰄵 Saved %d file%s:"):format(saved_count, saved_count == 1 and "" or "s"))
-        for i = 1, math.min(saved_count, 5) do
-            table.insert(lines, ("  • %s"):format(saved_paths[i]))
-        end
-        if saved_count > 5 then
-            table.insert(lines, ("  … and %d more"):format(saved_count - 5))
-        end
-    end
-
-    if excluded_count > 0 then
-        table.insert(lines, ("✖ Excluded %d modified file%s via filter"):format(
-            excluded_count, excluded_count == 1 and "" or "s"
-        ))
-    end
-
-    local level = saved_count > 0 and vim.log.levels.INFO or vim.log.levels.WARN
-    notifications.notify(lines, level)
-end
-
 function M.save_workspace_buffers()
     local ws_info = _get_ws_info_or_warn()
     if not ws_info then return 0 end
-
-    local filter = ws_info.config.save
-    -- Resolve the physical project root
-    local root_path = vim.fs.normalize(ws_info.root_dir)
-    local real_root = vim.uv.fs_realpath(root_path)
-    if not real_root then return 0 end
-
-    local saved, excluded, saved_paths = 0, 0, {}
-
-    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-        if not uitools.is_regular_buffer(bufnr) or not vim.bo[bufnr].modified then
-            goto continue
-        end
-
-        local bname = vim.api.nvim_buf_get_name(bufnr)
-        if bname == "" then goto continue end
-
-        local norm_path = vim.fs.normalize(bname)
-        local real_file_path = vim.uv.fs_realpath(norm_path)
-        if not real_file_path then goto continue end
-
-        -- 1. PURE FS HIDDEN CHECK
-        -- We walk up from the file to the root. If ANY parent (or the file itself)
-        -- has a basename starting with a dot, it is hidden.
-        local is_hidden = false
-        -- Check the file itself first
-        if vim.fs.basename(norm_path):sub(1, 1) == "." then
-            is_hidden = true
-        else
-            -- Check all parents up to the root
-            for parent in vim.fs.parents(norm_path) do
-                if vim.fs.basename(parent):sub(1, 1) == "." then
-                    is_hidden = true
-                    break
-                end
-                if parent == root_path then break end
-            end
-        end
-
-        if is_hidden then
-            excluded = excluded + 1
-            goto continue
-        end
-
-        -- 2. PURE FS BOUNDARY CHECK
-        -- Verify real_root is an ancestor of real_file_path
-        local is_inside = false
-        if real_file_path == real_root then
-            is_inside = true
-        else
-            for parent in vim.fs.parents(real_file_path) do
-                if parent == real_root then
-                    is_inside = true
-                    break
-                end
-            end
-        end
-
-        if not is_inside then
-            excluded = excluded + 1
-            goto continue
-        end
-
-        -- 3. SYMLINK CHECK
-        -- If follow_symlinks is false, we ensure the paths are identical
-        -- after normalization (handles case-sensitivity/slash differences)
-        if not filter.follow_symlinks and (norm_path ~= vim.fs.normalize(real_file_path)) then
-            excluded = excluded + 1
-            goto continue
-        end
-
-        -- 4. GLOB FILTERS (Only string part remaining, required by glob logic)
-        local inc = #filter.include > 0 and strtools.matches_any(norm_path, filter.include)
-        local exc = #filter.exclude > 0 and strtools.matches_any(norm_path, filter.exclude)
-
-        if (#filter.include > 0 and not inc) or exc then
-            excluded = excluded + 1
-            goto continue
-        end
-
-        -- 5. SAVE
-        if pcall(function() vim.api.nvim_buf_call(bufnr, function() vim.cmd("silent! write") end) end) then
-            saved = saved + 1
-            table.insert(saved_paths, vim.fs.basename(norm_path))
-        else
-            excluded = excluded + 1
-        end
-
-        ::continue::
-    end
-
-    report_save_results(saved, excluded, saved_paths)
-    return saved
+    wssaveutil.save_workspace_buffers()
 end
 
 function M.winbar_click(id, clicks, button, mods)

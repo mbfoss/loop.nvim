@@ -10,7 +10,7 @@ return {
     },
     persistence = {
         __order = {"shada", "undo"},
-        shada = true,
-        undo = true,
+        shada = false,
+        undo = false,
     },
 }
