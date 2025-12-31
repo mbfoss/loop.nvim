@@ -4,7 +4,7 @@ error('Cannot require a meta file')
 ---@class loop.WorkspaceConfig
 ---@field name string
 ---@field save {include:string[], exclude:string[],follow_symlinks:boolean}
----@field persistence {shada:boolean,undo:boolean}
+---@field variables table<string,string>
 
 ---@class loop.Task
 ---@field name string # non-empty task

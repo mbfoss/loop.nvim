@@ -11,8 +11,9 @@
 ---@class window loop.Config.Window
 ---@class loop.Config
 ---@field selector "builtin"|"telescope"|"snacks"
+---@field persistence {shada:boolean,undo:boolean}
 ---@field window loop.Config.Window
----@field macros table<string,(fun(arg:any):any,string|nil)>
+---@field macros table<string,(fun(arg:any):any,string|nil)>?
 
 local M = {}
 

@@ -2,6 +2,7 @@ local M = {}
 
 local filetools = require('loop.tools.file')
 local uitools = require('loop.tools.uitools')
+local config = require('loop.config')
 
 ---@alias loop.ws.PersistenceFlags {shada:boolean, undo:boolean}
 
@@ -28,14 +29,16 @@ local function _refresh_buffers()
 end
 
 ---@param config_dir string
----@param flags loop.ws.PersistenceFlags
-function M.open(config_dir, flags)
+function M.open(config_dir)
     assert(not _open)
     _open = true
 
+    local flags = config.current.persistence
     if not flags then return end
 
-    ensure_dir(config_dir)
+    if flags.shada or flags.undo then
+        ensure_dir(config_dir)
+    end
 
     -- === ShaDa Support ===
     if flags.shada then

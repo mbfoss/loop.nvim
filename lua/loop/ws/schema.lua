@@ -1,6 +1,6 @@
 local schema = {
     type = "object",
-    required = { "name", "save", "persistence" },
+    required = { "name", "save" },
     properties = {
         name = {
             type = { "string" },
@@ -13,7 +13,7 @@ local schema = {
             default = {},
             properties = {
                 include = {
-                    type = { "array"},
+                    type = { "array" },
                     description = "Glob patterns for files to include when saving",
                     items = { type = "string" },
                 },
@@ -29,21 +29,10 @@ local schema = {
             },
             additionalProperties = false,
         },
-        persistence = {
-            type = "object",
-            description = "Persistence settings for various Neovim data types",
-            required = { "shada", "undo" },
-            properties = {
-                shada = {
-                    type = "boolean",
-                    description = "Enable persistence of ShaDa (shared data) file",
-                },
-                undo = {
-                    type = "boolean",
-                    description = "Enable undo history persistence",
-                },
-            },
-            additionalProperties = false,
+        variables = {
+            type = { "object", "null" },
+            additionalProperties = { type = "string" },
+            description = "Shared workspace variables",
         },
     },
     additionalProperties = false,

@@ -8,9 +8,5 @@ return {
         exclude = { },
         follow_symlinks = false,
     },
-    persistence = {
-        __order = {"shada", "undo"},
-        shada = false,
-        undo = false,
-    },
+    variables = vim.empty_dict()
 }

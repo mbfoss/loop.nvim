@@ -15,6 +15,10 @@ local notifications = require("loop.notifications")
 ---@type loop.Config
 local DEFAULT_CONFIG = {
     selector = "builtin",
+    persistence = {
+        shada = false,
+        undo = false,
+    },
     window = {
         symbols = {
             change  = "●",

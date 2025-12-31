@@ -160,7 +160,7 @@ local function _load_workspace(dir, quiet)
 
     wsinfo.set_ws_info(vim.deepcopy(_workspace_info)) --copy for safety
 
-    persistence.open(config_dir, ws_config.persistence)
+    persistence.open(config_dir)
 
     window.load_settings(config_dir)
 
