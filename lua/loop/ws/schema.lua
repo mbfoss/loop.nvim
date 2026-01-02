@@ -2,6 +2,11 @@ local schema = {
     type = "object",
     required = { "name", "save" },
     properties = {
+        version = {
+            type = { "string", "number" },
+            default = "1.0",
+            description = "Workspace configuration version for migration purposes",
+        },
         name = {
             type = { "string" },
             default = "",

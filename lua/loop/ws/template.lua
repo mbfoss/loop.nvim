@@ -1,6 +1,7 @@
 ---@type loop.WorkspaceConfig
 return {
-    __order = {"name", "save", "persistence"},
+    __order = {"version", "name", "save", "persistence"},
+    version = "1.0",
     name = "",
     save = {
         __order = {"include", "exclude", "follow_symlinks"},
