@@ -1,4 +1,5 @@
 local run = require('loop.coretasks.build.build')
+local jsontools = require('loop.tools.json')
 
 ---@type loop.TaskProvider
 local provider = {
@@ -9,6 +10,13 @@ local provider = {
     get_task_templates = function(config)
         local templates = require('loop.coretasks.build.templates')
         return templates
+    end,
+    get_task_preview = function(task)
+        local cpy = vim.fn.copy(task)
+        local templates = require('loop.coretasks.build.templates')
+        ---@diagnostic disable-next-line: undefined-field, inject-field
+        cpy.__order = templates[1].task.__order
+        return jsontools.to_string(cpy), "json"
     end,
     start_one_task = run.start_build
 }

@@ -1,13 +1,135 @@
+local field_order = { "name", "type", "command", "cwd", "env", "save_buffers", "depends_on" }
+
 ---@type loop.taskTemplate[]
 return {
+    --- empty generic task
     {
-        name = "Run",
+        name = "Run task",
         task = {
-            __order = { "name", "type", "command", "cwd", "depends_on" },
+            __order = field_order,
             name = "Run",
             type = "run",
-            command = "true",
+            command = "",
             cwd = "${wsdir}",
+            save_buffers = false,
+        },
+    },     
+    ----------------------------------------------------------------------------
+    -- C / C++ / BINARY
+    ----------------------------------------------------------------------------
+    {
+        name = "C++: Run Current Binary",
+        task = {
+            __order = field_order,
+            name = "Run Binary",
+            type = "run",
+            command = "./${fileroot}.out",
+            cwd = "${filedir}",
+            env = nil,
+            save_buffers = false,
+            depends_on = { "Build Single File" },
+        },
+    },
+
+    ----------------------------------------------------------------------------
+    -- PYTHON
+    ----------------------------------------------------------------------------
+    {
+        name = "Python: Run Current File",
+        task = {
+            __order = field_order,
+            name = "Python Run",
+            type = "run",
+            command = "python3 ${file}",
+            cwd = "${filedir}",
+            env = nil,
+            save_buffers = true,
+            depends_on = {},
+        },
+    },
+    {
+        name = "Python: HTTP Server",
+        task = {
+            __order = field_order,
+            name = "Static Server",
+            type = "run",
+            command = "python3 -m http.server 8000",
+            cwd = "${wsdir}",
+            env = { PORT = "8000" },
+            save_buffers = false,
+            depends_on = {},
+        },
+    },
+
+    ----------------------------------------------------------------------------
+    -- RUST / GO
+    ----------------------------------------------------------------------------
+    {
+        name = "Rust: Cargo Run",
+        task = {
+            __order = field_order,
+            name = "Cargo Run",
+            type = "run",
+            command = "cargo run",
+            cwd = "${wsdir}",
+            env = nil,
+            save_buffers = true,
+            depends_on = {},
+        },
+    },
+    {
+        name = "Go: Run Current File",
+        task = {
+            __order = field_order,
+            name = "Go Run",
+            type = "run",
+            command = "go run ${file}",
+            cwd = "${filedir}",
+            env = nil,
+            save_buffers = true,
+            depends_on = {},
+        },
+    },
+
+    ----------------------------------------------------------------------------
+    -- WEB / NODE
+    ----------------------------------------------------------------------------
+    {
+        name = "Node: Run Current File",
+        task = {
+            __order = field_order,
+            name = "Node Run",
+            type = "run",
+            command = "node ${file}",
+            cwd = "${filedir}",
+            env = nil,
+            save_buffers = true,
+            depends_on = {},
+        },
+    },
+    {
+        name = "Web: Dev Server (NPM)",
+        task = {
+            __order = field_order,
+            name = "NPM Dev",
+            type = "run",
+            command = "npm run dev",
+            cwd = "${wsdir}",
+            env = nil,
+            save_buffers = true,
+            depends_on = {},
+        },
+    },
+    {
+        name = "Web: Watch Mode",
+        task = {
+            __order = field_order,
+            name = "NPM Watch",
+            type = "run",
+            command = "npm run watch",
+            cwd = "${wsdir}",
+            env = nil,
+            save_buffers = true,
             depends_on = {},
         },
     },

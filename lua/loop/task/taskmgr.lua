@@ -5,8 +5,7 @@ local strtools = require('loop.tools.strtools')
 local taskstore = require("loop.task.taskstore")
 local providers = require("loop.task.providers")
 local selector = require("loop.tools.selector")
-local notifications = require("loop.notifications")
-local variables = require("loop.task.variables")
+local logs = require("loop.logs")
 
 ---@type table<string,{state:any,store:loop.TaskProviderStore}>
 local _provider_storage = {}
@@ -14,7 +13,11 @@ local _provider_storage = {}
 ---@params task loop.Task
 ---@return string,string
 local function _task_preview(task)
-    return jsontools.to_string(task), "json"
+    local provider = M.get_provider(task.type)
+    if provider and provider.get_task_preview then
+        return provider.get_task_preview(task)
+    end
+    return "", ""
 end
 
 ---@return table
@@ -83,17 +86,7 @@ local function _load_tasks(config_dir)
     for _, tasktype in ipairs(M.task_types()) do
         tasktype_to_schema[tasktype] = _get_single_task_schema(tasktype)
     end
-    local tasks, errors = taskstore.load_tasks(config_dir, tasktype_to_schema)
-    
-    -- Load variables after loading tasks (errors are logged but don't block task loading)
-    local vars, var_errors = taskstore.load_variables(config_dir)
-    if var_errors then
-        notifications.notify(strtools.indent_errors(var_errors, "Warning: error(s) loading variables.json"), vim.log.levels.WARN)
-    else
-        variables.set_variables(config_dir, vars or {})
-    end
-    
-    return tasks, errors
+    return taskstore.load_tasks(config_dir, tasktype_to_schema)
 end
 
 ---@param config_dir string
@@ -113,7 +106,8 @@ local function _select_and_add_task(config_dir, templates, prompt)
         if task then
             local ok, errors = taskstore.add_task(config_dir, task, _build_taskfile_schema())
             if not ok then
-                notifications.notify(strtools.indent_errors(errors, "Failed to add task"), vim.log.levels.ERROR)
+                vim.notify("Failed to add task")
+                logs.log(strtools.indent_errors(errors, "Failed to add task"), vim.log.levels.ERROR)
                 return
             end
         end
@@ -190,6 +184,18 @@ function M.on_workspace_close(wsinfo)
 end
 
 ---@param wsinfo loop.ws.WorkspaceInfo
+function M.on_tasks_cleanup()
+    local names = providers.names()
+    for _, name in ipairs(names) do
+        _provider_storage[name] = nil
+        local provider = M.get_provider(name)
+        if provider and provider.on_tasks_cleanup then
+            provider.on_tasks_cleanup()
+        end
+    end
+end
+
+---@param wsinfo loop.ws.WorkspaceInfo
 function M.save_provider_states(wsinfo)
     ---@type loop.Workspace
     local workspace = {
@@ -215,12 +221,12 @@ end
 ---@param task_type string|nil
 function M.add_task(config_dir, task_type)
     if not task_type or task_type == "" then
-        notifications.notify("Task type required")
+        vim.notify("Task type required")
         return
     end
     local provider = M.get_provider(task_type)
     if not provider then
-        notifications.notify("Invalid task type: " .. tostring(task_type))
+        vim.notify("Invalid task type: " .. tostring(task_type))
         return
     end
     assert(type(provider) == "table")
@@ -228,11 +234,12 @@ function M.add_task(config_dir, task_type)
     ---@type fun(config: table|nil, err: string[]|nil)
     local on_config_ready = function(config, err)
         if err then
-            notifications.notify(err, vim.log.levels.ERROR)
+            vim.notify("Failed to load configuration for task type " .. tostring(task_type))
+            logs.log(err, vim.log.levels.ERROR)
             return
         end
         local templates = provider.get_task_templates(config)
-        _select_and_add_task(config_dir, templates, "Select task")
+        _select_and_add_task(config_dir, templates, "Select template")
     end
     local config_schema = provider.get_config_schema and provider.get_config_schema() or nil
     if config_schema then
@@ -256,7 +263,8 @@ function M.configure(config_dir, task_type)
         taskstore.open_tasks_config(config_dir)
         local _, task_errors = _load_tasks(config_dir)
         if task_errors then
-            notifications.notify(task_errors, vim.log.levels.ERROR)
+            vim.notify("Failed to load task configuration file", vim.log.levels.ERROR)
+            logs.log(task_errors, vim.log.levels.ERROR)
             return
         end
         return
@@ -264,7 +272,7 @@ function M.configure(config_dir, task_type)
 
     local provider = M.get_provider(task_type)
     if not provider then
-        notifications.notify("Invalid task type: " .. tostring(task_type))
+        vim.notify("Invalid task type: " .. tostring(task_type))
         return
     end
     if provider.get_config_template then
@@ -286,7 +294,7 @@ function M.add_variable(config_dir)
 
         -- Validate variable name pattern: ^[A-Za-z_][A-Za-z0-9_]*$
         if not var_name:match("^[A-Za-z_][A-Za-z0-9_]*$") then
-            notifications.notify("Invalid variable name. Must match pattern: ^[A-Za-z_][A-Za-z0-9_]*$", vim.log.levels.ERROR)
+            vim.notify("Invalid variable name. Must match pattern: ^[A-Za-z_][A-Za-z0-9_]*$", vim.log.levels.ERROR)
             return
         end
 
@@ -299,7 +307,8 @@ function M.add_variable(config_dir)
             local schema = require("loop.task.variablesschema").base_schema
             local ok, errors = taskstore.add_variable(config_dir, var_name, var_value, schema)
             if not ok then
-                notifications.notify(strtools.indent_errors(errors, "Failed to add variable"), vim.log.levels.ERROR)
+                vim.notify("Failed to add variable")
+                logs.log(strtools.indent_errors(errors, "Failed to add variable"), vim.log.levels.ERROR)
             end
         end)
     end)
@@ -347,7 +356,8 @@ function M.get_or_select_task(config_dir, mode, task_name, handler)
 
     local tasks, task_errors = _load_tasks(config_dir)
     if (not tasks) or task_errors then
-        notifications.notify(task_errors or "Error while loading tasks", vim.log.levels.ERROR)
+        vim.notify("Failed to load tasks")
+        logs.log(task_errors or "Error while loading tasks", vim.log.levels.ERROR)
         handler(nil)
         return
     end
@@ -355,7 +365,7 @@ function M.get_or_select_task(config_dir, mode, task_name, handler)
     if task_name and task_name ~= "" then
         local task = vim.iter(tasks):find(function(t) return t.name == task_name end)
         if not task then
-            notifications.notify({ "No task found with name: " .. task_name }, vim.log.levels.ERROR)
+            vim.notify("No task found with name: " .. task_name, vim.log.levels.ERROR)
             handler(nil)
             return
         end
@@ -385,7 +395,7 @@ function M.run_one_task(task, page_manager, exit_handler)
     assert(task.type)
     local provider = M.get_provider(task.type)
     if not provider then
-        notifications.notify("Invalid task type: " .. tostring(task.type))
+        vim.notify("Invalid task type: " .. tostring(task.type))
         return nil, "Invalid task type"
     end
     return provider.start_one_task(task, page_manager, exit_handler)

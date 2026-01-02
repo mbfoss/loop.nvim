@@ -5,7 +5,7 @@ local throttle = require('loop.tools.throttle')
 local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local selector = require("loop.tools.selector")
-local notifications = require("loop.notifications")
+local logs = require("loop.logs")
 local BaseBuffer = require('loop.buf.BaseBuffer')
 local OutputBuffer = require('loop.buf.OutputBuffer')
 local CompBuffer = require('loop.buf.CompBuffer')
@@ -338,7 +338,7 @@ local function _select_and_show_page(target_winid)
         end
     end
     if #choices == 0 then
-        notifications.notify("No pages to show")
+        vim.notify("No pages to show")
         return
     end
     selector.select("Select page", choices, nil, function(data)
@@ -395,7 +395,7 @@ function M.open_page(target_winid, group_label, page_label)
         end
     end
     if not tab_idx then
-        notifications.notify('Page not found: ' .. tostring(group_label))
+        vim.notify('Page not found: ' .. tostring(group_label))
         return
     end
     if not page_label then
@@ -413,7 +413,7 @@ function M.open_page(target_winid, group_label, page_label)
         end
     end
     if not page_idx then
-        notifications.notify('Page not found: ' .. tostring(group_label) .. ' - ' .. page_label)
+        vim.notify('Page not found: ' .. tostring(group_label) .. ' - ' .. page_label)
         return
     end
     _show_page(target_winid, tab_idx, page_idx)

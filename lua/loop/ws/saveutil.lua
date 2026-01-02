@@ -1,6 +1,6 @@
 local M = {}
 
-local notifications = require('loop.notifications')
+local logs = require('loop.logs')
 local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
 
@@ -57,7 +57,7 @@ local function _report_save_results(saved_count, excluded_count, saved_paths)
     end
 
     local level = saved_count > 0 and vim.log.levels.INFO or vim.log.levels.WARN
-    notifications.notify(lines, level)
+    vim.notify(table.concat(lines, '\n'), level)
 end
 
 function M.save_workspace_buffers(ws_info)
@@ -131,6 +131,18 @@ function M.save_workspace_buffers(ws_info)
     end
 
     _report_save_results(saved, excluded, saved_paths)
+    
+    -- Log user-friendly save message
+    if saved > 0 then
+        local msg = string.format("Saved %d file%s", saved, saved == 1 and "" or "s")
+        if saved <= 5 then
+            local file_list = table.concat(saved_paths, ", ")
+            logs.user_log(msg .. ": " .. file_list, "save")
+        else
+            logs.user_log(msg, "save")
+        end
+    end
+    
     return saved
 end
 

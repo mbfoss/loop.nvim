@@ -1,6 +1,7 @@
+local jsontools = require('loop.tools.json')
+
 ---@class loop.coretasks.vimcmd.Task : loop.Task
 ---@field command string
-
 
 ---@type loop.TaskProvider
 local provider = {
@@ -12,6 +13,13 @@ local provider = {
         local templates = require('loop.coretasks.vimcmd.templates')
         return templates
     end,
+   get_task_preview = function(task)
+        local cpy = vim.fn.copy(task)
+        local templates = require('loop.coretasks.vimcmd.templates')
+        ---@diagnostic disable-next-line: undefined-field, inject-field
+        cpy.__order = templates[1].task.__order
+        return jsontools.to_string(cpy), "json"
+    end,    
     start_one_task = function(task, page_manager, on_exit)
         ---@cast task loop.coretasks.vimcmd.Task
         -- require the module

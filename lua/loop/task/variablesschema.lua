@@ -8,20 +8,12 @@ local base_schema = {
 
     properties = {
         ["$schema"] = { type = "string" },
-
         variables = {
             type = "object",
-            additionalProperties = false,
-            patternProperties = {
-                ["^[A-Za-z_][A-Za-z0-9_]*$"] = {
-                    type = "string",
-                    description = "Variable value (supports ${VAR} templates)"
-                }
-            },
+            additionalProperties = { type = "string" },
             description = "Object mapping variable names to their values"
         },
     },
 }
 
 return { base_schema = base_schema }
-

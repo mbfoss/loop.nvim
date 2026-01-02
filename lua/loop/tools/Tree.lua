@@ -327,6 +327,30 @@ function Tree:have_children(id)
     return node and node.first_child ~= nil
 end
 
+---Get all immediate children of a node in order.
+---@param parent_id any|nil If nil, returns root nodes.
+---@return loop.tools.Tree.Item[]
+function Tree:get_children(parent_id)
+    local items = {}
+    local child_id
+
+    if parent_id == nil then
+        child_id = self._root_first
+    else
+        local node = self._nodes[parent_id]
+        if not node then return items end
+        child_id = node.first_child
+    end
+
+    while child_id do
+        local node = self._nodes[child_id]
+        table.insert(items, { id = child_id, data = node.data })
+        child_id = node.next_sibling
+    end
+
+    return items
+end
+
 ---Remove a node and all its descendants.
 ---@param id any
 function Tree:remove_item(id)

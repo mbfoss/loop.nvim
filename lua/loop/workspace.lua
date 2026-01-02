@@ -1,6 +1,6 @@
 local M = {}
 
-local notifications = require('loop.notifications')
+local logs = require('loop.logs')
 local taskmgr = require("loop.task.taskmgr")
 local window = require("loop.ui.window")
 local wsinfo = require("loop.wsinfo")
@@ -24,7 +24,7 @@ local _save_timer = nil
 ---@return loop.ws.WorkspaceInfo?
 local function _get_ws_info_or_warn()
     if not _workspace_info then
-        notifications.notify("No active workspace", vim.log.levels.WARN)
+        vim.notify("No active workspace", vim.log.levels.WARN)
         return
     end
     return _workspace_info
@@ -66,7 +66,11 @@ local function _close_workspace(quiet)
 
     taskmgr.on_workspace_close(_workspace_info)
 
-    if not quiet then notifications.notify("Workspace closed") end
+    if not quiet and _workspace_info then
+        local label = _workspace_info.name or _workspace_info.root_dir
+        logs.user_log("Workspace closed: " .. label, "workspace")
+        vim.notify("Workspace closed")
+    end
     _workspace_info = nil
     wsinfo.set_ws_info(nil)
 end
@@ -109,7 +113,7 @@ local function _load_workspace_config(config_dir)
     end
     local config = data_or_err
     local schema = require('loop.ws.schema')
-    
+
     -- Check if migration is needed
     local needs_migrate, current_ver = migration.needs_migration(config)
     if needs_migrate then
@@ -122,12 +126,14 @@ local function _load_workspace_config(config_dir)
         local config_file = vim.fs.joinpath(config_dir, "workspace.json")
         local save_ok = jsontools.save_to_file(config_file, config)
         if not save_ok then
-            notifications.notify("Migrated workspace config but failed to save. Please save manually.", vim.log.levels.WARN)
+            vim.notify("Migrated workspace config but failed to save. Please save manually.",
+                vim.log.levels.WARN)
         else
-            notifications.notify("Migrated workspace config from version " .. current_ver .. " to " .. config.version, vim.log.levels.INFO)
+            vim.notify("Migrated workspace config from version " .. current_ver .. " to " .. config.version,
+                vim.log.levels.INFO)
         end
     end
-    
+
     local errors = jsonschema.validate(schema, config)
     if errors then
         return nil, errors
@@ -149,7 +155,7 @@ local function _load_workspace(dir, quiet)
 
     if _workspace_info and dir == _workspace_info.root_dir then
         if not quiet then
-            notifications.notify("Workspace is already open")
+            vim.notify("Workspace is already open")
             return true
         end
         return true
@@ -189,14 +195,14 @@ local function _load_workspace(dir, quiet)
 
     local config = require('loop.config')
     local save_interval = (config.current.autosave_interval or 5) * 60 * 1000
-    
+
     if save_interval > 0 and not _save_timer then
         -- Create and start the repeating timer
         ---@diagnostic disable-next-line: undefined-field
         _save_timer = vim.loop.new_timer()
         _save_timer:start(
-            save_interval,                  -- initial delay
-            save_interval,                  -- frequency
+            save_interval, -- initial delay
+            save_interval, -- frequency
             vim.schedule_wrap(_save_workspace)
         )
     end
@@ -209,9 +215,9 @@ function M.create_workspace(dir)
     assert(_init_done, _init_err_msg)
     if _workspace_info then
         if dir == _workspace_info.root_dir then
-            notifications.notify("Workspace already exists")
+            vim.notify("Workspace already exists")
         else
-            notifications.notify("Another workspace is already open")
+            vim.notify("Another workspace is already open")
         end
         return false
     end
@@ -219,13 +225,13 @@ function M.create_workspace(dir)
     dir = dir or vim.fn.getcwd()
     assert(type(dir) == 'string')
     if _is_workspace_dir(dir) then
-        notifications.notify("A workspace already exists in " .. dir, vim.log.levels.ERROR)
+        vim.notify("A workspace already exists in " .. dir, vim.log.levels.ERROR)
         return
     end
 
     -- important check because the user may pass garbage data
     if not filetools.dir_exists(dir) then
-        notifications.notify("Invalid directory " .. tostring(dir), vim.log.levels.ERROR)
+        vim.notify("Invalid directory " .. tostring(dir), vim.log.levels.ERROR)
         return
     end
 
@@ -233,7 +239,10 @@ function M.create_workspace(dir)
     vim.fn.mkdir(config_dir, "p")
 
     if not _init_or_open_ws_config(dir) then
-        notifications.notify("Failed to setup configuration file")
+        vim.notify("Failed to setup configuration file")
+    else
+        local ws_name = vim.fn.fnamemodify(dir, ":p:h:t")
+        logs.user_log("Workspace created: " .. ws_name, "workspace")
     end
 end
 
@@ -246,42 +255,41 @@ function M.open_workspace(dir, at_startup)
     if ok and _workspace_info then
         local label = _workspace_info.name
         if not label or label == "" then label = _workspace_info.root_dir end
-        notifications.log("Workspace loaded: " .. label)
-    elseif not at_startup then
-        errors = errors or {}
-        table.insert(errors, 1, "Failed to load workspace")
-        notifications.notify(errors, vim.log.levels.ERROR)
-        if config_err then
-            _init_or_open_ws_config(dir)
+        logs.user_log("Workspace opened: " .. label, "workspace")
+    else
+        if not at_startup then
+            vim.notify("Failed to load workspace", vim.log.levels.ERROR)
         end
+        errors = errors or {}
+        logs.user_log(errors, "workspace")
     end
 end
 
 function M.configure_workspace()
     if not _workspace_info then
-        notifications.notify("No active workspace", vim.log.levels.WARN)
+        vim.notify("No active workspace", vim.log.levels.WARN)
         return
     end
     local ok, configfile = _init_or_open_ws_config(_workspace_info.root_dir)
     if not ok or not configfile then
-        notifications.notify("Failed to setup configuration file")
+        vim.notify("Failed to setup configuration file")
         return
     end
     local read_ok, data_or_err = uitools.smart_read_file(configfile)
     if not read_ok then
-        notifications.notify("Workspace configuration error - " .. tostring(data_or_err))
+        vim.notify("Workspace configuration error - " .. tostring(data_or_err))
         return
     end
     local config_ok, config_or_err = jsontools.from_string(data_or_err)
     if not config_ok then
-        notifications.notify("Workspace configuration is not a valid JSON - " .. tostring(config_or_err))
+        vim.notify("Workspace configuration is not a valid JSON - " .. tostring(config_or_err))
         return
     end
     local config = config_or_err
     local schema = require('loop.ws.schema')
     local errors = jsonschema.validate(schema, config)
     if errors then
-        notifications.notify("Workspace configuration error\n" .. table.concat(errors, '\n'))
+        vim.notify("Workspace configuration error\n" .. table.concat(errors, '\n'))
     end
 end
 
@@ -320,7 +328,7 @@ function M.workspace_cmmand(command)
         M.save_workspace_buffers()
         return
     end
-    notifications.notify("Invalid command: " .. command)
+    vim.notify("Invalid command: " .. command)
 end
 
 ---@param args string[]
@@ -369,7 +377,7 @@ function M.task_command(command, arg1, arg2)
     elseif command == "terminate" then
         runner.terminate_tasks()
     else
-        notifications.notify('Invalid task command: ' .. command)
+        vim.notify('Invalid task command: ' .. command)
     end
 end
 
@@ -401,7 +409,7 @@ function M.var_command(command)
     elseif command == "configure" then
         taskmgr.configure_variables(config_dir)
     else
-        notifications.notify('Invalid var command: ' .. command)
+        vim.notify('Invalid var command: ' .. command)
     end
 end
 
@@ -427,7 +435,7 @@ function M.page_command(command, arg1, arg2)
     elseif command == "open" then
         M.open_page(arg1, arg2)
     else
-        notifications.notify("Invalid command: " .. command)
+        vim.notify("Invalid command: " .. command)
     end
 end
 
@@ -458,10 +466,15 @@ function M.open_page(group_label, page_pabel)
     window.open_page(vim.api.nvim_get_current_win(), group_label, page_pabel)
 end
 
+function M.logs_command()
+    assert(_init_done, _init_err_msg)
+    logs.show_logs()
+end
+
 function M.save_workspace_buffers()
     local ws_info = _get_ws_info_or_warn()
     if not ws_info then return 0 end
-    wssaveutil.save_workspace_buffers(ws_info)
+    return wssaveutil.save_workspace_buffers(ws_info)
 end
 
 function M.winbar_click(id, clicks, button, mods)

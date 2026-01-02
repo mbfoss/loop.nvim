@@ -4,6 +4,11 @@ local config = require('loop.config')
 
 local unpack = unpack or table.unpack
 
+---@class loop.TaskContext
+---@field task_name string
+---@field root_dir string
+---@field variables table<string, string>
+
 --- Splits a string by a delimiter while respecting backslash escapes.
 ---@param str string
 ---@param sep string
@@ -78,8 +83,9 @@ end
 
 --- Recursive function to expand a string.
 ---@param str string
+---@param ctx loop.TaskContext
 ---@return string|nil result, string|nil err
-local function expand_recursive(str)
+local function expand_recursive(str, ctx)
     local res = ""
     local i = 1
 
@@ -94,10 +100,16 @@ local function expand_recursive(str)
         elseif char == "$" and next_char == "{" then
             local content, end_pos, parse_err = parse_nested(str, i + 1)
             if parse_err then return nil, parse_err end
+            if not content then
+                return nil, "Failed to parse macro content"
+            end
 
             -- 1. Recursively expand the content (for nested macros)
-            local expanded_inner, expand_err = expand_recursive(content)
+            local expanded_inner, expand_err = expand_recursive(content, ctx)
             if expand_err then return nil, expand_err end
+            if not expanded_inner then
+                return nil, "Macro expansion returned nil"
+            end
 
             -- 2. Parse Name and Arguments
             local macro_name, args_list = "", {}
@@ -106,17 +118,28 @@ local function expand_recursive(str)
             if colon_pos then
                 macro_name = vim.trim(expanded_inner:sub(1, colon_pos - 1))
                 local raw_args = expanded_inner:sub(colon_pos + 1)
-                args_list = split_with_escapes(raw_args, ",")
+                if raw_args and raw_args ~= "" then
+                    args_list = split_with_escapes(raw_args, ",")
+                end
             else
                 macro_name = vim.trim(expanded_inner)
             end
 
             -- 3. Execute Macro
+            if not macro_name or macro_name == "" then
+                return nil, "Unknown macro: ''"
+            end
             local fn = config.current.macros[macro_name]
             if not fn then return nil, "Unknown macro: '" .. macro_name .. "'" end
 
+            -- Prepend ctx to args_list
+            local macro_args = { ctx }
+            for _, arg in ipairs(args_list) do
+                table.insert(macro_args, arg)
+            end
+
             -- Receive: pcall_ok, val1, val2
-            local status, val, macro_err = async_call(fn, args_list)
+            local status, val, macro_err = async_call(fn, macro_args)
 
             -- Handle pcall crash (error thrown)
             if not status then 
@@ -140,17 +163,20 @@ local function expand_recursive(str)
 end
 
 --- Internal recursive walker for tables.
-local function _expand_table(tbl, seen)
+---@param tbl table
+---@param seen table
+---@param ctx loop.TaskContext
+local function _expand_table(tbl, seen, ctx)
     seen = seen or {}
     if seen[tbl] then return true end
     seen[tbl] = true
 
     for k, v in pairs(tbl) do
         if type(v) == "table" then
-            local ok, err = _expand_table(v, seen)
+            local ok, err = _expand_table(v, seen, ctx)
             if not ok then return false, err end
         elseif type(v) == "string" then
-            local res, err = expand_recursive(v)
+            local res, err = expand_recursive(v, ctx)
             if err then return false, err end
             tbl[k] = res
         end
@@ -160,8 +186,9 @@ end
 
 --- Resolves all macros within a string or a table.
 ---@param val any The input to resolve.
+---@param ctx loop.TaskContext The task context containing task name, root dir, and variables
 ---@param callback fun(success: boolean, result: any, err: string|nil)
-function M.resolve_macros(val, callback)
+function M.resolve_macros(val, ctx, callback)
     coroutine.wrap(function()
         local success, result, err
 
@@ -169,11 +196,11 @@ function M.resolve_macros(val, callback)
         local call_ok, call_ret = xpcall(function()
             if type(val) == "table" then
                 local tbl = vim.deepcopy(val)
-                local ok, table_err = _expand_table(tbl, {})
+                local ok, table_err = _expand_table(tbl, {}, ctx)
                 if not ok then error(table_err) end
                 return tbl
             elseif type(val) == "string" then
-                local res, expand_err = expand_recursive(val)
+                local res, expand_err = expand_recursive(val, ctx)
                 if expand_err then error(expand_err) end
                 return res
             else

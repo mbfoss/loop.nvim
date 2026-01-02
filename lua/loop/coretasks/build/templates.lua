@@ -1,41 +1,141 @@
-local field_order = { "name", "type", "command", "cwd", "quickfix_matcher", "depends_on" }
+local field_order = { "name", "type", "command", "cwd", "save_buffers", "quickfix_matcher", "depends_on", "depends_order" }
 
 ---@type loop.taskTemplate[]
 return {
+    --- empty generic task
     {
-        name = "Build",
+        name = "Build task",
         task = {
             __order = field_order,
             name = "Build",
             type = "build",
-            command = "true",
+            command = "",
             cwd = "${wsdir}",
             quickfix_matcher = "",
-            depends_on = {},
+            save_buffers = true,
+        },
+    },    
+    ----------------------------------------------------------------------------
+    -- C / C++
+    ----------------------------------------------------------------------------
+    {
+        name = "C++: Build Project (Make)",
+        task = {
+            __order = field_order,
+            name = "Make",
+            type = "build",
+            command = "make -j$(nproc)",
+            cwd = "${wsdir}",
+            quickfix_matcher = "gcc",
+            save_buffers = true,
         },
     },
     {
-        name = "Lua check",
+        name = "C++: Build Single File (G++)",
+        task = {
+            __order = field_order,
+            name = "Compile file",
+            type = "build",
+            command = "g++ -g -Wall -Wextra ${file} -o ${fileroot}.out",
+            cwd = "${filedir}",
+            quickfix_matcher = "gcc",
+            save_buffers = true,
+        },
+    },
+
+    ----------------------------------------------------------------------------
+    -- RUST
+    ----------------------------------------------------------------------------
+    {
+        name = "Rust: Cargo Build",
+        task = {
+            __order = field_order,
+            name = "Build",
+            type = "build",
+            command = "cargo build --message-format=short",
+            cwd = "${wsdir}",
+            quickfix_matcher = "cargo",
+            save_buffers = true,
+        },
+    },
+    {
+        name = "Rust: Cargo Check",
         task = {
             __order = field_order,
             name = "Check",
             type = "build",
-            command = "luacheck ${wsdir}",
+            command = "cargo check --message-format=short",
             cwd = "${wsdir}",
-            quickfix_matcher = "luacheck",
-            depends_on = {},
+            quickfix_matcher = "cargo",
+            save_buffers = true,
         },
     },
+
+    ----------------------------------------------------------------------------
+    -- GO
+    ----------------------------------------------------------------------------
     {
-        name = "Build c++ file",
+        name = "Go: Build Project",
         task = {
             __order = field_order,
             name = "Build",
             type = "build",
-            command = "g++ -g -std=c++23 ${file:cpp} -o ${fileroot}.out",
+            command = "go build ./...",
             cwd = "${wsdir}",
-            quickfix_matcher = "gcc",
-            depends_on = {},
+            quickfix_matcher = "go",
+            save_buffers = true,
         },
-    }
+    },
+    {
+        name = "Go: Build Current File",
+        task = {
+            __order = field_order,
+            name = "Build File",
+            type = "build",
+            command = "go build ${file}",
+            cwd = "${filedir}",
+            quickfix_matcher = "go",
+            save_buffers = true,
+        },
+    },
+
+    ----------------------------------------------------------------------------
+    -- STATIC ANALYSIS / LINTING
+    ----------------------------------------------------------------------------
+    {
+        name = "Lua: Lint Current File",
+        task = {
+            __order = field_order,
+            name = "Luacheck",
+            type = "build",
+            command = "luacheck ${file} --formatter plain --codes",
+            cwd = "${filedir}",
+            quickfix_matcher = "luacheck",
+            save_buffers = true,
+        },
+    },
+    {
+        name = "TS: Type Check Project",
+        task = {
+            __order = field_order,
+            name = "Check",
+            type = "build",
+            command = "tsc --noEmit --pretty false",
+            cwd = "${wsdir}",
+            quickfix_matcher = "tsc",
+            save_buffers = true,
+        },
+    },
+    {
+        name = "Python: Lint Current File",
+        task = {
+            __order = field_order,
+            name = "Pylint",
+            type = "build",
+            command = "pylint --output-format=parseable ${file}",
+            cwd = "${filedir}",
+            quickfix_matcher = "gcc", -- Pylint 'parseable' format matches GCC-style
+            save_buffers = true,
+        },
+    },
 }

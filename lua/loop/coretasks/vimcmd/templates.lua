@@ -1,12 +1,14 @@
+local field_order = { "name", "type", "command", "depends_on" }
+
 ---@type loop.taskTemplate[]
 return {
     {
         name = "Vim notification",
         task = {
-            __order = { "name", "type", "command", "depends_on" },
-            name = "Vim notify",
+            __order = field_order,
+            name = "Notify",
             type = "vimcmd",
-            command = "lua vim.notify('Hello world')",
+            command = "lua vim.notify('Hello world!')",
             depends_on = {},
         },
     },

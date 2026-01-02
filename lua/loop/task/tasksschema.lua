@@ -39,6 +39,10 @@ local base_items = {
             type = "string",
             enum = { "sequence", "parallel" }
         },
+        save_buffers = {
+            type = { "boolean", "null" },
+            description = "If true, ensures workspace buffers are saved before this task chain starts"
+        },
     },
 }
 

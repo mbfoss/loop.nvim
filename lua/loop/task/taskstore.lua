@@ -343,7 +343,19 @@ function M.load_provider_config(config_dir, name, config_schema, callback)
 
     local cmake_config = data.config
 
-    resolver.resolve_macros(cmake_config, function(success, result_table, err)
+    -- Build a minimal context for provider config resolution
+    local wsinfo = require("loop.wsinfo")
+    local ws_dir = wsinfo.get_ws_dir()
+    local vars, _ = M.load_variables(config_dir)
+    
+    ---@type loop.TaskContext
+    local task_ctx = {
+        task_name = name,
+        root_dir = ws_dir or config_dir,
+        variables = vars or {}
+    }
+
+    resolver.resolve_macros(cmake_config, task_ctx, function(success, result_table, err)
         if not success or not result_table then
             callback(nil, { err or "failed to resolve macros" })
         else

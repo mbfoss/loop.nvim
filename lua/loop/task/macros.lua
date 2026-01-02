@@ -1,10 +1,8 @@
 local M = {}
 
 local uitools = require('loop.tools.uitools')
-local wsinfo = require("loop.wsinfo")
 local systools = require("loop.tools.systools")
 local selector = require("loop.tools.selector")
-local variables = require("loop.task.variables")
 
 local _nofile_error = "Current buffer is not a regular saved file"
 local _badtype_error = "Current file type is not %s"
@@ -20,10 +18,10 @@ end
 
 -- ============================================================================
 -- MACRO DEFINITIONS
--- Signature: function(arg) return result, error_msg end
+-- Signature: function(ctx, arg) return result, error_msg end
 -- ============================================================================
 
-function M.home()
+function M.home(ctx)
     local home = os.getenv("HOME")
     if not home then
         return nil, "Environment variable $HOME is not set"
@@ -31,7 +29,7 @@ function M.home()
     return home
 end
 
-function M.file(type)
+function M.file(ctx, type)
     if not _is_file() then return nil, _nofile_error end
     if type and type ~= vim.bo.filetype then
         return nil, _badtype_error:format(type)
@@ -39,7 +37,7 @@ function M.file(type)
     return vim.fn.expand("%:p")
 end
 
-function M.filename(type)
+function M.filename(ctx, type)
     if not _is_file() then return nil, _nofile_error end
     if type and type ~= vim.bo.filetype then
         return nil, _badtype_error:format(type)
@@ -47,13 +45,13 @@ function M.filename(type)
     return vim.fn.expand("%:t")
 end
 
-function M.fileext()
+function M.fileext(ctx)
     if not _is_file() then return nil, _nofile_error end
     local ext = vim.fn.expand("%:e")
     return (ext ~= "" and ext) or nil
 end
 
-function M.fileroot(type)
+function M.fileroot(ctx, type)
     if not _is_file() then return nil, _nofile_error end
     if type and type ~= vim.bo.filetype then
         return nil, _badtype_error:format(type)
@@ -61,47 +59,46 @@ function M.fileroot(type)
     return vim.fn.expand("%:p:r")
 end
 
-function M.filedir()
+function M.filedir(ctx)
     if not _is_file() then return nil, _nofile_error end
     return vim.fn.expand("%:p:h")
 end
 
-function M.wsdir()
-    local ws_dir = wsinfo.get_ws_dir()
-    if not ws_dir then
+function M.wsdir(ctx)
+    if not ctx or not ctx.root_dir then
         return nil, "No active workspace"
     end
-    return ws_dir
+    return ctx.root_dir
 end
 
-function M.cwd()
+function M.cwd(ctx)
     return vim.fn.getcwd()
 end
 
-function M.filetype()
+function M.filetype(ctx)
     return vim.bo.filetype
 end
 
-function M.tmpdir()
+function M.tmpdir(ctx)
     local tmp = os.getenv("TMPDIR") or os.getenv("TEMP") or os.getenv("TMP") or "/tmp"
     return tmp
 end
 
-function M.date()
+function M.date(ctx)
     return os.date("%F") -- YYYY-MM-DD
 end
 
-function M.time()
+function M.time(ctx)
     return os.date("%T") -- HH:MM:SS
 end
 
-function M.timestamp()
+function M.timestamp(ctx)
     return os.date("%Y-%m-%dT%H:%M:%S")
 end
 
 --- Async: Prompts user for input
 -- NOTE: Uses coroutine.yield/resume to handle the async UI call
-function M.prompt(prompt, default, completion)
+function M.prompt(ctx, prompt, default, completion)
     if not prompt then return nil, "prompt macro requires prompt text" end
 
     local co = coroutine.running()
@@ -121,22 +118,21 @@ function M.prompt(prompt, default, completion)
     return result
 end
 
-function M.env(varname)
+function M.env(ctx, varname)
     if not varname then return nil, "env macro requires variable name" end
     local value = vim.fn.getenv(varname)
     return (value ~= vim.NIL and value) or nil
 end
 
 --- Looks up a custom variable and returns its literal value (no macro expansion)
-function M.var(varname)
+function M.var(ctx, varname)
     if not varname then return nil, "var macro requires variable name" end
 
-    local config_dir = wsinfo.get_ws_dir()
-    if not config_dir then
-        return nil, "No active workspace"
+    if not ctx or not ctx.variables then
+        return nil, "No task context available"
     end
 
-    local raw_value = variables.get_variable(config_dir, varname)
+    local raw_value = ctx.variables[varname]
     if not raw_value then
         return nil, "Variable not found: " .. varname
     end
@@ -147,7 +143,7 @@ end
 
 --- Async: Process selector
 -- NOTE: Uses coroutine.yield/resume to handle the async UI call
-M["select-pid"] = function()
+M["select-pid"] = function(ctx)
     local procs = systools.get_running_processes()
     if not procs or #procs == 0 then
         return nil, "No processes found"

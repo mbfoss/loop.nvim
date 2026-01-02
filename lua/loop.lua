@@ -6,7 +6,6 @@ local M = {}
 -- Dependencies
 local workspace = require("loop.workspace")
 local config = require("loop.config")
-local notifications = require("loop.notifications")
 
 -----------------------------------------------------------
 -- Defaults
@@ -31,6 +30,7 @@ local DEFAULT_CONFIG = {
     macros = require("loop.task.macros"),
     debug = false,
     autosave_interval = 5, -- 5 minutes
+    logs_count = 50, -- Number of recent logs to show
 }
 
 -----------------------------------------------------------
@@ -116,6 +116,7 @@ function M.select_command()
         { vimcmd = "Loop hide",                help = "Hide Loop window" },
         { vimcmd = "Loop page",                help = "Select the page shown in the Loop window" },
         { vimcmd = "Loop page open",           help = "Select and open a page in the current window" },
+        { vimcmd = "Loop logs",                help = "Show recent logs" },
     }
 
     ------------------------------------------------------------------
@@ -178,7 +179,7 @@ function M.dispatch(opts)
 
     local fn = _G.LoopWorkspace[subcmd]
     if not fn then
-        notifications.notify(
+        vim.notify(
             "Invalid command: " .. subcmd,
             vim.log.levels.ERROR
         )
@@ -188,7 +189,7 @@ function M.dispatch(opts)
     local rest = { unpack(args, 2) }
     local ok, err = pcall(fn, unpack(rest))
     if not ok then
-        notifications.notify(
+        vim.notify(
             "Loop " .. subcmd .. " failed: " .. tostring(err),
             vim.log.levels.ERROR
         )
@@ -221,6 +222,7 @@ function M.init()
         workspace = workspace.workspace_cmmand,
         task = workspace.task_command,
         var = workspace.var_command,
+        logs = workspace.logs_command,
     }
 end
 

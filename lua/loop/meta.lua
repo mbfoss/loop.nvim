@@ -10,6 +10,7 @@ error('Cannot require a meta file')
 ---@field type "composite"|string # task type
 ---@field depends_on string[]? # optional list of dependent task names
 ---@field depends_order "sequence"|"parallel"|nil # default is sequence
+---@field save_buffers boolean? # if true, ensures workspace buffers are saved before this task chain starts
 
 ---@class loop.taskTemplate
 ---@field name string
@@ -37,7 +38,9 @@ error('Cannot require a meta file')
 ---@field get_config_template (fun():table)|nil
 ---@field get_task_schema fun():table
 ---@field get_task_templates fun(config:table|nil):loop.taskTemplate[]
+---@field get_task_preview (fun(task:loop.Task):string,string)|nil
 ---@field start_one_task fun(task:loop.Task,page_manager:loop.PageManager, on_exit:loop.TaskExitHandler):(loop.TaskControl|nil,string|nil)
+---@field on_tasks_cleanup fun()?
 
 ---@class loop.KeyMap
 ---@field callback fun()

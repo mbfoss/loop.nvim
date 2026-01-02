@@ -28,8 +28,8 @@ local Trackers = require("loop.tools.Trackers")
 ---@field formatter fun(id:any,data:any,out_highlights:loop.Highlight[]):string
 ---@field expand_char string?
 ---@field collapse_char string?
+---@field loading_char string?
 ---@field indent_string string?
----@field loading_text string?
 ---@field render_delay_ms number|nil
 
 ---@class loop.comp.ItemTree
@@ -104,19 +104,6 @@ local function _refresh_tree(tree, async_update)
                     end)
                 end)
             end
-            if item.children_loading then
-                ---@type loop.comp.ItemTree.ItemData
-                local loading_item = {
-                    id = {}, -- unique id
-                    is_loading = true
-                }
-                ---@type loop.tools.Tree.FlatNode
-                table.insert(flat, {
-                    id = loading_item.id,
-                    data = loading_item,
-                    depth = flat_node.depth + 1,
-                })
-            end
         end
     end
     return flat, have_loading_nodes
@@ -131,8 +118,8 @@ function ItemTree:init(args)
 
     self._expand_char = args.expand_char or "▸"
     self._collapse_char = args.collapse_char or "▾"
+    self._loading_char = args.loading_char or "⧗"
     self._indent_string = args.indent_string or "  "
-    self._loading_text = args.loading_text or "Loading..."
     self._render_delay_ms = args.render_delay_ms or 150
 
     self._tree = Tree:new()
@@ -181,8 +168,8 @@ function ItemTree:link_to_buffer(buf_ctrl)
         render = function(bufnr)
             return self:_on_render_request(bufnr)
         end,
-        dispose = function ()
-            return self:dispose()            
+        dispose = function()
+            return self:dispose()
         end
     })
 
@@ -250,6 +237,27 @@ function ItemTree:upsert_item(item)
     self:_request_render()
 end
 
+---Get immediate children of an item.
+---@param parent_id any|nil
+---@return loop.comp.ItemTree.Item[]
+function ItemTree:get_children(parent_id)
+    local items = {}
+    local tree_items = self._tree:get_children(parent_id)
+    
+    for _, treeitem in ipairs(tree_items) do
+        ---@type loop.comp.ItemTree.ItemData
+        local data = treeitem.data
+        table.insert(items, {
+            id = treeitem.id,
+            parent_id = parent_id,
+            data = data.userdata,
+            expanded = data.expanded,
+            children_callback = data.children_callback
+        })
+    end
+    return items
+end
+
 ---@param ids any[]
 function ItemTree:remove_items(ids)
     for _, id in ipairs(ids) do
@@ -304,25 +312,29 @@ function ItemTree:_on_render_request(buf)
 
         -- Generate Prefix
         local icon = ""
+        -- Determine if this node should have an icon (has children or can load them)
         if item_id and (self._tree:have_children(item_id) or item.children_callback) then
-            icon = item.expanded and self._collapse_char or self._expand_char
+            if item.children_loading then
+                -- Show loading icon instead of the folding symbol
+                icon = self._loading_char
+            elseif item.expanded then
+                icon = self._collapse_char
+            else
+                icon = self._expand_char
+            end
         end
+
         local prefix = string.rep(self._indent_string, flatnode.depth or 0)
         if icon ~= "" then
             prefix = prefix .. icon .. " "
         else
+            -- Maintain alignment for leaf nodes
             prefix = prefix .. string.rep(" ", vim.fn.strdisplaywidth(self._expand_char)) .. " "
         end
 
-        -- Get Content
+        -- Content (The loading check is no longer needed here since the node is gone)
         local raw_hls = {}
-        local raw_text = ""
-        if item.is_loading then
-            raw_text = self._loading_text
-            raw_hls = { { group = "Comment" } }
-        else
-            raw_text = (item_id and self._formatter(item_id, item.userdata, raw_hls) or "")
-        end
+        local raw_text = (item_id and self._formatter(item_id, item.userdata, raw_hls) or "")
 
         -- Process lines and multi-line highlights
         local node_lines, mappings, all_node_hls = self:_process_node_lines(
@@ -469,33 +481,6 @@ function ItemTree:get_items()
             expanded = data.expanded,
         }
         table.insert(items, item)
-    end
-    return items
-end
-
----@param item_id any
----@return loop.comp.ItemTree.Item[]
-function ItemTree:get_item_and_children(item_id)
-    ---@type loop.tools.Tree.FlatNode[]
-    local nodes = self._tree:flatten(function(id, data)
-        if id == item_id then
-            return "keep"
-        else
-            return "exclude"
-        end
-    end)
-
-    local items = {}
-    for _, node in ipairs(nodes) do
-        ---@type loop.comp.ItemTree.ItemData
-        local itemdata = node.data
-        ---@type loop.comp.ItemTree.Item
-        local curitem = {
-            id = node.id,
-            data = itemdata.userdata,
-            expanded = itemdata.expanded,
-        }
-        table.insert(items, curitem)
     end
     return items
 end

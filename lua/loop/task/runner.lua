@@ -1,17 +1,19 @@
-local M             = {}
+local M               = {}
 
-local taskmgr       = require("loop.task.taskmgr")
-local resolver      = require("loop.tools.resolver")
-local notifications = require("loop.notifications")
-local TaskScheduler = require("loop.task.TaskScheduler")
-local ItemTreeComp  = require("loop.comp.ItemTree")
-local config        = require("loop.config")
-
+local taskmgr         = require("loop.task.taskmgr")
+local resolver        = require("loop.tools.resolver")
+local logs            = require("loop.logs")
+local TaskScheduler   = require("loop.task.TaskScheduler")
+local ItemTreeComp    = require("loop.comp.ItemTree")
+local config          = require("loop.config")
+local taskstore       = require("loop.task.taskstore")
+local strtools        = require("loop.tools.strtools")
+local wsinfo          = require("loop.wsinfo")
 
 local _status_node_id = "\027STATUS\027"
 
 -- Example state-to-highlight mapping
-local _highlights = {
+local _highlights     = {
     pending = "LoopPluginTaskPending",
     running = "LoopPluginTaskRunning",
     success = "LoopPluginTaskSuccess",
@@ -30,24 +32,6 @@ local _scheduler             = TaskScheduler:new()
 
 ---@type loop.PageManager?
 local _current_progress_pmgr = nil
-
----@param node table Task node from generate_task_plan_tree
----@param prefix? string Internal use for indentation
----@param is_last? boolean Internal use to determine tree branch
-local function print_task_tree(node, prefix, is_last)
-    prefix = prefix or ""
-    is_last = is_last or true
-
-    local branch = is_last and "└─ " or "├─ "
-    local line = prefix .. branch .. node.name .. " (" .. (node.order or "sequence") .. ")"
-    local new_prefix = prefix .. (is_last and "   " or "│  ")
-    if node.deps then
-        for i, child in ipairs(node.deps) do
-            line = line .. '\n' .. print_task_tree(child, new_prefix, i == #node.deps)
-        end
-    end
-    return line
-end
 
 ---@param node table Task node from generate_task_plan_tree
 ---@param tree_comp loop.comp.ItemTree
@@ -72,6 +56,25 @@ local function _convert_task_tree(node, tree_comp, parent_id)
             _convert_task_tree(child, tree_comp, comp_item.id)
         end
     end
+end
+
+
+---@param node table Task node from generate_task_plan_tree
+---@param prefix? string Internal use for indentation
+---@param is_last? boolean Internal use to determine tree branch
+local function print_task_tree(node, prefix, is_last)
+    prefix = prefix or ""
+    is_last = is_last or true
+
+    local branch = is_last and "└─ " or "├─ "
+    local line = prefix .. branch .. node.name .. " (" .. (node.order or "sequence") .. ")"
+    local new_prefix = prefix .. (is_last and "   " or "│  ")
+    if node.deps then
+        for i, child in ipairs(node.deps) do
+            line = line .. '\n' .. print_task_tree(child, new_prefix, i == #node.deps)
+        end
+    end
+    return line
 end
 
 ---@param page_manager_fact loop.PageManagerFactory
@@ -133,6 +136,19 @@ local function _create_progress_page(page_manager_fact)
 end
 
 ---@param config_dir string
+---@return table<string, string>|nil variables, string[]|nil errors
+local function _load_variables(config_dir)
+    -- Load variables after loading tasks (errors are logged but don't block task loading)
+    local vars, var_errors = taskstore.load_variables(config_dir)
+    if var_errors then
+        vim.notify("error(s) loading variables.json")
+        logs.log(strtools.indent_errors(var_errors, "Error(s) loading variables.json"),
+            vim.log.levels.WARN)
+    end
+    return vars, var_errors
+end
+
+---@param config_dir string
 ---@param page_manager_fact loop.PageManagerFactory
 ---@param mode "task"|"repeat"
 ---@param task_name string|nil
@@ -141,6 +157,9 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
         if not root_name or not all_tasks then
             return
         end
+
+        -- Log task start
+        logs.user_log("Task started: " .. root_name, "task")
         local symbols = config.current.window.symbols
 
         local progress_info = {
@@ -153,6 +172,7 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
         progress_info.page.set_ui_flags(symbols.waiting)
 
         local function report_status(msg, is_error)
+            logs.user_log(msg, "task")
             progress_info.tree_comp:upsert_item({ id = _status_node_id, data = { log_message = msg, log_level = is_error and vim.log.levels.ERROR or nil } })
             progress_info.page.set_ui_flags(symbols.failure)
         end
@@ -170,15 +190,48 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
             return
         end
 
+        logs.user_log("Scheduling tasks:\n" .. print_task_tree(node_tree))
+
         progress_info.tree_comp:upsert_item({ id = _status_node_id, data = { log_message = "Resolving macros" } })
 
+        local vars, _ = _load_variables(config_dir)
+        local ws_dir = wsinfo.get_ws_dir()
+
+        -- Build task context
+        ---@type loop.TaskContext
+        local task_ctx = {
+            task_name = root_name,
+            root_dir = ws_dir or config_dir, -- fallback to config_dir if no workspace
+            variables = vars or {}
+        }
+
         -- Resolve macros only on the tasks that will be used
-        resolver.resolve_macros(used_tasks, function(resolve_ok, resolved_tasks, resolve_error)
+        resolver.resolve_macros(used_tasks, task_ctx, function(resolve_ok, resolved_tasks, resolve_error)
             if not resolve_ok or not resolved_tasks then
                 report_status(resolve_error or "Failed to resolve macros in tasks", true)
                 return
             end
-            report_status("Scheduling tasks")
+
+            -- Check if any task in the chain requires saving buffers
+            local needs_save = false
+            for _, task in ipairs(resolved_tasks) do
+                if task.save_buffers == true then
+                    needs_save = true
+                    break
+                end
+            end
+
+            -- Save workspace buffers if any task requires it
+            if needs_save then
+                local workspace = require("loop.workspace")
+                local saved_count = workspace.save_workspace_buffers()
+                if saved_count > 0 then
+                    logs.user_log(
+                        string.format("Saved %d file%s before running task", saved_count, saved_count == 1 and "" or "s"),
+                        "save")
+                end
+            end
+
             -- Start the real execution
             _scheduler:start(
                 resolved_tasks,
@@ -189,7 +242,8 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
                     _convert_task_tree(node_tree, progress_info.tree_comp)
                     progress_info.page.set_ui_flags(config.current.window.symbols.running)
                 end,
-                function(name, event, success, reason) -- on stask event
+                function(name, event, success, reason) -- on task event
+                    logs.user_log(("%s: %s"):format(name, reason ~= "" and reason or event), "task")
                     local tree_comp = progress_info.tree_comp
                     if tree_comp then
                         local item = tree_comp:get_item(name)
@@ -203,6 +257,13 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
                 end,
                 function(success, reason) -- on exit
                     progress_info.page.set_ui_flags(success and symbols.success or symbols.failure)
+                    -- Log task completion
+                    if success then
+                        logs.user_log("Task completed: " .. root_name, "task")
+                    else
+                        local error_msg = reason or "Unknown error"
+                        logs.user_log("Task failed: " .. root_name .. " - " .. error_msg, "task")
+                    end
                 end
             )
         end)
@@ -219,6 +280,7 @@ end
 function M.terminate_tasks()
     if _scheduler:is_running() or _scheduler:is_terminating() then
         _scheduler:terminate()
+        logs.user_log("Task terminated by user", "task")
     end
 end
 

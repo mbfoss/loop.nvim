@@ -1,6 +1,7 @@
 local class = require("loop.tools.class")
 local Scheduler = require("loop.tools.Scheduler")
 local taskmgr = require("loop.task.taskmgr")
+local logs = require('loop.logs')
 
 ---@alias loop.TaskScheduler.TaskEventFn fun(taskname: string, event: loop.scheduler.NodeEvent, success:boolean,reason?:string)
 
@@ -151,6 +152,8 @@ function TaskScheduler:_run_plan(plan)
     local function start_node(id, on_node_exit)
         local task = name_to_task[id] --[[@as loop.Task]]
 
+        logs.user_log("Starting task:\n" .. vim.inspect(task), "task")
+
         local provider = taskmgr.get_provider(task.type)
         if not provider then
             on_node_exit(false, "No provider registered for task type: " .. task.type)
@@ -179,14 +182,15 @@ function TaskScheduler:_run_plan(plan)
 
     ---@type loop.scheduler.NodeEventFn
     local function on_node_event(id, event, success, reason, param)
-        plan.on_task_event(id, event, success, _get_failure_message(reason, param))
+        local msg = success and "" or _get_failure_message(reason, param)
+        plan.on_task_event(id, event, success, msg)
     end
 
     ---@type loop.scheduler.exit_fn
     local on_plan_end = function(success, trigger, param)
-        local reason = _get_failure_message(trigger, param)
+        local msg = success and "" or _get_failure_message(trigger, param)
 
-        final_cb(success, reason)
+        final_cb(success, msg)
         if self._pending_plan then
             self:_start_current_plan()
         end
@@ -207,6 +211,8 @@ function TaskScheduler:_start_current_plan()
     local plan = self._pending_plan
     if not plan then return end
     self._pending_plan = nil
+    -- ask providers to cleaup
+    taskmgr.on_tasks_cleanup()
     -- drop old pages
     for _, pm in ipairs(self._page_managers) do
         pm.delete_all_groups(true)
