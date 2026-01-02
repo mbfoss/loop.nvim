@@ -5,7 +5,6 @@ local wsinfo = require("loop.wsinfo")
 local systools = require("loop.tools.systools")
 local selector = require("loop.tools.selector")
 local variables = require("loop.task.variables")
-local resolver = require("loop.tools.resolver")
 
 local _nofile_error = "Current buffer is not a regular saved file"
 local _badtype_error = "Current file type is not %s"
@@ -128,8 +127,7 @@ function M.env(varname)
     return (value ~= vim.NIL and value) or nil
 end
 
---- Async: Looks up a custom variable and expands macros in its value
--- NOTE: Uses coroutine.yield/resume to handle the async resolver call
+--- Looks up a custom variable and returns its literal value (no macro expansion)
 function M.var(varname)
     if not varname then return nil, "var macro requires variable name" end
 
@@ -143,33 +141,8 @@ function M.var(varname)
         return nil, "Variable not found: " .. varname
     end
 
-    -- Expand macros in the variable value
-    local co = coroutine.running()
-    if not co then
-        -- Not in a coroutine context, return raw value (shouldn't happen in normal usage)
-        return raw_value
-    end
-
-    local expanded_value = nil
-    local expand_error = nil
-
-    resolver.resolve_macros(raw_value, function(success, result, err)
-        if success and result then
-            expanded_value = result
-        else
-            expand_error = err or "Failed to expand macros in variable value"
-        end
-        coroutine.resume(co)
-    end)
-
-    -- Pause until macro expansion completes
-    coroutine.yield()
-
-    if expand_error then
-        return nil, expand_error
-    end
-
-    return expanded_value
+    -- Return the literal value without expansion
+    return raw_value
 end
 
 --- Async: Process selector

@@ -276,6 +276,40 @@ function M.configure(config_dir, task_type)
     end
 end
 
+---@param config_dir string
+function M.add_variable(config_dir)
+    -- Prompt for variable name
+    vim.ui.input({ prompt = "Variable name: " }, function(var_name)
+        if not var_name or var_name == "" then
+            return
+        end
+
+        -- Validate variable name pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+        if not var_name:match("^[A-Za-z_][A-Za-z0-9_]*$") then
+            notifications.notify("Invalid variable name. Must match pattern: ^[A-Za-z_][A-Za-z0-9_]*$", vim.log.levels.ERROR)
+            return
+        end
+
+        -- Prompt for variable value
+        vim.ui.input({ prompt = "Variable value: " }, function(var_value)
+            if not var_value then
+                return
+            end
+
+            local schema = require("loop.task.variablesschema").base_schema
+            local ok, errors = taskstore.add_variable(config_dir, var_name, var_value, schema)
+            if not ok then
+                notifications.notify(strtools.indent_errors(errors, "Failed to add variable"), vim.log.levels.ERROR)
+            end
+        end)
+    end)
+end
+
+---@param config_dir string
+function M.configure_variables(config_dir)
+    taskstore.open_variables_config(config_dir)
+end
+
 ---@class loop.SelectTaskArgs
 ---@field tasks loop.Task[]
 ---@field prompt string
