@@ -14,6 +14,8 @@
 ---@field persistence {shada:boolean,undo:boolean}
 ---@field window loop.Config.Window
 ---@field macros table<string,(fun(arg:any):any,string|nil)>?
+---@field debug boolean? Enable debug/verbose mode for development
+---@field autosave_interval integer? Auto-save interval in minutes (default: 5 minutes).
 
 local M = {}
 

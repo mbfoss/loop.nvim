@@ -11,6 +11,7 @@ local jsonschema = require('loop.tools.jsonschema')
 local filetools = require('loop.tools.file')
 local persistence = require('loop.ws.persistence')
 local wssaveutil = require('loop.ws.saveutil')
+local migration = require('loop.ws.migration')
 
 local _init_done = false
 local _init_err_msg = "init() not called"
@@ -48,6 +49,7 @@ local function _save_workspace()
     assert(_init_done, _init_err_msg)
     window.save_settings(_workspace_info.config_dir)
     taskmgr.save_provider_states(_workspace_info)
+    return true
 end
 
 ---@param quiet? boolean
@@ -107,6 +109,25 @@ local function _load_workspace_config(config_dir)
     end
     local config = data_or_err
     local schema = require('loop.ws.schema')
+    
+    -- Check if migration is needed
+    local needs_migrate, current_ver = migration.needs_migration(config)
+    if needs_migrate then
+        local migrated_config, migrate_err = migration.migrate_config(config)
+        if migrate_err then
+            return nil, { "Migration failed: " .. migrate_err }
+        end
+        config = migrated_config
+        -- Save migrated config back to file
+        local config_file = vim.fs.joinpath(config_dir, "workspace.json")
+        local save_ok = jsontools.save_to_file(config_file, config)
+        if not save_ok then
+            notifications.notify("Migrated workspace config but failed to save. Please save manually.", vim.log.levels.WARN)
+        else
+            notifications.notify("Migrated workspace config from version " .. current_ver .. " to " .. config.version, vim.log.levels.INFO)
+        end
+    end
+    
     local errors = jsonschema.validate(schema, config)
     if errors then
         return nil, errors
@@ -166,14 +187,16 @@ local function _load_workspace(dir, quiet)
 
     taskmgr.on_workspace_open(_workspace_info)
 
-    if not _save_timer then
+    local config = require('loop.config')
+    local save_interval = (config.current.autosave_interval or 5) * 60 * 1000
+    
+    if save_interval > 0 and not _save_timer then
         -- Create and start the repeating timer
         ---@diagnostic disable-next-line: undefined-field
         _save_timer = vim.loop.new_timer()
-        local save_frequency = 5 * 60 * 1000 -- every 5 minutes (in ms)
         _save_timer:start(
-            save_frequency,                  -- initial delay
-            save_frequency,                  -- frequency
+            save_interval,                  -- initial delay
+            save_interval,                  -- frequency
             vim.schedule_wrap(_save_workspace)
         )
     end
@@ -415,7 +438,7 @@ function M.winbar_click(id, clicks, button, mods)
 end
 
 function M.init()
-    assert(not _init_done, "init alreay done")
+    assert(not _init_done, "init already done")
     _init_done = true
 
     window.init()
