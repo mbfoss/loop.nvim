@@ -165,8 +165,6 @@ function M.run_task(config_dir, page_manager_fact, mode, task_name)
         local progress_info = {
             ---@type loop.comp.ItemTree|nil
             tree_comp = nil,
-            ---@type loop.PageData|nil
-            page_data = nil
         }
         progress_info.tree_comp, progress_info.page = _create_progress_page(page_manager_fact)
         progress_info.page.set_ui_flags(symbols.waiting)
