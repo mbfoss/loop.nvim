@@ -1,27 +1,125 @@
-*loop.txt*   MyPlugin documentation
+*loop.txt*  loop.nvim help
 
-==============================================================================
-CONTENTS                                                     *loop-contents*
+NAME                                            *loop-name*
+    loop.nvim — Workspace and Task Management for Neovim
 
-  1. Introduction.................|loop-introduction|
-  2. Usage........................|loop-usage|
-  3. Commands.....................|loop-commands|
-  4. Configuration................|loop-config|
+INTRODUCTION                                    *loop-intro*
+    loop.nvim provides workspace-aware task definitions, dependency
+    resolution and execution from within Neovim.  Workspaces live in
+    .nvimloop directories and contain workspace.json, tasks.json and
+    other configuration files.
 
-==============================================================================
-INTRODUCTION                                              *loop-introduction*
+INSTALLATION                                    *loop-install*
+    Use your plugin manager (lazy.nvim / packer.nvim).  After install,
+    generate helptags: :helptags ALL
 
+CONFIGURATION                                   *loop-config*
+    In Lua (init.lua / plugin config):
+        require("loop").setup({
+            selector = "builtin",   -- or "default"
+            persistence = {
+                shada = false,      -- enable workspace shada persistence
+                undo = false,       -- enable workspace undo persistence
+            },
+        })
 
-==============================================================================
-USAGE                                                       *loop-usage*
+PERSISTENCE                                      *loop-persistence*
+    loop.nvim supports optional per-workspace persistence. When enabled,
+    Loop will make Neovim use persistence data stored inside the workspace
+    config directory (.nvimloop). This keeps history and state isolated
+    per project and avoids cross-project leakage.
 
+    Persistence covers:
+    - shada (command/file history, registers, global marks)
+    - undo history
 
-==============================================================================
-COMMANDS                                                 *loop-commands*
+    Toggle these features via the setup() `persistence` table above.
+    Persistence data is stored alongside the workspace (inside .nvimloop).
 
+USAGE / COMMANDS                                *loop-commands*
+    General:
+        :Loop                      - open UI / selector
+        :Loop logs                 - show recent plugin logs
 
-==============================================================================
-CONFIGURATION                                            *loop-config*
+    Workspace:
+        :Loop workspace create     - initialize a new workspace
+        :Loop workspace open       - open workspace from cwd
+        :Loop workspace info       - show workspace info
+        :Loop workspace configure  - edit workspace.json
+        :Loop workspace save       - save workspace buffers
 
+    Tasks:
+        :Loop task run [name]      - run a task (shows selector if name omitted)
+        :Loop task repeat          - repeat last task
+        :Loop task add [type]      - add a task (types provided by plugin)
+        :Loop task configure [type]- configure task provider
+        :Loop task terminate       - stop running tasks
 
-==============================================================================
+    UI:
+        :Loop toggle               - toggle Loop UI
+        :Loop show                 - show Loop UI
+        :Loop hide                 - hide Loop UI
+        :Loop page switch          - switch output page
+        :Loop page open [g] [p]    - open specific page/group
+
+    Variables:
+        :Loop var add              - create a new workspace variable
+        :Loop var configure        - open variable configuration
+
+VARIABLES                                        *loop-variables*
+    Workspace variables can be added and edited with the :Loop var
+    commands. Variables are stored in the workspace configuration and are
+    available to the macro substitution system.
+
+    Use variables in task definitions and provider configs via macros:
+        ${var:NAME}                 - value of variable NAME
+        ${var:NAME,subst1,subst2}   - value with lua string substitutions
+
+MACROS                                           *loop-macros*
+    Macros enable dynamic substitution in commands and configuration.
+    Common macros:
+        ${wsdir}    - workspace root
+        ${cwd}      - current working directory
+        ${file}     - current file path
+        ${fileroot} - file path without extension
+        ${env:NAME} - environment variable
+        ${var:NAME} - workspace variable
+        ${prompt:Msg,Default,Completion} - prompt user for input
+
+EXAMPLES                                         *loop-examples*
+    Build current file:
+        {
+          "name": "Compile Current File",
+          "type": "build",
+          "command": "gcc ${file} -o ${fileroot}.out",
+          "cwd": "${wsdir}"
+        }
+
+    Run with prompted port:
+        {
+          "name": "Run with Port",
+          "type": "run",
+          "command": "python server.py --port ${prompt:Enter port,8000}",
+          "cwd": "${wsdir}"
+        }
+
+TASK TYPES                                       *loop-task-types*
+    - build    : execute shell commands and populate quickfix
+    - run      : long-running processes without quickfix parsing
+    - vimcmd   : run Neovim command / lua
+    - composite: compose tasks in sequence or parallel
+
+QUICKFIX SUPPORT                                *loop-quickfix*
+    Built-in parsers convert compiler output into quickfix entries
+    (gcc, clang, luacheck, cargo, go, tsc, ...).
+
+LICENSE                                         *loop-license*
+    Distributed under the MIT License.
+
+SEE ALSO                                        *loop-help*
+    :help loop                             (this page)
+    :help loop-commands
+    :help loop-persistence
+    :help loop-variables
+
+" End of loop.txt

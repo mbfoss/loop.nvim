@@ -91,7 +91,7 @@ require("loop").setup({
 Workspaces are stored in `.nvimloop` directories containing:
 - `workspace.json` - Workspace configuration
 - `tasks.json` - Task definitions
-- Provider-specific configuration files
+- other configuration files
 
 Workspaces are auto-loaded when Neovim is opened without arguments and a `.nvimloop` directory is detected in the current working directory.
 
