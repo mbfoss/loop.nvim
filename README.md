@@ -20,17 +20,17 @@
 
 ## Introduction
 
-**loop.nvim** is a workspace and task management system for Neovim. It provides structured task definitions, dependency resolution, and execution directly from your editor using project-specific configurations stored in `.nvimloop` directories.
+**loop.nvim** is a workspace and task management system for Neovim. It provides structured task definitions, dependency resolution, and execution directly from your editor using project-specific configuration stored in `.nvimloop` directories.
 
 ### Features
 
-- **Workspace Management**: Auto-detects and loads configurations from `.nvimloop` directories
+- **Workspace Management**: Auto-detects and loads configuration from `.nvimloop` directories
 - **Task Scheduling**: Dependency resolution with parallel/sequential execution
 - **Task Types**: Build, run, vimcmd, and composite tasks
-- **Quickfix Integration**: Parses compiler output (GCC, Clang, luacheck, cargo, go, tsc) into quickfix
+- **Quickfix Integration**: Parses compiler output (GCC, Clang, luacheck, cargo, go, tsc ...) into the quickfix list
 - **Macro System**: Variable substitution using `${macro}` syntax
 - **UI Management**: Window and page management for task outputs
-- **Variables**: Custom workspace variables via `:Loop var`
+- **Variables**: Custom workspace variables managed via `:Loop var`
 
 ---
 
@@ -75,13 +75,13 @@ use {
 require("loop").setup({
      -- UI selector, possible values: 
      -- builtin: built-in selector/picker window
-     -- default: vim.ui.select (noevim default or managed by a plugin such as Mini, Snacks, Telescope...)
+     -- default: vim.ui.select (Neovim default or managed by a plugin such as Mini, Snacks, Telescope...)
     selector = "builtin",
-    -- Use per workspace persistence of file history, registers, global marks, undo history etc... 
-    -- Enable this will make neovim switch to the persistence data stored inside the workspace folder (.nvimloop)
+    -- Use per-workspace persistence of shared file history, registers, global marks, undo history, etc.
+    -- Enabling this will make Neovim use persistence data stored inside the workspace folder (.nvimloop)
     persistence = { 
-        shada = false,    -- Enable [shada](https://neovim.io/doc/user/starting.html#_shada-() persistence
-        undo = false,     -- Enable undo persistence
+        shada = false,    -- Enable workspace shada persistence
+        undo = false,     -- Enable workspace undo persistence
     },
 })
 ```
@@ -93,7 +93,7 @@ Workspaces are stored in `.nvimloop` directories containing:
 - `tasks.json` - Task definitions
 - Provider-specific configuration files
 
-Workspaces auto-load on `VimEnter` when `.nvimloop` is detected.
+Workspaces are auto-loaded when Neovim is opened without arguments and a `.nvimloop` directory is detected in the current working directory.
 
 ---
 
@@ -237,7 +237,9 @@ Macros enable dynamic variable substitution using `${macro}` syntax.
 | `${date}` | Current date (YYYY-MM-DD) | `2024-01-15` |
 | `${time}` | Current time (HH:MM:SS) | `14:30:00` |
 | `${timestamp}` | ISO timestamp | `2024-01-15T14:30:00` |
-| `${env:VAR}` | Environment variable | Value of `$VAR` |
+| `${env:NAME}` | Environment variable | Value of `$NAME` |
+| `${var:NAME}` | User variables  | Value of user variable |
+| `${var:NAME,subst1,subst2...}` | User variable with lua string substitutions | Value of `$VAR` after substitution |
 | `${prompt:Message}` | User input prompt | User-provided value |
 | `${prompt:Message,Default,CompletionType}` | User input prompt with default value and completion (example: ${prompt:Enter Path,/,file}) | User-provided value |
 
@@ -261,8 +263,20 @@ Macros enable dynamic variable substitution using `${macro}` syntax.
 }
 ```
 
----
+
+### Persistence
+
+Loop supports optional per-workspace persistence. When enabled, Loop will cause Neovim to use persistence data stored inside the workspace (.nvimloop) while that workspace is active. This isolates things like:
+- shada (command/file history, registers, global marks)
+- undo history
+
+Enable or disable these features in the global setup via the `persistence` table shown above. Persistence data is kept alongside the workspace to avoid cross-project leakage of history and state.
+
+## Variables
+
+Loop provides workspace variables that can be created and edited with the `:Loop var` commands (`:Loop var add`, `:Loop var configure`). Variables are stored in the workspace configuration and are available to the macro substitution system. Reference variables using the `${var:NAME}` macro in task definitions, commands, and provider configuration. Variable values take effect for tasks run in that workspace and persist with the workspace configuration.
+
+
 
 ## License
-
 Distributed under the MIT License.

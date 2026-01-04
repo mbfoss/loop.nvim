@@ -105,7 +105,7 @@ function M.prompt(ctx, prompt, default, completion)
 
     prompt = prompt .. ': '
     vim.schedule(function()
-        vim.ui.input({prompt = prompt, default = default, completion = completion }, function(input)
+        vim.ui.input({ prompt = prompt, default = default, completion = completion }, function(input)
             -- Resume the coroutine with the user's input
             coroutine.resume(co, input)
         end)
@@ -125,7 +125,7 @@ function M.env(ctx, varname)
 end
 
 --- Looks up a custom variable and returns its literal value (no macro expansion)
-function M.var(ctx, varname)
+function M.var(ctx, varname, ...)
     if not varname then return nil, "var macro requires variable name" end
 
     if not ctx or not ctx.variables then
@@ -135,6 +135,14 @@ function M.var(ctx, varname)
     local raw_value = ctx.variables[varname]
     if not raw_value then
         return nil, "Variable not found: " .. varname
+    end
+
+    if select("#", ...) > 0 then
+        local ok, formatted = pcall(string.format, raw_value, ...)
+        if not ok then
+            return nil, "String substitution failed for variable: " .. varname
+        end
+        return formatted
     end
 
     -- Return the literal value without expansion
