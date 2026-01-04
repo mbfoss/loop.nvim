@@ -12,6 +12,7 @@ local filetools = require('loop.tools.file')
 local persistence = require('loop.ws.persistence')
 local wssaveutil = require('loop.ws.saveutil')
 local migration = require('loop.ws.migration')
+local floatwin = require('loop.tools.floatwin')
 
 local _init_done = false
 local _init_err_msg = "init() not called"
@@ -210,6 +211,20 @@ local function _load_workspace(dir, quiet)
     return true, nil
 end
 
+function _show_workspace_info_floatwin()
+    if not _workspace_info then
+        vim.notify("No active workspace")
+        return
+    end
+    local info = _workspace_info
+    local save_config = vim.fn.copy(info.config.save)
+    ---@diagnostic disable-next-line: inject-field
+    save_config.__order = { "include", "exclude" }
+    local str = ("Name: %s\nDirectory: %s\nSaving settings:%s"):format(info.name, info.root_dir,
+        jsontools.to_string(save_config))
+    floatwin.show_floatwin("Workspace", str)
+end
+
 ---@param dir string?
 function M.create_workspace(dir)
     assert(_init_done, _init_err_msg)
@@ -305,11 +320,7 @@ end
 ---@param command string|nil
 function M.workspace_cmmand(command)
     if not command or command == "" or command == "info" then
-        if _workspace_info then
-            vim.notify(("Name: %s\nDirectory: %s"):format(_workspace_info.name, _workspace_info.root_dir))
-        else
-            vim.notify("No active workspace")
-        end
+        _show_workspace_info_floatwin()
         return
     end
     if command == "create" then

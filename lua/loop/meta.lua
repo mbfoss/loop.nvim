@@ -2,6 +2,7 @@
 error('Cannot require a meta file')
 
 ---@class loop.WorkspaceConfig
+---@field version string
 ---@field name string
 ---@field save {include:string[], exclude:string[],follow_symlinks:boolean}
 
