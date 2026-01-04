@@ -3,7 +3,7 @@ local field_order = { "name", "type", "command", "depends_on" }
 ---@type loop.taskTemplate[]
 return {
     {
-        name = "Vim notification",
+        name = "Message",
         task = {
             __order = field_order,
             name = "Notify",

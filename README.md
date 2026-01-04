@@ -81,19 +81,15 @@ You can customize the plugin behavior through the `setup()` function:
 
 ```lua
 require("loop").setup({
-    selector = "builtin", -- UI selector: "builtin", "telescope", or "snacks"
-    persistence = {
-        shada = false,    -- Enable shada persistence
+     -- UI selector, possible values: 
+     -- builtin: built-in selector/picker window
+     -- default: vim.ui.select (noevim default or managed by a plugin such as Mini, Snacks, Telescope...)
+    selector = "builtin",
+    -- Use per workspace persistence of file history, registers, global marks, undo history etc... 
+    -- Enable this will make neovim switch to the persistence data stored inside the workspace folder (.nvimloop)
+    persistence = { 
+        shada = false,    -- Enable [shada](https://neovim.io/doc/user/starting.html#_shada-() persistence
         undo = false,     -- Enable undo persistence
-    },
-    window = {
-        symbols = {
-            change  = "●",  -- Task changed
-            success = "✓",  -- Task succeeded
-            failure = "✗",  -- Task failed
-            waiting = "⧗",  -- Task waiting
-            running = "▶",  -- Task running
-        },
     },
     macros = {}, -- Custom macros (see Macros section)
 })
@@ -171,7 +167,7 @@ Build tasks execute shell commands and can parse output into Neovim's quickfix l
 
 **Properties:**
 - `command` (string|array): Command to execute (shell command or array of args)
-- `cwd` (string): Working directory (supports macros)
+- `cwd` (string): Working directory
 - `quickfix_matcher` (string): Parser for compiler output (`"gcc"` or `"luacheck"`)
 - `env` (object): Optional environment variables
 - `depends_on` (array): List of task names that must complete first
@@ -285,14 +281,14 @@ Macros allow dynamic variable substitution in task configurations using `${macro
 |-------|-------------|---------|
 | `${wsdir}` | Workspace root directory | `/path/to/project` |
 | `${cwd}` | Current working directory | `/path/to/current` |
-| `${file}` | Full path of current file | `/path/to/file.lua` |
-| `${file:cpp}` | Full path if filetype is cpp | `/path/to/file.cpp` |
-| `${filename}` | Current filename | `file.lua` |
-| `${filename:lua}` | Filename if filetype matches | `file.lua` |
+| `${file}` | Full path of current file | `/path/to/file.txt` |
+| `${file:type}` | Full path if filetype is type | `/path/to/file.txt` |
+| `${filename}` | Current filename | `file.txt` |
+| `${filename:type}` | Filename if filetype is type | `file.txt` |
 | `${fileroot}` | File path without extension | `/path/to/file` |
 | `${filedir}` | Directory of current file | `/path/to` |
-| `${fileext}` | File extension | `lua` |
-| `${filetype}` | Current buffer filetype | `lua` |
+| `${fileext}` | File extension | `txt` |
+| `${filetype}` | Current buffer filetype | `text` |
 | `${home}` | User home directory | `/home/user` |
 | `${tmpdir}` | System temp directory | `/tmp` |
 | `${date}` | Current date (YYYY-MM-DD) | `2024-01-15` |
@@ -300,6 +296,7 @@ Macros allow dynamic variable substitution in task configurations using `${macro
 | `${timestamp}` | ISO timestamp | `2024-01-15T14:30:00` |
 | `${env:VAR}` | Environment variable | Value of `$VAR` |
 | `${prompt:Message}` | User input prompt | User-provided value |
+| `${prompt:Message,Default,CompletionType}` | User input prompt with default value and completion (example: ${prompt:Enter Path,/,file}) | User-provided value |
 
 ### Macro Examples
 
@@ -316,10 +313,12 @@ Macros allow dynamic variable substitution in task configurations using `${macro
 {
   "name": "Run with Port",
   "type": "run",
-  "command": "python server.py --port ${prompt:Enter port:8000}",
+  "command": "python server.py --port ${prompt:Enter port,8000}",
   "cwd": "${wsdir}"
 }
 ```
+
+Custom macros can be defined in the setup table, a macro is a lua function that return the macros evaluated and an optional error message.
 
 ---
 
