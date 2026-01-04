@@ -83,7 +83,6 @@ require("loop").setup({
         shada = false,    -- Enable [shada](https://neovim.io/doc/user/starting.html#_shada-() persistence
         undo = false,     -- Enable undo persistence
     },
-    macros = {}, -- Custom macros (see Macros section)
 })
 ```
 
@@ -161,14 +160,6 @@ Execute shell commands with quickfix parsing.
 }
 ```
 
-**Properties:**
-- `command` (string|array): Command to execute
-- `cwd` (string): Working directory (supports macros)
-- `quickfix_matcher` (string): Parser for compiler output (`"gcc"`, `"luacheck"`, `"cargo"`, `"go"`, `"tsc"`)
-- `env` (object): Optional environment variables
-- `depends_on` (array): Task dependencies
-- `save_buffers` (boolean): Save buffers before execution
-
 ### Run Tasks
 
 Execute long-running applications without quickfix parsing.
@@ -213,7 +204,12 @@ Combine multiple tasks with parallel or sequential execution.
 ```
 
 **Properties:**
-- `depends_on` (array): List of task names to execute
+- `command` (string|array): Command to execute
+- `cwd` (string): Working directory
+- `quickfix_matcher` (string): Parser for compiler output (`"gcc"`, `"luacheck"`, `"cargo"`, `"go"`, `"tsc"`)
+- `env` (object): Optional environment variables
+- `save_buffers` (boolean): Save buffers before execution
+- `depends_on` (array): Task dependencies
 - `depends_order` (string): `"parallel"` or `"sequence"` (default: `"sequence"`)
 
 ---
@@ -229,9 +225,9 @@ Macros enable dynamic variable substitution using `${macro}` syntax.
 | `${wsdir}` | Workspace root directory | `/path/to/project` |
 | `${cwd}` | Current working directory | `/path/to/current` |
 | `${file}` | Full path of current file | `/path/to/file.txt` |
-| `${file:type}` | Full path if filetype is type | `/path/to/file.txt` |
+| `${file:type}` | Full path if filetype is type, task fails otherwise | `/path/to/file.txt` |
 | `${filename}` | Current filename | `file.txt` |
-| `${filename:type}` | Filename if filetype is type | `file.txt` |
+| `${filename:type}` | Filename if filetype is type, task fails otherwise | `file.txt` |
 | `${fileroot}` | File path without extension | `/path/to/file` |
 | `${filedir}` | Directory of current file | `/path/to` |
 | `${fileext}` | File extension | `txt` |
@@ -264,8 +260,6 @@ Macros enable dynamic variable substitution using `${macro}` syntax.
   "cwd": "${wsdir}"
 }
 ```
-
-Custom macros can be defined in the setup table, a macro is a lua function that return the macros evaluated and an optional error message.
 
 ---
 
