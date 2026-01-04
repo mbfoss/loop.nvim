@@ -422,7 +422,7 @@ function M.page_subcommands(args)
         return vim.tbl_map(vim.fn.fnameescape, names)
     end
     if #args == 2 and (args[1] == "open") then
-        local group = args[1]
+        local group = args[2]
         local names = window.get_page_names(group)
         return vim.tbl_map(vim.fn.fnameescape, names)
     end
@@ -460,10 +460,10 @@ function M.switch_page()
 end
 
 ---@param group_label string|nil
----@param page_pabel string|nil
-function M.open_page(group_label, page_pabel)
+---@param page_label string|nil
+function M.open_page(group_label, page_label)
     assert(_init_done, _init_err_msg)
-    window.open_page(vim.api.nvim_get_current_win(), group_label, page_pabel)
+    window.open_page(vim.api.nvim_get_current_win(), group_label, page_label)
 end
 
 function M.logs_command()
