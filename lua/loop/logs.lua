@@ -32,6 +32,9 @@ end
 ---@param message string User-friendly message to log
 ---@param category nil|"workspace"|"task"|"save"
 function M.user_log(message, category)
+    if type(message) == "table" then
+        message = table.concat(message, '\n')
+    end
     table.insert(_log_history, {
         text = message,
         level = nil, -- User logs don't have technical levels
@@ -74,8 +77,7 @@ function M.show_logs()
 
     -- Format logs for display (user-friendly)
     local lines = {}
-    for _,log in ipairs(logs) do
-
+    for _, log in ipairs(logs) do
         -- Skip technical debug logs unless in debug mode
         if log.level == vim.log.levels.DEBUG and not (config.current and config.current.debug) then
             -- Only show user logs
@@ -122,10 +124,6 @@ function M.show_logs()
 
         -- Clean up text (remove "loop.nvim: " prefix if present)
         local clean_text = log.text
-        if clean_text:match("^loop%.nvim: ") then
-            clean_text = clean_text:gsub("^loop%.nvim: ", "")
-        end
-
         -- Split multi-line logs
         local log_lines = vim.split(clean_text, '\n', { trimempty = false })
         for j, line in ipairs(log_lines) do
@@ -139,7 +137,7 @@ function M.show_logs()
         ::continue::
     end
 
-    if #lines == 2 then
+    if #lines == 0 then
         -- Only header and empty line
         table.insert(lines, "No recent activity")
     end

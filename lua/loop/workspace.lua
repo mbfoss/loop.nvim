@@ -266,17 +266,20 @@ end
 function M.open_workspace(dir, at_startup)
     assert(_init_done, _init_err_msg)
     dir = dir or vim.fn.getcwd()
-    local ok, errors, config_err, config_dir = _load_workspace(dir, at_startup)
+    local ok, errors = _load_workspace(dir, at_startup)
     if ok and _workspace_info then
         local label = _workspace_info.name
         if not label or label == "" then label = _workspace_info.root_dir end
         logs.user_log("Workspace opened: " .. label, "workspace")
+        if not at_startup then
+            vim.notify("Workspace opened")
+        end
     else
         if not at_startup then
             vim.notify("Failed to load workspace", vim.log.levels.ERROR)
         end
         errors = errors or {}
-        logs.user_log(errors, "workspace")
+        logs.user_log("Workspace not loaded\n" .. table.concat(errors, '\n'), "workspace")
     end
 end
 
