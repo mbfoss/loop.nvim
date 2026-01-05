@@ -23,11 +23,11 @@ return {
             __order = field_order,
             name = "Run Binary",
             type = "run",
-            command = "./${fileroot}.out",
+            command = "${fileroot}.out",
             cwd = "${filedir}",
             env = nil,
             save_buffers = false,
-            depends_on = { "Build Single File" },
+            depends_on = { "Compile file" },
         },
     },
 

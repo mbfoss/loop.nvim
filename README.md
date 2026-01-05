@@ -27,7 +27,7 @@
 ```lua
 {
     "mbfoss/loop.nvim",
-    cmd = { "Loop" },
+    event = "VimEnter",
     config = function()
         require("loop").setup({})
     end
@@ -38,6 +38,7 @@
 ```lua
 use {
     'mbfoss/loop.nvim',
+    event = "VimEnter",
     config = function()
         require('loop').setup()
     end
@@ -79,17 +80,38 @@ Example build task:
 }
 ```
 
-## Macros & Variables
+## Macro Reference
 
-Use macros like `${wsdir}`, `${file}`, `${env:NAME}`, `${var:NAME}`, or `${prompt:Message}` in your task definitions for dynamic values.  
-Manage workspace variables with `:Loop var add` and `:Loop var configure`.
+Loop tasks support powerful macro expansion for dynamic commands and paths.  
+Use macros in your task definitions as `${macro}` or `${macro:arg}`.
+
+| Macro                | Description                                 | Example Value                |
+|----------------------|---------------------------------------------|------------------------------|
+| `${wsdir}`           | Workspace root directory                    | `/path/to/project`           |
+| `${cwd}`             | Current working directory                   | `/path/to/current`           |
+| `${file}`            | Full path of current file                   | `/path/to/file.txt`          |
+| `${filename}`        | Current filename                            | `file.txt`                   |
+| `${fileroot}`        | File path without extension                 | `/path/to/file`              |
+| `${filedir}`         | Directory of current file                   | `/path/to`                   |
+| `${fileext}`         | File extension                              | `txt`                        |
+| `${filetype}`        | Current buffer filetype                     | `python`                     |
+| `${home}`            | User home directory                         | `/home/user`                 |
+| `${tmpdir}`          | System temp directory                       | `/tmp`                       |
+| `${date}`            | Current date (YYYY-MM-DD)                   | `2024-01-15`                 |
+| `${time}`            | Current time (HH:MM:SS)                     | `14:30:00`                   |
+| `${timestamp}`       | ISO timestamp                               | `2024-01-15T14:30:00`        |
+| `${env:NAME}`        | Environment variable                        | Value of `$NAME`             |
+| `${var:NAME}`        | Workspace variable                          | Value of user variable       |
+| `${prompt:Message}`  | Prompt user for input                       | ...                          |
+
+You can also use type-restricted macros (e.g. `${file:lua}`), prompt with defaults (`${prompt:Port,8000}`), or apply Lua string substitutions to variables.
 
 ## Extending
 
-Install extensions for more task types or templates, e.g.:
-- [loop-cmake.nvim](https://github.com/mbfoss/loop-cmake.nvim) for CMake integration
-
 Extensions can add new task providers, automatic task generation, or deeper tool integration.
+
+- [loop-cmake.nvim](https://github.com/mbfoss/loop-cmake.nvim) for CMake integration
+- ...
 
 ## Documentation
 
