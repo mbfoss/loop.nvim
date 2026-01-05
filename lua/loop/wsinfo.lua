@@ -19,7 +19,7 @@ end
 function M.get_ws_dir() return _info and _info.root_dir or nil end
 
 ---@return string
-function M.status_line_comp()
+function M.status_line()
     return (_info and _info.name) and ("󰉖 " .. _info.name) or ""
 end
 
