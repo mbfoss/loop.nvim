@@ -14,7 +14,7 @@ return {
             quickfix_matcher = "",
             save_buffers = true,
         },
-    },    
+    },
     ----------------------------------------------------------------------------
     -- C / C++
     ----------------------------------------------------------------------------
@@ -53,6 +53,18 @@ return {
             name = "Build",
             type = "build",
             command = "cargo build --message-format=short",
+            cwd = "${wsdir}",
+            quickfix_matcher = "cargo",
+            save_buffers = true,
+        },
+    },
+    {
+        name = "Rust: Cargo Build (Release)",
+        task = {
+            __order = field_order,
+            name = "Build (Release)",
+            type = "build",
+            command = "cargo build --release --message-format=short",
             cwd = "${wsdir}",
             quickfix_matcher = "cargo",
             save_buffers = true,
@@ -110,7 +122,7 @@ return {
             type = "build",
             command = "luacheck ${file} --formatter plain --codes",
             cwd = "${filedir}",
-            quickfix_matcher = "luacheck",
+            quickfix_matcher = "linter",
             save_buffers = true,
         },
     },
@@ -134,7 +146,7 @@ return {
             type = "build",
             command = "pylint --output-format=parseable ${file}",
             cwd = "${filedir}",
-            quickfix_matcher = "gcc", -- Pylint 'parseable' format matches GCC-style
+            quickfix_matcher = "linter",
             save_buffers = true,
         },
     },

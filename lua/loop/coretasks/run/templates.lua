@@ -78,6 +78,19 @@ return {
         },
     },
     {
+        name = "Rust: Cargo Run (Release)",
+        task = {
+            __order = field_order,
+            name = "Cargo Run",
+            type = "run",
+            command = "cargo run --release",
+            cwd = "${wsdir}",
+            env = nil,
+            save_buffers = true,
+            depends_on = {},
+        },
+    },    
+    {
         name = "Go: Run Current File",
         task = {
             __order = field_order,

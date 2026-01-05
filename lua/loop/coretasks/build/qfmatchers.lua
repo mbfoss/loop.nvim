@@ -68,35 +68,6 @@ local function _parse_gcc(line, context)
     return nil
 end
 
-
----@param line string The raw output line from luacheck
----@param context table Additional context
----@return loop.task.QuickFixItem|nil
-local function _parse_luacheck(line, context)
-    -- Match warning lines (indented with spaces/tabs, contain filename:line:col)
-    local warning_pattern = "^%s*(.-):(%d+):(%d+):%s*(.+)$"
-    local file, lnum, col, message = line:match(warning_pattern)
-
-    if not (file and lnum and col and message) then
-        return nil
-    end
-
-    -- Convert to numbers
-    lnum = tonumber(lnum)
-    col = tonumber(col)
-
-    ---@type loop.task.QuickFixItem
-    local item = {
-        filename = file,
-        lnum = lnum or 1,
-        col = col or 1,
-        text = message,
-        type = "W", -- Warning
-    }
-
-    return item
-end
-
 --- TypeScript / Microsoft Style (tsc, eslint)
 local function _parse_typescript(line, _)
     -- file(line,col): error TS1234: message
@@ -173,16 +144,40 @@ local function _parse_msvc(line, _)
     return nil
 end
 
---- Generic Lint (Shellcheck, etc.)
---- Pattern: file:line:col: severity: message
-local function _parse_lint(line, _)
-    local file, lnum, col, sev, msg = line:match("^([^%s:]+):(%d+):(%d+):%s+([^:]+):%s+(.+)$")
+--- Generic Lint Parser (merge Pylint, Luacheck, Shellcheck, ESLint, etc.)
+--- Matches:
+---   file:line:col: CODE: message   (Pylint, ESLint)
+---   file:line:col: severity: message  (Shellcheck, Mypy, Flake8)
+---   file:line:col: message  (Luacheck, generic)
+local function _parse_linter(line, _)
+    -- Pylint / ESLint / Type-style with code: CODE: message
+    local file, lnum, col, code, msg =
+        line:match("^([^%s:]+):(%d+):(%d+):%s*([A-Z]%d+):%s*(.+)$")
     if file then
-        local t = sev:match("[Ww]arn") and "W" or "E"
-        return make_item(file, lnum, col, msg, t)
+        local sev = code:sub(1, 1)
+        local type = (sev == "E" or sev == "F") and "E"
+            or (sev == "W") and "W"
+            or (sev == "C" or sev == "R") and "I"
+            or "E"
+
+        return make_item(file, lnum, col, msg .. " (" .. code .. ")", type)
+    end
+    -- Shellcheck / generic: file:line:col: severity: message
+    file, lnum, col, code, msg = line:match("^([^%s:]+):(%d+):(%d+):%s*([^:]+):%s*(.+)$")
+    if file then
+        local type = code:match("[Ww]arn") and "W"
+            or code:match("[Ii]nfo") or code:match("[Nn]ote") and "I"
+            or "E"
+        return make_item(file, lnum, col, msg, type)
+    end
+    --  Fallback: file:line:col: message
+    file, lnum, col, msg = line:match("^([^%s:]+):(%d+):(%d+):%s*(.+)$")
+    if file then
+        return make_item(file, lnum, col, msg, "W") -- default to warning
     end
     return nil
 end
+
 
 --- Generic parser for tools that support "Unix" or "GCC" output formats
 --- Works for: Shellcheck, ESLint (unix format), Mypy, Flake8, etc.
@@ -203,15 +198,14 @@ end
 
 ---@type table<string,fun(line:string,context:table):loop.task.QuickFixItem>
 return {
-    gcc      = _parse_gcc,
-    luacheck = _parse_luacheck,
-    tsc      = _parse_typescript,
-    python   = _parse_python,
-    go       = _parse_go,
-    pytest   = _parse_pytest,
-    cargo    = _parse_cargo,
-    gotest   = _parse_gotest,
-    msvc     = _parse_msvc,
-    lint     = _parse_lint,
-    unix     = _parse_generic_unix
+    gcc    = _parse_gcc,
+    tsc    = _parse_typescript,
+    python = _parse_python,
+    go     = _parse_go,
+    pytest = _parse_pytest,
+    cargo  = _parse_cargo,
+    gotest = _parse_gotest,
+    msvc   = _parse_msvc,
+    linter = _parse_linter,
+    unix   = _parse_generic_unix
 }
