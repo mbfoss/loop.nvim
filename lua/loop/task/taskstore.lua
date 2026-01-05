@@ -155,7 +155,7 @@ end
 ---@return string[]|nil
 function M.load_variables(config_dir)
     local filepath = vim.fs.joinpath(config_dir, "variables.json")
-    
+
     -- Missing file is not an error, return empty table
     if not filetools.file_exists(filepath) then
         return {}, nil
@@ -347,7 +347,7 @@ function M.load_provider_config(config_dir, name, config_schema, callback)
     local wsinfo = require("loop.wsinfo")
     local ws_dir = wsinfo.get_ws_dir()
     local vars, _ = M.load_variables(config_dir)
-    
+
     ---@type loop.TaskContext
     local task_ctx = {
         task_name = name,
@@ -379,16 +379,23 @@ function M.open_provider_config(config_dir, name, schema, template)
     end
 
     local config_filepath = vim.fs.joinpath(config_dir, 'task.' .. name .. '.json')
-
-    if not filetools.file_exists(config_filepath) then
+    local bufnr = vim.fn.bufnr(config_filepath)
+    if bufnr~= -1 then
+        uitools.smart_open_buffer(bufnr)
+    elseif filetools.file_exists(config_filepath) then
+        uitools.smart_open_file(config_filepath)
+    else
         local schemafilename = 'extschema.' .. name .. '.json'
         local schemafilepath = vim.fs.joinpath(config_dir, schemafilename)
         jsontools.save_to_file(schemafilepath, schema)
         template["$schema"] = './' .. schemafilename
-        jsontools.save_to_file(config_filepath, template)
+        bufnr = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_buf_set_name(bufnr, config_filepath)
+        local json_lines = vim.split(jsontools.to_string(template), "\n")
+        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, json_lines)
+        vim.bo[bufnr].filetype = 'json'
+        uitools.smart_open_buffer(bufnr)
     end
-
-    uitools.smart_open_file(config_filepath)
 end
 
 return M

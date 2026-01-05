@@ -75,6 +75,11 @@ end
 local function _init_or_open_ws_config(ws_dir)
     local config_dir = _get_config_dir(ws_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
+    local bufnr = vim.fn.bufnr(config_file)
+    if bufnr~= -1 then
+        winid = uitools.smart_open_buffer(bufnr)
+        return true
+    end
     local winid
     if filetools.file_exists(config_file) then
         winid = uitools.smart_open_file(config_file)
@@ -82,7 +87,7 @@ local function _init_or_open_ws_config(ws_dir)
         local model = require('loop.ws.template')
         model = vim.fn.copy(model)
         model.name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
-        local bufnr = vim.api.nvim_create_buf(true, false)
+        bufnr = vim.api.nvim_create_buf(true, false)
         vim.api.nvim_buf_set_name(bufnr, config_file)
         local json_lines = vim.split(jsontools.to_string(model), "\n")
         vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, json_lines)

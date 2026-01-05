@@ -234,8 +234,8 @@ function M.add_task(config_dir, task_type)
     ---@type fun(config: table|nil, err: string[]|nil)
     local on_config_ready = function(config, err)
         if err then
-            vim.notify("Failed to load configuration for task type " .. tostring(task_type))
             logs.log(err, vim.log.levels.ERROR)
+            vim.notify("Missing or Invalid configuration for " .. tostring(task_type))
             return
         end
         local templates = provider.get_task_templates(config)
