@@ -4,7 +4,7 @@
 
 ---
 
-> **Work in Progress:** Early development, not ready for public release.
+> **Work in Progress:** This plugin is in early development. Commands, interface, and APIs may change frequently as features evolve.
 
 ## Features
 
