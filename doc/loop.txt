@@ -1,125 +1,352 @@
-*loop.txt*  loop.nvim help
+" filepath: /Users/Dev/.config/nvim/pack/plugins/opt/loop.nvim/doc/loop.txt
+*loop.txt*  loop.nvim — Workspace and Task Management for Neovim
 
-NAME                                            *loop-name*
-    loop.nvim — Workspace and Task Management for Neovim
+==============================================================================
+TABLE OF CONTENTS                                          *loop-contents*
 
-INTRODUCTION                                    *loop-intro*
-    loop.nvim provides workspace-aware task definitions, dependency
-    resolution and execution from within Neovim.  Workspaces live in
-    .nvimloop directories and contain workspace.json, tasks.json and
-    other configuration files.
+  NAME ............................ |loop|
+  INTRODUCTION .................... |loop-introduction|
+  REQUIREMENTS .................... |loop-requirements|
+  INSTALLATION .................... |loop-installation|
+  QUICK START ..................... |loop-quickstart|
+  CONFIGURATION ................... |loop-config|
+  WORKSPACES ...................... |loop-workspaces|
+  TASKS ........................... |loop-tasks|
+  TASK TYPES ...................... |loop-task-types|
+  EXTENSIONS ...................... |loop-extensions|
+  MACROS & VARIABLES .............. |loop-macros|
+  PERSISTENCE ..................... |loop-persistence|
+  UI & WINDOWS .................... |loop-ui|
+  COMMANDS REFERENCE .............. |loop-commands-ref|
+  EXAMPLES ........................ |loop-examples|
+  TROUBLESHOOTING ................. |loop-troubleshooting|
+  TIPS & BEST PRACTICES ........... |loop-tips|
+  FAQ ............................. |loop-faq|
+  LICENSE ......................... |loop-license|
 
-INSTALLATION                                    *loop-install*
-    Use your plugin manager (lazy.nvim / packer.nvim).  After install,
-    generate helptags: :helptags ALL
+==============================================================================
+NAME                                                       *loop*
 
-CONFIGURATION                                   *loop-config*
-    In Lua (init.lua / plugin config):
-        require("loop").setup({
-            selector = "builtin",   -- or "default"
-            persistence = {
-                shada = false,      -- enable workspace shada persistence
-                undo = false,       -- enable workspace undo persistence
-            },
-        })
+loop.nvim — Workspace and Task Management for Neovim
 
-PERSISTENCE                                      *loop-persistence*
-    loop.nvim supports optional per-workspace persistence. When enabled,
-    Loop will make Neovim use persistence data stored inside the workspace
-    config directory (.nvimloop). This keeps history and state isolated
-    per project and avoids cross-project leakage.
+==============================================================================
+INTRODUCTION                                               *loop-introduction*
 
-    Persistence covers:
-    - shada (command/file history, registers, global marks)
-    - undo history
+loop.nvim is a workspace-aware task management and execution system for
+Neovim. It enables you to:
 
-    Toggle these features via the setup() `persistence` table above.
-    Persistence data is stored alongside the workspace (inside .nvimloop).
+  • Organize projects into isolated workspaces with per-project configurations
+  • Define and execute tasks (shell, Neovim commands, composites)
+  • Resolve task dependencies with parallel/sequential execution
+  • Parse compiler output into the quickfix list
+  • Manage workspace-specific variables and macros
+  • Persist workspace state across sessions (history, undo, marks, etc.)
+  • Integrate directly with your editor workflow
 
-USAGE / COMMANDS                                *loop-commands*
-    General:
-        :Loop                      - open UI / selector
-        :Loop logs                 - show recent plugin logs
+==============================================================================
+REQUIREMENTS                                               *loop-requirements*
 
-    Workspace:
-        :Loop workspace create     - initialize a new workspace
-        :Loop workspace open       - open workspace from cwd
-        :Loop workspace info       - show workspace info
-        :Loop workspace configure  - edit workspace.json
-        :Loop workspace save       - save workspace buffers
+  • Neovim >= 0.10
 
-    Tasks:
-        :Loop task run [name]      - run a task (shows selector if name omitted)
-        :Loop task repeat          - repeat last task
-        :Loop task add [type]      - add a task (types provided by plugin)
-        :Loop task configure [type]- configure task provider
-        :Loop task terminate       - stop running tasks
+==============================================================================
+INSTALLATION                                               *loop-installation*
 
-    UI:
-        :Loop toggle               - toggle Loop UI
-        :Loop show                 - show Loop UI
-        :Loop hide                 - hide Loop UI
-        :Loop page switch          - switch output page
-        :Loop page open [g] [p]    - open specific page/group
+Using lazy.nvim: >
+    {
+        "mbfoss/loop.nvim",
+        cmd = { "Loop" },
+        config = function()
+            require("loop").setup({})
+        end
+    }
+<
 
-    Variables:
-        :Loop var add              - create a new workspace variable
-        :Loop var configure        - open variable configuration
+Using packer.nvim: >
+    use {
+        'mbfoss/loop.nvim',
+        config = function()
+            require('loop').setup()
+        end
+    }
+<
 
-VARIABLES                                        *loop-variables*
-    Workspace variables can be added and edited with the :Loop var
-    commands. Variables are stored in the workspace configuration and are
-    available to the macro substitution system.
+After installation, generate helptags: >
+    :helptags ALL
+<
 
-    Use variables in task definitions and provider configs via macros:
-        ${var:NAME}                 - value of variable NAME
-        ${var:NAME,subst1,subst2}   - value with lua string substitutions
+==============================================================================
+QUICK START                                                *loop-quickstart*
 
-MACROS                                           *loop-macros*
-    Macros enable dynamic substitution in commands and configuration.
-    Common macros:
-        ${wsdir}    - workspace root
-        ${cwd}      - current working directory
-        ${file}     - current file path
-        ${fileroot} - file path without extension
-        ${env:NAME} - environment variable
-        ${var:NAME} - workspace variable
-        ${prompt:Msg,Default,Completion} - prompt user for input
+1. Initialize a workspace in your project directory: >
+    :Loop workspace create
+<
+2. Add a task: >
+    :Loop task add build
+<
+3. Run the task: >
+    :Loop task run
+<
+4. Add workspace variables (optional): >
+    :Loop var add
+<
+5. Open the Loop UI: >
+    :Loop show
+<
 
-EXAMPLES                                         *loop-examples*
-    Build current file:
-        {
-          "name": "Compile Current File",
-          "type": "build",
-          "command": "gcc ${file} -o ${fileroot}.out",
-          "cwd": "${wsdir}"
-        }
+==============================================================================
+CONFIGURATION                                              *loop-config*
 
-    Run with prompted port:
-        {
-          "name": "Run with Port",
-          "type": "run",
-          "command": "python server.py --port ${prompt:Enter port,8000}",
-          "cwd": "${wsdir}"
-        }
+GLOBAL SETUP                                               *loop-setup*
 
-TASK TYPES                                       *loop-task-types*
-    - build    : execute shell commands and populate quickfix
-    - run      : long-running processes without quickfix parsing
-    - vimcmd   : run Neovim command / lua
-    - composite: compose tasks in sequence or parallel
+```lua
+require("loop").setup({
+    selector = "builtin",  -- or "default" (vim.ui.select)
+    persistence = {
+        shada = false,     -- Workspace-specific command history
+        undo = false,      -- Workspace-specific undo history
+    },
+    autosave_interval = 5, -- Minutes (0 to disable)
+    macros = {},
+    quickfix_matchers = {}
+})
+```
 
-QUICKFIX SUPPORT                                *loop-quickfix*
-    Built-in parsers convert compiler output into quickfix entries
-    (gcc, clang, luacheck, cargo, go, tsc, ...).
+- `selector`: "builtin" (native picker) or "default" (vim.ui.select)
+- `persistence.shada`: Enable workspace shada persistence (history, marks, registers)
+- `persistence.undo`: Enable workspace undo history persistence
+- `autosave_interval`: Minutes between autosaves (0 disables)
 
-LICENSE                                         *loop-license*
-    Distributed under the MIT License.
+WORKSPACE CONFIGURATION                                    *loop-ws-config*
 
-SEE ALSO                                        *loop-help*
-    :help loop                             (this page)
-    :help loop-commands
-    :help loop-persistence
-    :help loop-variables
+Edit workspace configuration with: >
+    :Loop workspace configure
+<
 
+workspace.json fields:
+- `name`: Workspace display name
+- `version`: Configuration version (auto-managed)
+- `save`: Files/patterns to save on :Loop workspace save
+  - `include`: Glob patterns to include (e.g., "*.lua")
+  - `exclude`: Glob patterns to exclude (e.g., ".git/**")
+
+==============================================================================
+WORKSPACES                                                 *loop-workspaces*
+
+- `.nvimloop/` directory marks a workspace root.
+- Contains `workspace.json`, `tasks.json`, and other configuration files.
+- Workspaces are auto-loaded on VimEnter if present in cwd,
+or manually opened via `:Loop workspace open`
+
+==============================================================================
+TASKS                                                      *loop-tasks*
+
+Tasks are defined in `tasks.json` as JSON objects.
+All fields support macros.
+
+Common fields:
+- `name`: Task display name
+- `type`: Task type: build, run, vimcmd, composite
+- `cwd`: Working directory
+- `command`: Command to execute (string or array)
+- `env`: Environment variables (object)
+- `save_buffers`: Save all buffers before execution (boolean)
+- `depends_on`: Array of task names this task depends on
+- `depends_order`: "parallel" or "sequence" (default: "sequence")
+
+==============================================================================
+TASK TYPES                                                 *loop-task-types*
+
+- **build**: Commands with quickfix parsing (e.g. make, gcc)
+- **run**: Long-running processes (e.g. servers)
+- **vimcmd**: Neovim commands or Lua code
+- **composite**: Combine multiple tasks, parallel or sequential
+
+Example build task:
+```json
+{
+  "name": "Build",
+  "type": "build",
+  "command": "make",
+  "cwd": "${wsdir}",
+  "quickfix_matcher": "gcc",
+  "env": { "VAR": "value" },
+  "depends_on": []
+}
+```
+
+==============================================================================
+EXTENSIONS                                                 *loop-extensions*
+
+Additional task types and templates can be added via extensions.
+
+Example:  
+CMake task generation and integration is available by installing  
+[loop-cmake.nvim](https://github.com/mbfoss/loop-cmake.nvim)
+
+Extensions may provide:
+- New task types/providers
+- Automatic task generation for build systems/languages
+- Enhanced integration with external tools
+
+See each extension's documentation for setup and usage.
+
+==============================================================================
+MACROS & VARIABLES                                         *loop-macros*
+
+Macros enable dynamic variable substitution using `${macro}` syntax.
+
+| Macro | Description | Example |
+|-------|-------------|---------|
+| `${wsdir}` | Workspace root directory | `/path/to/project` |
+| `${cwd}` | Current working directory | `/path/to/current` |
+| `${file}` | Full path of current file | `/path/to/file.txt` |
+| `${file:type}` | Full path if filetype is type, task fails otherwise | `/path/to/file.txt` |
+| `${filename}` | Current filename | `file.txt` |
+| `${filename:type}` | Filename if filetype is type, task fails otherwise | `file.txt` |
+| `${fileroot}` | File path without extension | `/path/to/file` |
+| `${filedir}` | Directory of current file | `/path/to` |
+| `${fileext}` | File extension | `txt` |
+| `${filetype}` | Current buffer filetype | `text` |
+| `${home}` | User home directory | `/home/user` |
+| `${tmpdir}` | System temp directory | `/tmp` |
+| `${date}` | Current date (YYYY-MM-DD) | `2024-01-15` |
+| `${time}` | Current time (HH:MM:SS) | `14:30:00` |
+| `${timestamp}` | ISO timestamp | `2024-01-15T14:30:00` |
+| `${env:NAME}` | Environment variable | Value of `$NAME` |
+| `${var:NAME}` | Workspace variable | Value of user variable |
+| `${var:NAME,subst1,subst2...}` | Variable with Lua string substitutions | ... |
+| `${prompt:Message}` | User input prompt | ... |
+| `${prompt:Message,Default,CompletionType}` | Prompt with default/completion | ... |
+
+Workspace variables are managed via:
+- `:Loop var add` — Create a new variable
+- `:Loop var configure` — Edit all variables
+
+==============================================================================
+PERSISTENCE                                                *loop-persistence*
+
+Enable per-workspace persistence in setup. When enabled, Neovim uses
+shada/undo data from `.nvimloop` for the active workspace, isolating
+history, marks, and undo from other projects.
+
+==============================================================================
+UI & WINDOWS                                               *loop-ui*
+
+Loop provides a built-in UI for managing tasks, viewing output, and switching
+between task pages.
+
+Commands:
+- `:Loop toggle` — Toggle the Loop UI window
+- `:Loop show` — Show the Loop UI window
+- `:Loop hide` — Hide the Loop UI window
+- `:Loop page switch` — Switch between output pages
+- `:Loop page open [group] [page]` — Open a specific page/group
+
+==============================================================================
+COMMANDS REFERENCE                                         *loop-commands-ref*
+
+| Command | Description |
+|---------|-------------|
+| :Loop | Open task selector / UI |
+| :Loop workspace create | Initialize new workspace |
+| :Loop workspace open | Load workspace from cwd |
+| :Loop workspace info | Show workspace information |
+| :Loop workspace configure | Edit workspace.json |
+| :Loop workspace save | Save workspace buffers |
+| :Loop task run [name] | Run a task |
+| :Loop task repeat | Repeat last task |
+| :Loop task add [type] | Create new task |
+| :Loop task configure [type] | Configure a task provider |
+| :Loop task terminate | Stop all running tasks |
+| :Loop var add | Create workspace variable |
+| :Loop var configure | Edit all variables |
+| :Loop toggle | Toggle Loop UI window |
+| :Loop show | Show Loop UI window |
+| :Loop hide | Hide Loop UI window |
+| :Loop page switch | Switch UI pages |
+| :Loop page open [g] [p] | Open specific page |
+| :Loop logs | Show plugin logs |
+
+==============================================================================
+EXAMPLES                                                   *loop-examples*
+
+Build current file:
+```json
+{
+  "name": "Compile Current File",
+  "type": "build",
+  "command": "gcc ${file} -o ${fileroot}.out",
+  "cwd": "${wsdir}"
+}
+```
+
+Run with prompted port:
+```json
+{
+  "name": "Run with Port",
+  "type": "run",
+  "command": "python server.py --port ${prompt:Enter port,8000}",
+  "cwd": "${wsdir}"
+}
+```
+
+Composite workflow:
+```json
+{
+  "name": "Full Workflow",
+  "type": "composite",
+  "depends_on": ["build", "test", "lint"],
+  "depends_order": "parallel"
+}
+```
+
+Using workspace variables:
+```json
+{
+  "name": "Custom Output",
+  "type": "build",
+  "command": "gcc ${file} -o ${var:OUTPUT_DIR}/${fileroot}.out",
+  "cwd": "${wsdir}"
+}
+```
+
+==============================================================================
+TROUBLESHOOTING                                            *loop-troubleshooting*
+
+- If tasks do not appear, check that tasks.json is valid JSON.
+- If macros do not expand, ensure you are using the correct syntax (${macro}).
+- If quickfix parsing fails, verify the quickfix_matcher matches your compiler.
+- For workspace persistence issues, check .nvimloop/ for shada/undo files.
+- Use :Loop logs to view plugin logs and error messages.
+
+==============================================================================
+TIPS & BEST PRACTICES                                      *loop-tips*
+
+- Use workspace variables for paths, build types, and other frequently changed values.
+- Use composite tasks to automate multi-step workflows.
+- Use the UI window to monitor long-running tasks and switch between outputs.
+- Keep workspace.json and tasks.json under version control for team sharing.
+- Use :Loop workspace save before closing Neovim to ensure all buffers are written.
+
+==============================================================================
+FAQ                                                        *loop-faq*
+
+Q: Can I use environment variables in tasks?
+A: Yes, use the `${env:NAME}` macro or the "env" field in task definitions.
+
+Q: How do I prompt for user input in a task?
+A: Use `${prompt:Message}` or `${prompt:Message,Default,CompletionType}` in your command.
+
+Q: Can I run tasks in parallel?
+A: Yes, composite tasks support "depends_order": "parallel".
+
+Q: How do I enable workspace persistence?
+A: Set `persistence = { shada = true, undo = true }` in your setup.
+
+==============================================================================
+LICENSE                                                    *loop-license*
+
+Distributed under the MIT License.
+
+==============================================================================
 " End of loop.txt

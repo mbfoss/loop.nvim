@@ -1,6 +1,7 @@
 local M = {}
 
 local wsinfo = require('loop.wsinfo')
+local config = require('loop.config')
 
 ---@class loop.coretasks.build.Task : loop.Task
 ---@field command string[]|string|nil
@@ -16,10 +17,13 @@ local function _make_output_parser(task)
         return nil
     end
 
-    local qfmatchers = require('loop.coretasks.build.qfmatchers')
-    local quickfix_parser = qfmatchers[task.quickfix_matcher]
-    if not quickfix_parser then
-        return nil, "invalid quickfix matcher: " .. tostring(task.quickfix_matcher)
+    local qf_parser = config.current.quickfix_matchers[task.quickfix_matcher]
+    if not qf_parser then
+        local builtin = require('loop.coretasks.build.qfmatchers')
+        qf_parser = builtin[task.quickfix_matcher]
+        if not qf_parser then
+            return nil, "invalid quickfix matcher: " .. tostring(task.quickfix_matcher)
+        end
     end
 
     ---@param line string
@@ -42,7 +46,7 @@ local function _make_output_parser(task)
         end
         local issues = {}
         for _, line in ipairs(lines) do
-            local issue = quickfix_parser(normalize_string(line), parser_context)
+            local issue = qf_parser(normalize_string(line), parser_context)
             if issue then
                 table.insert(issues, issue)
             end
@@ -101,7 +105,7 @@ function M.start_build(task, page_manager, on_exit)
         term_args = start_args,
         activate = true,
     })
-    
+
     --add_term_page(task.name, start_args, true)
     local proc = page_data and page_data.term_proc or nil
     if not proc then

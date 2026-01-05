@@ -27,7 +27,8 @@ local DEFAULT_CONFIG = {
             running = "▶",
         },
     },
-    macros = require("loop.task.macros"),
+    macros = {},
+    quickfix_matchers = {},
     debug = false,
     autosave_interval = 5, -- 5 minutes
     logs_count = 50, -- Number of recent logs to show

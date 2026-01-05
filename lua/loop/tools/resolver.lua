@@ -129,7 +129,12 @@ local function expand_recursive(str, ctx)
             if not macro_name or macro_name == "" then
                 return nil, "Unknown macro: ''"
             end
+
             local fn = config.current.macros[macro_name]
+            if not fn then
+                local builtin = require("loop.tools.macros")
+                fn = builtin[macro_name]
+            end
             if not fn then return nil, "Unknown macro: '" .. macro_name .. "'" end
 
             -- Prepend ctx to args_list
