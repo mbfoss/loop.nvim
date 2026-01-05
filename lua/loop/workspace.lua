@@ -36,13 +36,6 @@ local function _get_config_dir(workspace_dir)
     return dir
 end
 
-local function _is_workspace_dir(dir)
-    local config_dir = _get_config_dir(dir)
-    ---@diagnostic disable-next-line: undefined-field
-    local stat = vim.loop.fs_stat(config_dir)
-    return stat and stat.type == "directory"
-end
-
 local function _save_workspace()
     if not _workspace_info then
         return false
@@ -105,7 +98,7 @@ end
 local function _load_workspace_config(config_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     if not filetools.file_exists(config_file) then
-        return nil, { "Config file not found" }
+        return nil, { "workspace.json not found" }
     end
     local loaded, data_or_err = jsontools.load_from_file(config_file)
     if not loaded then
@@ -166,7 +159,8 @@ local function _load_workspace(dir, quiet)
         return false, { "Another workspace is already open" }
     end
 
-    if not _is_workspace_dir(dir) then
+    local config_dir = _get_config_dir(dir)    
+    if not filetools.dir_exists(config_dir) then
         return false, { "No workspace in " .. dir }
     end
 
@@ -238,11 +232,16 @@ function M.create_workspace(dir)
     end
 
     dir = dir or vim.fn.getcwd()
+    local config_dir = _get_config_dir(dir)
+
     assert(type(dir) == 'string')
-    if _is_workspace_dir(dir) then
+    assert(type(config_dir) == 'string')
+    local config_file = vim.fs.joinpath(config_dir, "workspace.json")
+
+    if filetools.dir_exists(config_dir) and filetools.file_exists(config_file) then
         vim.notify("A workspace already exists in " .. dir, vim.log.levels.ERROR)
         return
-    end
+    end 
 
     -- important check because the user may pass garbage data
     if not filetools.dir_exists(dir) then
@@ -250,7 +249,6 @@ function M.create_workspace(dir)
         return
     end
 
-    local config_dir = _get_config_dir(dir)
     vim.fn.mkdir(config_dir, "p")
 
     if not _init_or_open_ws_config(dir) then
