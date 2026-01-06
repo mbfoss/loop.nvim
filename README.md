@@ -28,9 +28,6 @@
 {
     "mbfoss/loop.nvim",
     event = "VimEnter",
-    config = function()
-        require("loop").setup({})
-    end
 }
 ```
 
@@ -39,9 +36,6 @@
 use {
     'mbfoss/loop.nvim',
     event = "VimEnter",
-    config = function()
-        require('loop').setup()
-    end
 }
 ```
 
