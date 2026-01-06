@@ -24,7 +24,7 @@ return {
             __order = field_order,
             name = "Make",
             type = "build",
-            command = "make -j$(nproc)",
+            command = "make",
             cwd = "${wsdir}",
             quickfix_matcher = "gcc",
             save_buffers = true,

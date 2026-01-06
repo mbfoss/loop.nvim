@@ -87,7 +87,7 @@ function M.show_floatwin(text, opts)
     })
 
     if opts and opts.move_to_bot then
-        vim.api.nvim_win_call(winid, function()
+        vim.api.nvim_win_call(win, function()
             local b = vim.api.nvim_win_get_buf(0)
             local l = vim.api.nvim_buf_line_count(b)
             vim.api.nvim_win_set_cursor(0, { l, 0 })

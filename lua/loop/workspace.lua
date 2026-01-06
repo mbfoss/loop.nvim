@@ -146,10 +146,6 @@ local function _load_workspace(dir, quiet)
     dir = vim.fn.fnamemodify(dir, ":p")
 
     if _workspace_info and dir == _workspace_info.root_dir then
-        if not quiet then
-            vim.notify("Workspace is already open")
-            return true
-        end
         return true
     end
 
@@ -162,7 +158,6 @@ local function _load_workspace(dir, quiet)
         return false, { "No workspace in " .. dir }
     end
 
-    local config_dir = _get_config_dir(dir)
     local ws_config, config_errors = _load_workspace_config(config_dir)
     if not ws_config then
         return false, config_errors, true, config_dir
