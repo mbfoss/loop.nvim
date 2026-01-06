@@ -110,8 +110,9 @@ You can also use type-restricted macros (e.g. `${file:lua}`), prompt with defaul
 
 Extensions can add new task providers, automatic task generation, or deeper tool integration.
 
+Author extensions:
+- [loop-debug.nvim](https://github.com/mbfoss/loop-debug.nvim) for Debug tasks
 - [loop-cmake.nvim](https://github.com/mbfoss/loop-cmake.nvim) for CMake integration
-- ...
 
 ## Documentation
 

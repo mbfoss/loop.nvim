@@ -72,28 +72,21 @@ end
 ---@param ws_dir string
 ---@return boolean
 ---@return string?
-local function _init_or_open_ws_config(ws_dir)
+local function _configure_workspace(ws_dir)
     local config_dir = _get_config_dir(ws_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     local bufnr = vim.fn.bufnr(config_file)
-    if bufnr~= -1 then
+    if bufnr ~= -1 then
         winid = uitools.smart_open_buffer(bufnr)
         return true
     end
-    local winid
-    if filetools.file_exists(config_file) then
-        winid = uitools.smart_open_file(config_file)
-    else
+    if not filetools.file_exists(config_file) then
         local model = require('loop.ws.template')
         model = vim.fn.copy(model)
         model.name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
-        bufnr = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_buf_set_name(bufnr, config_file)
-        local json_lines = vim.split(jsontools.to_string(model), "\n")
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, json_lines)
-        vim.bo[bufnr].filetype = 'json'
-        winid = uitools.smart_open_buffer(bufnr)
+        jsontools.save_to_file(config_file, model)
     end
+    local winid = uitools.smart_open_file(config_file)
     uitools.move_to_first_occurence(winid, '"name": "')
     return true, config_file
 end
@@ -164,7 +157,7 @@ local function _load_workspace(dir, quiet)
         return false, { "Another workspace is already open" }
     end
 
-    local config_dir = _get_config_dir(dir)    
+    local config_dir = _get_config_dir(dir)
     if not filetools.dir_exists(config_dir) then
         return false, { "No workspace in " .. dir }
     end
@@ -221,7 +214,7 @@ function _show_workspace_info_floatwin()
     save_config.__order = { "include", "exclude" }
     local str = ("Name: %s\nDirectory: %s\nSaving settings:%s"):format(info.name, info.root_dir,
         jsontools.to_string(save_config))
-    floatwin.show_floatwin("Workspace", str)
+    floatwin.show_floatwin(str, {title = "Workspace"})
 end
 
 ---@param dir string?
@@ -246,7 +239,7 @@ function M.create_workspace(dir)
     if filetools.dir_exists(config_dir) and filetools.file_exists(config_file) then
         vim.notify("A workspace already exists in " .. dir, vim.log.levels.ERROR)
         return
-    end 
+    end
 
     -- important check because the user may pass garbage data
     if not filetools.dir_exists(dir) then
@@ -256,7 +249,7 @@ function M.create_workspace(dir)
 
     vim.fn.mkdir(config_dir, "p")
 
-    if not _init_or_open_ws_config(dir) then
+    if not _configure_workspace(dir) then
         vim.notify("Failed to setup configuration file")
     else
         local ws_name = vim.fn.fnamemodify(dir, ":p:h:t")
@@ -291,7 +284,7 @@ function M.configure_workspace()
         vim.notify("No active workspace", vim.log.levels.WARN)
         return
     end
-    local ok, configfile = _init_or_open_ws_config(_workspace_info.root_dir)
+    local ok, configfile = _configure_workspace(_workspace_info.root_dir)
     if not ok or not configfile then
         vim.notify("Failed to setup configuration file")
         return

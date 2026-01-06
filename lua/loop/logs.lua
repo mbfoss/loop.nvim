@@ -143,7 +143,10 @@ function M.show_logs()
     end
 
     local text = table.concat(lines, '\n')
-    floatwin.show_floatwin("Activity Log", text, false)
+    floatwin.show_floatwin(text, {
+        title = "Activity Log",
+        move_to_bot = true
+    })
 end
 
 return M

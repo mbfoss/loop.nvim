@@ -3,10 +3,9 @@ local M = {}
 local debug_win_augroup = vim.api.nvim_create_augroup("LoopPluginModalWin", { clear = true })
 local _current_win = nil
 
----@param title string
 ---@param text string
----@param at_cursor boolean?
-function M.show_floatwin(title, text, at_cursor)
+---@param opts  {title:string,at_cursor:boolean?,move_to_bot:boolean?}?
+function M.show_floatwin(text, opts)
     if _current_win and vim.api.nvim_win_is_valid(_current_win) then
         vim.api.nvim_win_close(_current_win, true)
     end
@@ -28,16 +27,19 @@ function M.show_floatwin(title, text, at_cursor)
     local win_width = math.min(content_w + 2, max_w)
     local win_height = math.min(#lines, max_h)
 
+    ---@type vim.api.keyset.win_config
     local win_opts = {
         width = win_width,
         height = win_height,
         style = "minimal",
         border = "rounded",
-        title = " " .. tostring(title) .. " ",
         title_pos = "center",
     }
+    if opts and opts.title then
+        win_opts.title = " " .. tostring(opts.title) .. " "
+    end
 
-    if at_cursor then
+    if opts and opts.at_cursor then
         -- Cursor Relative Layout
         win_opts.relative = "cursor"
         win_opts.row = 1 -- One line below cursor
@@ -73,9 +75,9 @@ function M.show_floatwin(title, text, at_cursor)
         _current_win = nil
     end
 
-    local opts = { buffer = buf, silent = true }
-    vim.keymap.set("n", "q", close_modal, opts)
-    vim.keymap.set("n", "<Esc>", close_modal, opts)
+    local key_opts = { buffer = buf, silent = true }
+    vim.keymap.set("n", "q", close_modal, key_opts)
+    vim.keymap.set("n", "<Esc>", close_modal, key_opts)
 
     vim.api.nvim_create_autocmd("WinLeave", {
         group = debug_win_augroup,
@@ -83,6 +85,14 @@ function M.show_floatwin(title, text, at_cursor)
         callback = close_modal,
         once = true,
     })
+
+    if opts and opts.move_to_bot then
+        vim.api.nvim_win_call(winid, function()
+            local b = vim.api.nvim_win_get_buf(0)
+            local l = vim.api.nvim_buf_line_count(b)
+            vim.api.nvim_win_set_cursor(0, { l, 0 })
+        end)
+    end
 end
 
 function M.input_at_cursor(opts)

@@ -380,22 +380,18 @@ function M.open_provider_config(config_dir, name, schema, template)
 
     local config_filepath = vim.fs.joinpath(config_dir, 'task.' .. name .. '.json')
     local bufnr = vim.fn.bufnr(config_filepath)
-    if bufnr~= -1 then
+    if bufnr ~= -1 then
         uitools.smart_open_buffer(bufnr)
-    elseif filetools.file_exists(config_filepath) then
-        uitools.smart_open_file(config_filepath)
-    else
+        return
+    end
+    if not filetools.file_exists(config_filepath) then
         local schemafilename = 'extschema.' .. name .. '.json'
         local schemafilepath = vim.fs.joinpath(config_dir, schemafilename)
         jsontools.save_to_file(schemafilepath, schema)
         template["$schema"] = './' .. schemafilename
-        bufnr = vim.api.nvim_create_buf(true, false)
-        vim.api.nvim_buf_set_name(bufnr, config_filepath)
-        local json_lines = vim.split(jsontools.to_string(template), "\n")
-        vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, json_lines)
-        vim.bo[bufnr].filetype = 'json'
-        uitools.smart_open_buffer(bufnr)
+        jsontools.save_to_file(config_filepath, template)
     end
+    uitools.smart_open_file(config_filepath)
 end
 
 return M
