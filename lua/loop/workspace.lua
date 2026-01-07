@@ -9,7 +9,7 @@ local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local jsonschema = require('loop.tools.jsonschema')
 local filetools = require('loop.tools.file')
-local persistence = require('loop.ws.persistence')
+local isolation = require('loop.ws.isolation')
 local wssaveutil = require('loop.ws.saveutil')
 local migration = require('loop.ws.migration')
 local floatwin = require('loop.tools.floatwin')
@@ -134,40 +134,42 @@ local function _load_workspace_config(config_dir)
 end
 
 ---@param dir string
----@param quiet? boolean
 ---@return boolean
----@return string[]|nil
----@return boolean? --- is config error
----@return string? -- config_dir where the error is
-local function _load_workspace(dir, quiet)
+---@return string|nil
+local function _load_workspace(dir)
     assert(_init_done, _init_err_msg)
 
     dir = dir or vim.fn.getcwd()
     dir = vim.fn.fnamemodify(dir, ":p")
 
     if _workspace_info and dir == _workspace_info.root_dir then
-        return true
+        return false, "Workspace already open"
     end
 
     if _workspace_info and dir ~= _workspace_info.root_dir then
-        return false, { "Another workspace is already open" }
+        return false, "Another workspace is already open"
     end
 
     local config_dir = _get_config_dir(dir)
     if not filetools.dir_exists(config_dir) then
-        return false, { "No workspace in " .. dir }
+        return false, "No workspace in " .. dir
     end
 
     local ws_config, config_errors = _load_workspace_config(config_dir)
     if not ws_config then
-        return false, config_errors, true, config_dir
+        logs.log(config_errors or "", vim.log.levels.ERROR)
+        return false, "Failed to load workspace configuration (:Loop logs for details)"
     end
 
+    local loopconfig = require('loop.config')
+    local isolation_flags = loopconfig.current.isolation
+    ---@type loop.ws.WorkspaceInfo
     _workspace_info = {
         name = ws_config.name,
         root_dir = dir,
         config_dir = config_dir,
         config = ws_config,
+        isolation = isolation_flags
     }
     if not _workspace_info.name or _workspace_info.name == "" then
         _workspace_info.name = vim.fn.fnamemodify(dir, ":p:h:t")
@@ -175,7 +177,9 @@ local function _load_workspace(dir, quiet)
 
     wsinfo.set_ws_info(vim.deepcopy(_workspace_info)) --copy for safety
 
-    persistence.open(config_dir)
+    if isolation_flags then
+        isolation.open(config_dir, isolation_flags)
+    end
 
     window.load_settings(config_dir)
 
@@ -207,8 +211,11 @@ function _show_workspace_info_floatwin()
     local save_config = vim.fn.copy(info.config.save)
     ---@diagnostic disable-next-line: inject-field
     save_config.__order = { "include", "exclude" }
-    local str = ("Name: %s\nDirectory: %s\nSaving settings:%s"):format(info.name, info.root_dir,
+    local str = ("Name: %s\nDirectory: %s\nFiles:\n%s"):format(info.name, info.root_dir,
         jsontools.to_string(save_config))
+    if info.isolation then
+        str = str .. '\nIsolation:\n' .. jsontools.to_string(info.isolation)
+    end
     floatwin.show_floatwin(str, {title = "Workspace"})
 end
 
@@ -257,7 +264,7 @@ end
 function M.open_workspace(dir, at_startup)
     assert(_init_done, _init_err_msg)
     dir = dir or vim.fn.getcwd()
-    local ok, errors = _load_workspace(dir, at_startup)
+    local ok, err_msg = _load_workspace(dir)
     if ok and _workspace_info then
         local label = _workspace_info.name
         if not label or label == "" then label = _workspace_info.root_dir end
@@ -266,8 +273,8 @@ function M.open_workspace(dir, at_startup)
             vim.notify("Workspace opened")
         end
     else
-        if not at_startup then
-            vim.notify("Failed to load workspace", vim.log.levels.ERROR)
+        if not at_startup and err_msg then
+            vim.notify(err_msg, vim.log.levels.ERROR)
         end
         errors = errors or {}
         logs.user_log("Workspace not loaded\n" .. table.concat(errors, '\n'), "workspace")

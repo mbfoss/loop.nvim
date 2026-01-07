@@ -2,9 +2,8 @@ local M = {}
 
 local filetools = require('loop.tools.file')
 local uitools = require('loop.tools.uitools')
-local config = require('loop.config')
 
----@alias loop.ws.PersistenceFlags {shada:boolean, undo:boolean}
+---@alias loop.ws.IsolationFlags {shada:boolean, undo:boolean}
 
 local _open = false
 
@@ -29,12 +28,10 @@ local function _refresh_buffers()
 end
 
 ---@param config_dir string
-function M.open(config_dir)
+---@param flags loop.ws.IsolationFlags
+function M.open(config_dir, flags)
     assert(not _open)
     _open = true
-
-    local flags = config.current.persistence
-    if not flags then return end
 
     if flags.shada or flags.undo then
         ensure_dir(config_dir)
@@ -42,6 +39,28 @@ function M.open(config_dir)
 
     -- === ShaDa Support ===
     if flags.shada then
+        -- Disable ShaDa temporarily to "disconnect" from Global
+        vim.opt.shadafile = "NONE"
+        -- Purge internal memory
+        -- This ensures Global data doesn't leak into the next step
+        vim.fn.histdel(':') -- Clear command history
+        vim.fn.histdel('/') -- Clear search history
+        vim.fn.histdel('@') -- Clear input history
+        local regs = 'abcdefghijklmnopqrstuvwxyz0123456789"*-+'
+        for i = 1, #regs do
+            local r = regs:sub(i, i)
+            vim.fn.setreg(r, {})
+        end
+        -- Clear uppercase Global Marks (A-Z)
+        for i = 65, 90 do
+            local mark = string.char(i)
+            vim.cmd('delmarks ' .. mark)
+        end
+        -- Clear numbered marks (0-9) - these are usually 'last exit' positions
+        for i = 0, 9 do
+            vim.cmd('delmarks ' .. i)
+        end
+        -- load project shada
         local shada_path = vim.fs.joinpath(config_dir, "main.shada")
         vim.o.shadafile = shada_path
         if not filetools.file_exists(shada_path) then

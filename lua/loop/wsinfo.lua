@@ -5,6 +5,7 @@ local M = {}
 ---@field root_dir string
 ---@field config_dir string
 ---@field config loop.WorkspaceConfig
+---@field isolation table<string,boolean>?
 
 
 ---@type loop.ws.WorkspaceInfo?

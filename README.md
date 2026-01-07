@@ -13,7 +13,7 @@
 - **Quickfix Integration:** Compiler output is parsed into the quickfix list for easy navigation.
 - **Macro System:** Use `${macro}` variable substitution for dynamic commands.
 - **Workspace Variables:** Manage per-project variables with `:Loop var`.
-- **Optional Per-Workspace Persistence:** Isolate shada (history, marks) and undo data per workspace.
+- **Optional Per-Workspace Isolation:** Isolate shada (history, marks) and undo data per workspace.
 - **Extensible:** Add new task types and integrations via plugins (e.g. [loop-cmake.nvim](https://github.com/mbfoss/loop-cmake.nvim)).
 - **UI Window:** Built-in interface for managing tasks and viewing output.
 

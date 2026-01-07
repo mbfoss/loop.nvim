@@ -1,6 +1,6 @@
 ---@type loop.WorkspaceConfig
 return {
-    __order = {"version", "name", "save", "persistence"},
+    __order = {"version", "name", "save", "isolation"},
     version = "1.0",
     name = "",
     save = {

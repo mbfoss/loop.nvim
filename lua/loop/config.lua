@@ -11,7 +11,7 @@
 ---@class window loop.Config.Window
 ---@class loop.Config
 ---@field selector ("builtin"|"default")?
----@field persistence {shada:boolean,undo:boolean}?
+---@field isolation {shada:boolean,undo:boolean}?
 ---@field window loop.Config.Window?
 ---@field macros table<string,(fun(ctx:loop.TaskContext,...):any,string|nil)>?
 ---@field quickfix_matchers table<string,function>?

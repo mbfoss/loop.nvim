@@ -15,7 +15,7 @@ TABLE OF CONTENTS                                          *loop-contents*
   TASK TYPES ...................... |loop-task-types|
   EXTENSIONS ...................... |loop-extensions|
   MACROS & VARIABLES .............. |loop-macros|
-  PERSISTENCE ..................... |loop-persistence|
+  ISOLATION ..................... |loop-isolation|
   UI & WINDOWS .................... |loop-ui|
   COMMANDS REFERENCE .............. |loop-commands-ref|
   EXAMPLES ........................ |loop-examples|
@@ -101,7 +101,7 @@ GLOBAL SETUP                                               *loop-setup*
 ```lua
 require("loop").setup({
     selector = "builtin",  -- or "default" (vim.ui.select)
-    persistence = {
+    isolation = {
         shada = false,     -- Workspace-specific command history
         undo = false,      -- Workspace-specific undo history
     },
@@ -112,8 +112,8 @@ require("loop").setup({
 ```
 
 - `selector`: "builtin" (native picker) or "default" (vim.ui.select)
-- `persistence.shada`: Enable workspace shada persistence (history, marks, registers)
-- `persistence.undo`: Enable workspace undo history persistence
+- `isolation.shada`: Enable workspace shada isolation (history, marks, registers)
+- `isolation.undo`: Enable workspace undo history isolation
 - `autosave_interval`: Minutes between autosaves (0 disables)
 
 WORKSPACE CONFIGURATION                                    *loop-ws-config*
@@ -223,9 +223,9 @@ Workspace variables are managed via:
 - `:Loop var configure` — Edit all variables
 
 ==============================================================================
-PERSISTENCE                                                *loop-persistence*
+ISOLATION                                                *loop-isolation*
 
-Enable per-workspace persistence in setup. When enabled, Neovim uses
+Enable per-workspace isolation in setup. When enabled, Neovim uses
 shada/undo data from `.nvimloop` for the active workspace, isolating
 history, marks, and undo from other projects.
 
@@ -316,7 +316,7 @@ TROUBLESHOOTING                                            *loop-troubleshooting
 - If tasks do not appear, check that tasks.json is valid JSON.
 - If macros do not expand, ensure you are using the correct syntax (${macro}).
 - If quickfix parsing fails, verify the quickfix_matcher matches your compiler.
-- For workspace persistence issues, check .nvimloop/ for shada/undo files.
+- For workspace isolation issues, check .nvimloop/ for shada/undo files.
 - Use :Loop logs to view plugin logs and error messages.
 
 ==============================================================================
@@ -340,8 +340,8 @@ A: Use `${prompt:Message}` or `${prompt:Message,Default,CompletionType}` in your
 Q: Can I run tasks in parallel?
 A: Yes, composite tasks support "depends_order": "parallel".
 
-Q: How do I enable workspace persistence?
-A: Set `persistence = { shada = true, undo = true }` in your setup.
+Q: How do I enable workspace isolation?
+A: Set `isolation = { shada = true, undo = true }` in your setup.
 
 ==============================================================================
 LICENSE                                                    *loop-license*
