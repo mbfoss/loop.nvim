@@ -137,6 +137,10 @@ end
 function M.get_provider(name)
     local mod_name = providers.get_provider_modname(name)
     if not mod_name then return nil end
+    local m = package.loaded[mod_name]
+    if m then return m end
+    -- do not call require when vim is existing
+    if vim.v.exiting ~= vim.NIL then return nil end
     ---@type loop.TaskProvider
     return require(mod_name)
 end
@@ -187,7 +191,6 @@ end
 function M.on_tasks_cleanup()
     local names = providers.names()
     for _, name in ipairs(names) do
-        _provider_storage[name] = nil
         local provider = M.get_provider(name)
         if provider and provider.on_tasks_cleanup then
             provider.on_tasks_cleanup()

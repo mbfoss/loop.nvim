@@ -52,8 +52,6 @@ local function _close_workspace(quiet)
         return false
     end
 
-    assert(vim.v.exiting ~= vim.NIL, "can only close ws when vim is exiting")
-
     runner.terminate_tasks()
 
     _save_workspace()
