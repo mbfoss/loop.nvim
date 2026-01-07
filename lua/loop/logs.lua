@@ -17,7 +17,7 @@ function M.log(text, level)
     local log_text = type(text) == 'table' and table.concat(text, '\n') or text
 
     -- Store in history
-    table.insert(_log_history, {
+     table.insert(_log_history, {
         text = log_text,
         level = level,
         ---@diagnostic disable-next-line: undefined-field

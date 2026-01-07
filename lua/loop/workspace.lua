@@ -270,7 +270,7 @@ function M.open_workspace(dir, at_startup)
         if not label or label == "" then label = _workspace_info.root_dir end
         logs.user_log("Workspace opened: " .. label, "workspace")
         if not at_startup then
-            vim.notify("Workspace opened")
+            vim.notify("Workspace opened: " .. label)
         end
     else
         if not at_startup and err_msg then
@@ -313,7 +313,7 @@ end
 ---@return string[]
 function M.workspace_subcommands(args)
     if #args == 0 then
-        return { "info", "open", "create", "configure", "save" }
+        return { "info", "create", "configure", "save" }
     end
     return {}
 end
@@ -326,10 +326,6 @@ function M.workspace_cmmand(command)
     end
     if command == "create" then
         M.create_workspace()
-        return
-    end
-    if command == "open" then
-        M.open_workspace(nil, false)
         return
     end
     if command == "configure" then
@@ -510,10 +506,10 @@ function M.init()
 
             if runner.have_running_task() then
                 runner.terminate_tasks()
-                local max_waits = 100 -- 5 seconds max
+                local max_waits = 100 -- 10 seconds max
                 while max_waits > 0 and runner.have_running_task() do
                     max_waits = max_waits - 1
-                    vim.wait(50)
+                    vim.wait(100)
                 end
             end
 

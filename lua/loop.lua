@@ -109,7 +109,6 @@ function M.select_command()
     local all_cmds = {
         { vimcmd = "Loop workspace info",      help = "Show information about the current workspace" },
         { vimcmd = "Loop workspace create",    help = "Create a new workspace in the current working directory" },
-        { vimcmd = "Loop workspace open",      help = "Open the workspace in the current working directory" },
         { vimcmd = "Loop workspace save",      help = "Save workspace buffers (as defined in the workspace configuration)" },
         { vimcmd = "Loop workspace configure", help = "Create/Open the workspace configuration file" },
         { vimcmd = "Loop toggle",              help = "Toggle Loop window" },
