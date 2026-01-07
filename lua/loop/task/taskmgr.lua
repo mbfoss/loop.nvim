@@ -187,7 +187,6 @@ function M.on_workspace_close(wsinfo)
     end
 end
 
----@param wsinfo loop.ws.WorkspaceInfo
 function M.on_tasks_cleanup()
     local names = providers.names()
     for _, name in ipairs(names) do

@@ -4,6 +4,7 @@ local uitools = require('loop.tools.uitools')
 local BaseBuffer = require('loop.buf.BaseBuffer')
 
 ---@class loop.comp.ReplBuffer : loop.comp.BaseBuffer
+---@field new fun(self: loop.comp.ReplBuffer, type : string, name:string): loop.comp.ReplBuffer
 ---@field private _chan number|nil The terminal channel ID
 ---@field private _current_line string Current raw string in the input buffer
 ---@field private _cursor_pos number 1-indexed position of the cursor
@@ -72,6 +73,7 @@ end
 ---Sends output text to the buffer and redraws the prompt
 ---@param text string
 function ReplBuffer:send_line(text)
+    self:get_or_create_buf() -- ensure initialization to have the channel
     if self._chan then
         local formatted = "\r\27[K" .. text .. "\r\n" .. self._prompt .. self._current_line
         vim.api.nvim_chan_send(self._chan, formatted)
