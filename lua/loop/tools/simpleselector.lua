@@ -91,6 +91,20 @@ local function _move(filtered, cur, d)
     return cur
 end
 
+local function compute_width_for_items(items, padding)
+    local cols = vim.o.columns
+    local max_label_w = 0
+    for _, item in ipairs(items or {}) do
+        local label = (type(item) == "table" and item.label) or tostring(item)
+        local w = vim.fn.strdisplaywidth(label or "")
+        if w > max_label_w then max_label_w = w end
+    end
+    local desired = (max_label_w or 0) + (padding or 4)
+    local min_w = math.floor(cols * 0.20)
+    local max_w = math.floor(cols * 0.80)
+    return math.max(min_w, math.min(max_w, desired))
+end
+
 ---@param prompt string The prompt/title to display
 ---@param items loop.SelectorItem[] List of items with label and data table
 ---@param formatter (fun(data:any):string)|nil Convert the data into text for display in the preview
@@ -100,14 +114,46 @@ function M.select(prompt, items, formatter, callback)
     local callback_called = false
     local has_preview = type(formatter) == "function"
 
-    local width = math.floor(vim.o.columns * (has_preview and 0.66 or 0.33))
-    local height = math.floor(vim.o.lines * 0.66)
+    -- compute adaptive widths using compute_width_for_items and cap preview to 50% of screen
+    local cols = vim.o.columns
+    local lines_total = vim.o.lines
+    local padding = 4
+    local spacing = 2
+    local list_w = compute_width_for_items(items, padding)
+    local width, prev_w, preview_col_offset
+
+    if has_preview then
+        local min_preview = math.floor(cols * 0.20)
+        local max_preview = math.floor(cols * 0.30) 
+        -- ensure there's room for at least min_preview
+        if list_w + min_preview + spacing > cols then
+            list_w = math.max(1, cols - min_preview - spacing)
+        end
+        prev_w = cols - list_w - spacing
+        -- clamp preview to 50% and adjust list_w if needed
+        if prev_w > max_preview then
+            prev_w = max_preview
+            if list_w + spacing + prev_w > cols then
+                list_w = math.max(1, cols - prev_w - spacing)
+            end
+        end
+        width = list_w + spacing + prev_w
+        preview_col_offset = list_w + spacing
+    else
+        width = list_w
+        prev_w = 0
+        preview_col_offset = list_w
+    end
+
+    -- compute adaptive height based on number of items, clamped to [20%, 80%] of screen
+    local max_item_lines = #items
+    local desired_h = math.min(max_item_lines + 2, lines_total) -- +2 for some padding/prompt space
+    local min_h = math.floor(lines_total * 0.50)
+    local max_h = math.floor(lines_total * 0.80)
+    local height = math.max(min_h, math.min(max_h, desired_h))
+
     local row = math.floor((vim.o.lines - height) / 2)
     local col = math.floor((vim.o.columns - width) / 2)
-
-    local list_w = has_preview and math.ceil(width * 0.5) - 2 or width
-    local preview_col_offset = list_w + 2
-    local prev_w = has_preview and (width - preview_col_offset) or 0
 
     local query = ""
     local filtered = vim.fn.copy(items)

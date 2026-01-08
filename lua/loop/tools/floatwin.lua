@@ -19,7 +19,7 @@ function M.show_floatwin(text, opts)
     local max_h = math.floor(ui_height * 0.8)
 
     -- 2. Calculate Content Dimensions
-    local content_w = 20
+    local content_w = 30
     for _, line in ipairs(lines) do
         content_w = math.max(content_w, vim.fn.strwidth(line))
     end
