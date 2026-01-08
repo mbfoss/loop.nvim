@@ -44,6 +44,7 @@ After installation, generate helptags with `:helptags ALL` for documentation.
 ## Quick Start
 
 1. `:Loop workspace create` — Initialize a workspace in your project.
+2. `:Loop workspace open` — Open a workspace or reload the current one.
 3. `:Loop task add build` — Add a build task (or other types).
 4. `:Loop task run` — Run a task (choose from a list).
 5. `:Loop var add` — Add workspace variables (optional).

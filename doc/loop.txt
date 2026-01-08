@@ -249,6 +249,7 @@ COMMANDS REFERENCE                                         *loop-commands-ref*
 | :Loop | Open task selector / UI |
 | :Loop workspace create | Initialize new workspace |
 | :Loop workspace info | Show workspace information |
+| :Loop workspace open | Open a workspace or reload the current one |
 | :Loop workspace configure | Edit workspace.json |
 | :Loop workspace save | Save workspace buffers |
 | :Loop task run [name] | Run a task |

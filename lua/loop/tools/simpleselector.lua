@@ -91,6 +91,15 @@ local function _move(filtered, cur, d)
     return cur
 end
 
+-- non-wrapping move: clamp to [1, #filtered]
+local function _move_clamp(filtered, cur, d)
+    if #filtered == 0 then return cur end
+    local new = cur + d
+    if new < 1 then new = 1 end
+    if new > #filtered then new = #filtered end
+    return new
+end
+
 local function compute_width_for_items(items, padding)
     local cols = vim.o.columns
     local max_label_w = 0
@@ -220,7 +229,7 @@ function M.select(prompt, items, formatter, callback)
     end
 
     local function move(d)
-        cur = _move(filtered, cur, d)
+        cur = _move_clamp(filtered, cur, d)
         redraw()
     end
 
@@ -240,6 +249,17 @@ function M.select(prompt, items, formatter, callback)
     vim.keymap.set("i", "<C-p>", function() move(-1) end, opts)
     vim.keymap.set("i", "<Down>", function() move(1) end, opts)
     vim.keymap.set("i", "<Up>", function() move(-1) end, opts)
+
+    -- page-wise movements: Ctrl-D (down), Ctrl-U (up)
+    local page_step = math.max(1, math.floor(height / 2))
+    -- use non-wrapping page movement
+    local function page_move(d)
+        cur = _move_clamp(filtered, cur, d)
+        redraw()
+    end
+    vim.keymap.set("i", "<C-d>", function() page_move(page_step) end, opts)
+    vim.keymap.set("i", "<C-u>", function() page_move(-page_step) end, opts)
+
     vim.keymap.set("i", "<BS>", function()
         if #query > 0 then
             query = query:sub(1, -2); redraw()

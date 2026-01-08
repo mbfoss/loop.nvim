@@ -56,7 +56,7 @@ local function _close_workspace(quiet)
 
     _save_workspace()
 
-    taskmgr.on_workspace_close(_workspace_info)
+    taskmgr.on_workspace_unload(_workspace_info)
 
     if not quiet and _workspace_info then
         local label = _workspace_info.name or _workspace_info.root_dir
@@ -136,17 +136,9 @@ end
 ---@return string|nil
 local function _load_workspace(dir)
     assert(_init_done, _init_err_msg)
+    assert(type(dir) == 'string')
 
-    dir = dir or vim.fn.getcwd()
     dir = vim.fn.fnamemodify(dir, ":p")
-
-    if _workspace_info and dir == _workspace_info.root_dir then
-        return false, "Workspace already open"
-    end
-
-    if _workspace_info and dir ~= _workspace_info.root_dir then
-        return false, "Another workspace is already open"
-    end
 
     local config_dir = _get_config_dir(dir)
     if not filetools.dir_exists(config_dir) then
@@ -181,22 +173,24 @@ local function _load_workspace(dir)
 
     window.load_settings(config_dir)
 
-    taskmgr.on_workspace_open(_workspace_info)
+    taskmgr.on_workspace_load(_workspace_info)
 
-    local config = require('loop.config')
-    local save_interval = (config.current.autosave_interval or 5) * 60 * 1000
+    if not _save_timer then
+        local config = require('loop.config')
+        local save_interval = (config.current.autosave_interval or 5) * 60 * 1000
 
-    if save_interval > 0 and not _save_timer then
-        -- Create and start the repeating timer
-        ---@diagnostic disable-next-line: undefined-field
-        _save_timer = vim.loop.new_timer()
-        _save_timer:start(
-            save_interval, -- initial delay
-            save_interval, -- frequency
-            vim.schedule_wrap(_save_workspace)
-        )
+        if save_interval > 0 then
+            -- Create and start the repeating timer
+            ---@diagnostic disable-next-line: undefined-field
+            _save_timer = vim.loop.new_timer()
+            _save_timer:start(
+                save_interval, -- initial delay
+                save_interval, -- frequency
+                vim.schedule_wrap(_save_workspace)
+            )
+        end
     end
-
+    
     return true, nil
 end
 
@@ -214,7 +208,7 @@ function _show_workspace_info_floatwin()
     if info.isolation then
         str = str .. '\nIsolation:\n' .. jsontools.to_string(info.isolation)
     end
-    floatwin.show_floatwin(str, {title = "Workspace"})
+    floatwin.show_floatwin(str, { title = "Workspace" })
 end
 
 ---@param dir string?
@@ -235,6 +229,14 @@ function M.create_workspace(dir)
     assert(type(dir) == 'string')
     assert(type(config_dir) == 'string')
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
+
+    -- Ask user to confirm creation and show the target directory
+    local msg = "Create workspace in:\n" .. tostring(dir) .. "\n\nProceed?"
+    local choice = vim.fn.confirm(msg, "&Yes\n&No", 2)
+    if choice ~= 1 then
+        vim.notify("Workspace creation cancelled")
+        return false
+    end
 
     if filetools.dir_exists(config_dir) and filetools.file_exists(config_file) then
         vim.notify("A workspace already exists in " .. dir, vim.log.levels.ERROR)
@@ -311,7 +313,7 @@ end
 ---@return string[]
 function M.workspace_subcommands(args)
     if #args == 0 then
-        return { "info", "create", "configure", "save" }
+        return { "info", "create", "open", "configure", "save" }
     end
     return {}
 end
@@ -324,6 +326,10 @@ function M.workspace_cmmand(command)
     end
     if command == "create" then
         M.create_workspace()
+        return
+    end
+    if command == "open" then
+        M.open_workspace(nil, false)
         return
     end
     if command == "configure" then

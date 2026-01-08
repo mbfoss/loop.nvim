@@ -32,8 +32,8 @@ error('Cannot require a meta file')
 ---@field root string
 
 ---@class loop.TaskProvider
----@field on_workspace_open? fun(ws:loop.Workspace, store:loop.TaskProviderStore)
----@field on_workspace_close? fun(ws:loop.Workspace)
+---@field on_workspace_load? fun(ws:loop.Workspace, store:loop.TaskProviderStore)
+---@field on_workspace_unload? fun(ws:loop.Workspace)
 ---@field on_store_will_save? fun(ws:loop.Workspace, store:loop.TaskProviderStore)
 ---@field get_config_schema (fun():table)|nil
 ---@field get_config_template (fun():table)|nil

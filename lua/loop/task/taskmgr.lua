@@ -146,7 +146,7 @@ function M.get_provider(name)
 end
 
 ---@param wsinfo loop.ws.WorkspaceInfo
-function M.on_workspace_open(wsinfo)
+function M.on_workspace_load(wsinfo)
     ---@type loop.Workspace
     local workspace = {
         name = wsinfo.name,
@@ -156,7 +156,7 @@ function M.on_workspace_open(wsinfo)
     for _, name in ipairs(names) do
         _provider_storage[name] = nil
         local provider = M.get_provider(name)
-        if provider and provider.on_workspace_open then
+        if provider and provider.on_workspace_load then
             local state = taskstore.load_provider_state(wsinfo.config_dir, name) or {}
             ---@type loop.TaskProviderStore
             local store = {
@@ -165,13 +165,13 @@ function M.on_workspace_open(wsinfo)
                 keys = function() return vim.tbl_keys(state) end
             }
             _provider_storage[name] = { state = state, store = store }
-            provider.on_workspace_open(workspace, store)
+            provider.on_workspace_load(workspace, store)
         end
     end
 end
 
 ---@param wsinfo loop.ws.WorkspaceInfo
-function M.on_workspace_close(wsinfo)
+function M.on_workspace_unload(wsinfo)
     ---@type loop.Workspace
     local workspace = {
         name = wsinfo.name,
@@ -181,8 +181,8 @@ function M.on_workspace_close(wsinfo)
     for _, name in ipairs(names) do
         _provider_storage[name] = nil
         local provider = M.get_provider(name)
-        if provider and provider.on_workspace_close then
-            provider.on_workspace_close(workspace)
+        if provider and provider.on_workspace_unload then
+            provider.on_workspace_unload(workspace)
         end
     end
 end

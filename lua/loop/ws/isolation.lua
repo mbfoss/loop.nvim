@@ -5,8 +5,6 @@ local uitools = require('loop.tools.uitools')
 
 ---@alias loop.ws.IsolationFlags {shada:boolean, undo:boolean}
 
-local _open = false
-
 local function ensure_dir(path)
     if vim.fn.isdirectory(path) == 0 then
         vim.fn.mkdir(path, "p")
@@ -30,13 +28,10 @@ end
 ---@param config_dir string
 ---@param flags loop.ws.IsolationFlags
 function M.open(config_dir, flags)
-    assert(not _open)
-    _open = true
-
-    if flags.shada or flags.undo then
-        ensure_dir(config_dir)
+    if not (flags.shada or flags.undo) then
+        return
     end
-
+    ensure_dir(config_dir)
     -- === ShaDa Support ===
     if flags.shada then
         -- Disable ShaDa temporarily to "disconnect" from Global
