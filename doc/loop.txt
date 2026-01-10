@@ -221,9 +221,9 @@ Loop provides a built-in UI for managing tasks, viewing output, and switching
 between task pages.
 
 Commands:
-- `:Loop toggle` — Toggle the Loop UI window
-- `:Loop show` — Show the Loop UI window
-- `:Loop hide` — Hide the Loop UI window
+- `:Loop ui toggle` — Toggle the Loop UI window
+- `:Loop ui show` — Show the Loop UI window
+- `:Loop ui hide` — Hide the Loop UI window
 - `:Loop page switch` — Switch between output pages
 - `:Loop page open [group] [page]` — Open a specific page/group
 
@@ -245,9 +245,9 @@ COMMANDS REFERENCE                                         *loop-commands-ref*
 | :Loop task terminate | Stop all running tasks |
 | :Loop var add | Create workspace variable |
 | :Loop var configure | Edit all variables |
-| :Loop toggle | Toggle Loop UI window |
-| :Loop show | Show Loop UI window |
-| :Loop hide | Hide Loop UI window |
+| :Loop ui toggle | Toggle Loop UI window |
+| :Loop ui show | Show Loop UI window |
+| :Loop ui hide | Hide Loop UI window |
 | :Loop page switch | Switch UI pages |
 | :Loop page open [g] [p] | Open specific page |
 | :Loop logs | Show plugin logs |

@@ -498,6 +498,13 @@ function M.var_command(command)
     end
 end
 
+function M.ui_subcommands(args)
+    if #args == 0 then
+        return { "toggle", "show", "hide" }
+    end
+    return {}
+end
+
 function M.page_subcommands(args)
     if #args == 0 then
         return { "switch", "open" }
@@ -519,6 +526,18 @@ function M.page_command(command, arg1, arg2)
         M.switch_page()
     elseif command == "open" then
         M.open_page(arg1, arg2)
+    else
+        vim.notify("Invalid command: " .. command)
+    end
+end
+
+function M.ui_command(command)
+    if not command or command == "toggle" then
+        M.toggle_window()
+    elseif command == "show" then
+        M.show_window()
+    elseif command == "hide" then
+        M.hide_window()
     else
         vim.notify("Invalid command: " .. command)
     end

@@ -88,6 +88,8 @@ function M.complete(arg_lead, cmd_line)
             return filter(workspace.task_subcommands(rest))
         elseif cmd == "workspace" then
             return filter(workspace.workspace_subcommands(rest))
+        elseif cmd == "ui" then
+            return filter(workspace.ui_subcommands(rest))
         elseif cmd == "page" then
             return filter(workspace.page_subcommands(rest))
         elseif cmd == "var" then
@@ -108,9 +110,9 @@ function M.select_command()
         { vimcmd = "Loop workspace open",      help = "Open a workspace or reload the current one" },
         { vimcmd = "Loop workspace save",      help = "Save workspace buffers (as defined in the workspace configuration)" },
         { vimcmd = "Loop workspace configure", help = "Create/Open the workspace configuration file" },
-        { vimcmd = "Loop toggle",              help = "Toggle Loop window" },
-        { vimcmd = "Loop show",                help = "Show Loop window" },
-        { vimcmd = "Loop hide",                help = "Hide Loop window" },
+        { vimcmd = "Loop ui",                  help = "Toggle Loop window" },
+        { vimcmd = "Loop ui show",             help = "Show Loop window" },
+        { vimcmd = "Loop ui hide",             help = "Hide Loop window" },
         { vimcmd = "Loop page",                help = "Select the page shown in the Loop window" },
         { vimcmd = "Loop page open",           help = "Select and open a page in the current window" },
         { vimcmd = "Loop logs",                help = "Show recent logs" },
@@ -212,9 +214,7 @@ function M.init()
 
     _G.LoopWorkspace = {
         _winbar_click = workspace.winbar_click,
-        toggle = workspace.toggle_window,
-        show = workspace.show_window,
-        hide = workspace.hide_window,
+        ui = workspace.ui_command,
         page = workspace.page_command,
         workspace = workspace.workspace_cmmand,
         task = workspace.task_command,
