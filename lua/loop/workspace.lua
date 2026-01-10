@@ -9,10 +9,10 @@ local uitools = require('loop.tools.uitools')
 local jsontools = require('loop.tools.json')
 local jsonschema = require('loop.tools.jsonschema')
 local filetools = require('loop.tools.file')
-local isolation = require('loop.ws.isolation')
 local wssaveutil = require('loop.ws.saveutil')
 local migration = require('loop.ws.migration')
 local floatwin = require('loop.tools.floatwin')
+local selector = require('loop.tools.selector')
 
 local _init_done = false
 local _init_err_msg = "init() not called"
@@ -21,6 +21,48 @@ local _init_err_msg = "init() not called"
 local _workspace_info = nil
 
 local _save_timer = nil
+
+-- New: recent workspaces persistence
+local MAX_RECENTS = 50
+
+local function _get_recent_file()
+    local data_dir = vim.fn.stdpath('data')
+    return vim.fs.joinpath(data_dir, "loop", "recent_workspaces.json")
+end
+
+local function _load_recent_workspaces()
+    local f = _get_recent_file()
+    if not filetools.file_exists(f) then return {} end
+    local ok, data_or_err = jsontools.load_from_file(f)
+    if not ok or type(data_or_err) ~= "table" then return {} end
+    return data_or_err
+end
+
+local function _save_recent_workspaces(list)
+    local f = _get_recent_file()
+    -- ensure parent dir exists
+    local dir = vim.fn.fnamemodify(f, ":h")
+    vim.fn.mkdir(dir, "p")
+    jsontools.save_to_file(f, list)
+end
+
+local function _add_recent_workspace(dir)
+    if not dir or dir == "" then return end
+    dir = vim.fn.fnamemodify(dir, ":p")
+    local list = _load_recent_workspaces()
+    local seen = {}
+    local newlist = { dir }
+    seen[dir] = true
+    for _, v in ipairs(list) do
+        local p = vim.fn.fnamemodify(v, ":p")
+        if not seen[p] then
+            table.insert(newlist, p)
+            seen[p] = true
+        end
+        if #newlist >= MAX_RECENTS then break end
+    end
+    _save_recent_workspaces(newlist)
+end
 
 ---@return loop.ws.WorkspaceInfo?
 local function _get_ws_info_or_warn()
@@ -152,24 +194,18 @@ local function _load_workspace(dir)
     end
 
     local loopconfig = require('loop.config')
-    local isolation_flags = loopconfig.current.isolation
     ---@type loop.ws.WorkspaceInfo
     _workspace_info = {
         name = ws_config.name,
         root_dir = dir,
         config_dir = config_dir,
         config = ws_config,
-        isolation = isolation_flags
     }
     if not _workspace_info.name or _workspace_info.name == "" then
         _workspace_info.name = vim.fn.fnamemodify(dir, ":p:h:t")
     end
 
     wsinfo.set_ws_info(vim.deepcopy(_workspace_info)) --copy for safety
-
-    if isolation_flags then
-        isolation.open(config_dir, isolation_flags)
-    end
 
     window.load_settings(config_dir)
 
@@ -190,7 +226,7 @@ local function _load_workspace(dir)
             )
         end
     end
-    
+
     return true, nil
 end
 
@@ -205,23 +241,12 @@ function _show_workspace_info_floatwin()
     save_config.__order = { "include", "exclude" }
     local str = ("Name: %s\nDirectory: %s\nFiles:\n%s"):format(info.name, info.root_dir,
         jsontools.to_string(save_config))
-    if info.isolation then
-        str = str .. '\nIsolation:\n' .. jsontools.to_string(info.isolation)
-    end
     floatwin.show_floatwin(str, { title = "Workspace" })
 end
 
 ---@param dir string?
 function M.create_workspace(dir)
     assert(_init_done, _init_err_msg)
-    if _workspace_info then
-        if dir == _workspace_info.root_dir then
-            vim.notify("Workspace already exists")
-        else
-            vim.notify("Another workspace is already open")
-        end
-        return false
-    end
 
     dir = dir or vim.fn.getcwd()
     local config_dir = _get_config_dir(dir)
@@ -230,17 +255,17 @@ function M.create_workspace(dir)
     assert(type(config_dir) == 'string')
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
 
+    if filetools.dir_exists(config_dir) and filetools.file_exists(config_file) then
+        vim.notify("A workspace already exists in " .. dir, vim.log.levels.ERROR)
+        return
+    end
+
     -- Ask user to confirm creation and show the target directory
     local msg = "Create workspace in:\n" .. tostring(dir) .. "\n\nProceed?"
     local choice = vim.fn.confirm(msg, "&Yes\n&No", 2)
     if choice ~= 1 then
         vim.notify("Workspace creation cancelled")
         return false
-    end
-
-    if filetools.dir_exists(config_dir) and filetools.file_exists(config_file) then
-        vim.notify("A workspace already exists in " .. dir, vim.log.levels.ERROR)
-        return
     end
 
     -- important check because the user may pass garbage data
@@ -263,9 +288,57 @@ end
 ---@param at_startup boolean
 function M.open_workspace(dir, at_startup)
     assert(_init_done, _init_err_msg)
+
+    -- If no dir provided, present recent workspaces via selector
+    if not dir or dir == "" then
+        local cwd = vim.fn.getcwd()
+        local candidates = _load_recent_workspaces()
+
+        -- If cwd is a workspace, ensure it's first
+        local cwd_config_dir = _get_config_dir(cwd)
+        if filetools.dir_exists(cwd_config_dir) then
+            table.insert(candidates, 1, cwd)
+        end
+
+        -- Deduplicate and normalize
+        local seen = {}
+        local uniq = {}
+        for _, p in ipairs(candidates) do
+            if p and p ~= "" then
+                local np = vim.fn.fnamemodify(p, ":p")
+                if not seen[np] then
+                    seen[np] = true
+                    table.insert(uniq, np)
+                end
+            end
+        end
+
+        if #uniq == 0 then
+            vim.notify("No recent workspaces found")
+            return
+        end
+
+        local items = {}
+        for _, path in ipairs(uniq) do
+            local label = vim.fn.fnamemodify(path, ":t") .. " — " .. path
+            table.insert(items, { label = label, data = path })
+        end
+
+        selector.select("Open workspace", items, nil, function(choice)
+            if choice then
+                -- async open of selected workspace
+                M.open_workspace(choice, false)
+            end
+        end)
+        return
+    end
+
     dir = dir or vim.fn.getcwd()
     local ok, err_msg = _load_workspace(dir)
     if ok and _workspace_info then
+        -- add to recent list (MRU)
+        _add_recent_workspace(dir)
+
         local label = _workspace_info.name
         if not label or label == "" then label = _workspace_info.root_dir end
         logs.user_log("Workspace opened: " .. label, "workspace")

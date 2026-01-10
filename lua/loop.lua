@@ -14,10 +14,6 @@ local config = require("loop.config")
 ---@type loop.Config
 local DEFAULT_CONFIG = {
     selector = "builtin",
-    isolation = {
-        shada = false,
-        undo = false,
-    },
     window = {
         symbols = {
             change  = "●",
