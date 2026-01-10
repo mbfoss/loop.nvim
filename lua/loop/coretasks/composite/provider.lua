@@ -7,7 +7,7 @@ local provider = {
     get_task_schema = function()
         return {}
     end,
-    get_task_templates = function(config)
+    get_task_templates = function()
         ---@type loop.taskTemplate[]
         return {
             {

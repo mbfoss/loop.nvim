@@ -32,16 +32,22 @@ error('Cannot require a meta file')
 ---@field root string
 
 ---@class loop.TaskProvider
----@field on_workspace_load? fun(ws:loop.Workspace, store:loop.TaskProviderStore)
----@field on_workspace_unload? fun(ws:loop.Workspace)
----@field on_store_will_save? fun(ws:loop.Workspace, store:loop.TaskProviderStore)
----@field get_config_schema (fun():table)|nil
----@field get_config_template (fun():table)|nil
 ---@field get_task_schema fun():table
----@field get_task_templates fun(config:table|nil):loop.taskTemplate[]
+---@field get_task_templates fun():loop.taskTemplate[]
 ---@field get_task_preview (fun(task:loop.Task):string,string)|nil
 ---@field start_one_task fun(task:loop.Task,page_manager:loop.PageManager, on_exit:loop.TaskExitHandler):(loop.TaskControl|nil,string|nil)
 ---@field on_tasks_cleanup fun()?
+
+---@class loop.UserCommandProvider
+---@field get_subcommands fun(args:string[]):string[]
+---@field dispatch fun(args:string[],opts:vim.api.keyset.create_user_command.command_args)
+
+---@class loop.Extension
+---@field on_workspace_load? fun(ws:loop.Workspace, store:loop.TaskProviderStore)
+---@field on_workspace_unload? fun(ws:loop.Workspace)
+---@field on_store_will_save? fun(ws:loop.Workspace, store:loop.TaskProviderStore)
+---@field get_task_provider? fun():loop.TaskProvider
+---@field get_cmd_provider? fun():loop.UserCommandProvider
 
 ---@class loop.KeyMap
 ---@field callback fun()

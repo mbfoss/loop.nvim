@@ -7,7 +7,7 @@ local provider = {
         local schema = require('loop.coretasks.run.schema')
         return schema
     end,
-    get_task_templates = function(config)
+    get_task_templates = function()
         local templates = require('loop.coretasks.run.templates')
         return templates
     end,

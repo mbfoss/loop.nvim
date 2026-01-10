@@ -13,6 +13,7 @@ local wssaveutil = require('loop.ws.saveutil')
 local migration = require('loop.ws.migration')
 local floatwin = require('loop.tools.floatwin')
 local selector = require('loop.tools.selector')
+local extstates = require("loop.extstates")
 
 local _init_done = false
 local _init_err_msg = "init() not called"
@@ -84,7 +85,7 @@ local function _save_workspace()
     end
     assert(_init_done, _init_err_msg)
     window.save_settings(_workspace_info.config_dir)
-    taskmgr.save_provider_states(_workspace_info)
+    extstates.save(_workspace_info)
     return true
 end
 
@@ -98,7 +99,7 @@ local function _close_workspace(quiet)
 
     _save_workspace()
 
-    taskmgr.on_workspace_unload(_workspace_info)
+    extstates.on_workspace_unload(_workspace_info)
 
     if not quiet and _workspace_info then
         local label = _workspace_info.name or _workspace_info.root_dir
@@ -209,7 +210,7 @@ local function _load_workspace(dir)
 
     window.load_settings(config_dir)
 
-    taskmgr.on_workspace_load(_workspace_info)
+    extstates.on_workspace_load(_workspace_info)
 
     if not _save_timer then
         local config = require('loop.config')
@@ -420,20 +421,13 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "run", "repeat", "add", "configure", "terminate" }
+        return { "run", "repeat", "add", "terminate" }
     elseif #args == 1 then
         if args[1] == 'add' then
             return taskmgr.task_types()
-        elseif args[1] == 'configure' then
-            return taskmgr.configurable_task_types()
         end
     end
     return {}
-end
-
----@return string[]
-function M.configurable_task_types()
-    return taskmgr.configurable_task_types()
 end
 
 ---@param command string|nil
@@ -452,18 +446,30 @@ function M.task_command(command, arg1, arg2)
 
     local config_dir = ws_info.config_dir
     if command == "run" then
-        runner.run_task(config_dir, window.page_manger_factory(), "task", arg1)
+        runner.load_and_run_task(config_dir, window.page_manger_factory(), "task", arg1)
     elseif command == "repeat" then
-        runner.run_task(config_dir, window.page_manger_factory(), "repeat")
+        runner.load_and_run_task(config_dir, window.page_manger_factory(), "repeat")
     elseif command == "add" then
         taskmgr.add_task(config_dir, arg1)
     elseif command == "configure" then
-        taskmgr.configure(config_dir, arg1)
+        taskmgr.configure_tasks(config_dir)
     elseif command == "terminate" then
         runner.terminate_tasks()
     else
         vim.notify('Invalid task command: ' .. command)
     end
+end
+
+---@param task_and_deps loop.Task[]
+---@param root_name string
+function M.run_custom_task(task_and_deps, root_name)
+    assert(_init_done, _init_err_msg)
+    local ws_info = _get_ws_info_or_warn()
+    if not ws_info then
+        return
+    end
+    local config_dir = ws_info.config_dir
+    runner.run_task(config_dir, window.page_manger_factory(), task_and_deps, root_name)
 end
 
 ---@param args string[]

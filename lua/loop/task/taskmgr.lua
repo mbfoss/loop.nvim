@@ -7,9 +7,6 @@ local providers = require("loop.task.providers")
 local selector = require("loop.tools.selector")
 local logs = require("loop.logs")
 
----@type table<string,{state:any,store:loop.TaskProviderStore}>
-local _provider_storage = {}
-
 ---@params task loop.Task
 ---@return string,string
 local function _task_preview(task)
@@ -119,72 +116,10 @@ function M.task_types()
     return providers.names()
 end
 
----@return string[]
-function M.configurable_task_types()
-    local ret = {}
-    local names = providers.names()
-    for _, name in ipairs(names) do
-        local provider = M.get_provider(name)
-        if provider and provider.get_config_template then
-            table.insert(ret, name)
-        end
-    end
-    return ret
-end
-
 ---@param name string
 ---@return loop.TaskProvider|nil
 function M.get_provider(name)
-    local mod_name = providers.get_provider_modname(name)
-    if not mod_name then return nil end
-    local m = package.loaded[mod_name]
-    if m then return m end
-    -- do not call require when vim is existing
-    if vim.v.exiting ~= vim.NIL then return nil end
-    ---@type loop.TaskProvider
-    return require(mod_name)
-end
-
----@param wsinfo loop.ws.WorkspaceInfo
-function M.on_workspace_load(wsinfo)
-    ---@type loop.Workspace
-    local workspace = {
-        name = wsinfo.name,
-        root = wsinfo.root_dir,
-    }
-    local names = providers.names()
-    for _, name in ipairs(names) do
-        _provider_storage[name] = nil
-        local provider = M.get_provider(name)
-        if provider and provider.on_workspace_load then
-            local state = taskstore.load_provider_state(wsinfo.config_dir, name) or {}
-            ---@type loop.TaskProviderStore
-            local store = {
-                set = function(fieldname, fieldvalue) state[fieldname] = fieldvalue end,
-                get = function(fieldname) return state[fieldname] end,
-                keys = function() return vim.tbl_keys(state) end
-            }
-            _provider_storage[name] = { state = state, store = store }
-            provider.on_workspace_load(workspace, store)
-        end
-    end
-end
-
----@param wsinfo loop.ws.WorkspaceInfo
-function M.on_workspace_unload(wsinfo)
-    ---@type loop.Workspace
-    local workspace = {
-        name = wsinfo.name,
-        root = wsinfo.root_dir,
-    }
-    local names = providers.names()
-    for _, name in ipairs(names) do
-        _provider_storage[name] = nil
-        local provider = M.get_provider(name)
-        if provider and provider.on_workspace_unload then
-            provider.on_workspace_unload(workspace)
-        end
-    end
+    return providers.get_provider(name)
 end
 
 function M.on_tasks_cleanup()
@@ -193,28 +128,6 @@ function M.on_tasks_cleanup()
         local provider = M.get_provider(name)
         if provider and provider.on_tasks_cleanup then
             provider.on_tasks_cleanup()
-        end
-    end
-end
-
----@param wsinfo loop.ws.WorkspaceInfo
-function M.save_provider_states(wsinfo)
-    ---@type loop.Workspace
-    local workspace = {
-        name = wsinfo.name,
-        root = wsinfo.root_dir,
-    }
-    local names = providers.names()
-    for _, name in ipairs(names) do
-        local provider = M.get_provider(name)
-        if provider then
-            local storage = _provider_storage[name]
-            if storage then
-                if provider.on_store_will_save then
-                    provider.on_store_will_save(workspace, storage.store)
-                end
-                taskstore.save_provider_state(wsinfo.config_dir, name, storage.state)
-            end
         end
     end
 end
@@ -233,23 +146,8 @@ function M.add_task(config_dir, task_type)
     end
     assert(type(provider) == "table")
 
-    ---@type fun(config: table|nil, err: string[]|nil)
-    local on_config_ready = function(config, err)
-        if err then
-            logs.log(err, vim.log.levels.ERROR)
-            vim.notify("Missing or Invalid configuration for " .. tostring(task_type))
-            return
-        end
-        local templates = provider.get_task_templates(config)
-        _select_and_add_task(config_dir, templates, "Select template")
-    end
-    local config_schema = provider.get_config_schema and provider.get_config_schema() or nil
-    if config_schema then
-        taskstore.load_provider_config(config_dir, task_type, config_schema, on_config_ready)
-    else
-        on_config_ready(nil)
-        provider.get_task_templates(nil)
-    end
+    local templates = provider.get_task_templates()
+    _select_and_add_task(config_dir, templates, "Select template")
 end
 
 ---@param name string
@@ -259,30 +157,13 @@ function M.save_last_task_name(name, config_dir)
 end
 
 ---@param config_dir string
----@param task_type string|nil
-function M.configure(config_dir, task_type)
-    if task_type == nil then
-        taskstore.open_tasks_config(config_dir)
-        local _, task_errors = _load_tasks(config_dir)
-        if task_errors then
-            vim.notify("Failed to load task configuration file", vim.log.levels.ERROR)
-            logs.log(task_errors, vim.log.levels.ERROR)
-            return
-        end
+function M.configure(config_dir)
+    taskstore.open_tasks_config(config_dir)
+    local _, task_errors = _load_tasks(config_dir)
+    if task_errors then
+        vim.notify("Failed to load task configuration file", vim.log.levels.ERROR)
+        logs.log(task_errors, vim.log.levels.ERROR)
         return
-    end
-
-    local provider = M.get_provider(task_type)
-    if not provider then
-        vim.notify("Invalid task type: " .. tostring(task_type))
-        return
-    end
-    if provider.get_config_template then
-        local schema = provider.get_config_schema and provider.get_config_schema() or nil
-        local template = provider.get_config_template()
-        if schema and template then
-            taskstore.open_provider_config(config_dir, task_type, schema, template)
-        end
     end
 end
 

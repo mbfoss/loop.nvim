@@ -1,5 +1,6 @@
 -- lua/loop/init.lua
 local strtools = require('loop.tools.strtools')
+local extensions = require('loop.extensions')
 
 local M = {}
 
@@ -27,7 +28,7 @@ local DEFAULT_CONFIG = {
     quickfix_matchers = {},
     debug = false,
     autosave_interval = 5, -- 5 minutes
-    logs_count = 50, -- Number of recent logs to show
+    logs_count = 50,       -- Number of recent logs to show
 }
 
 -----------------------------------------------------------
@@ -78,7 +79,9 @@ function M.complete(arg_lead, cmd_line)
     if #args == 2 then
         local func_names = filter(vim.tbl_keys(_G.LoopWorkspace or {}))
         -- sort because tbl_keys order may change every time
-        return vim.fn.sort(func_names)
+        local cmds = vim.fn.sort(func_names)
+        cmds = vim.list_extend(cmds, extensions.cmd_leads())
+        return filter(cmds)
     elseif #args >= 3 then
         local cmd = args[2]
         local rest = { unpack(args, 3) }
@@ -94,6 +97,11 @@ function M.complete(arg_lead, cmd_line)
             return filter(workspace.page_subcommands(rest))
         elseif cmd == "var" then
             return filter(workspace.var_subcommands(rest))
+        else
+            local cmd_provider = extensions.get_cmd_provider(cmd)
+            if cmd_provider then
+                return filter(cmd_provider.get_subcommands(rest))
+            end
         end
     end
 
@@ -146,9 +154,6 @@ function M.select_command()
 
     table.insert(all_cmds,
         { vimcmd = "Loop task configure", help = "Configure tasks or check the current configuration" })
-    for _, name in ipairs(workspace.configurable_task_types()) do
-        table.insert(all_cmds, { vimcmd = "Loop task configure " .. name, help = "Configure " .. name .. " tasks module" })
-    end
 
     ------------------------------------------------------------------
     -- Var subcommands
@@ -165,6 +170,7 @@ end
 -- Dispatcher
 -----------------------------------------------------------
 
+---@param opts vim.api.keyset.create_user_command.command_args
 function M.dispatch(opts)
     M.init()
 
@@ -178,6 +184,12 @@ function M.dispatch(opts)
 
     local fn = _G.LoopWorkspace[subcmd]
     if not fn then
+        local cmd_provider = extensions.get_cmd_provider(subcmd)
+        if cmd_provider then
+            local rest = { unpack(args, 2) }
+            cmd_provider.dispatch(rest, opts)
+            return            
+        end
         vim.notify(
             "Invalid command: " .. subcmd,
             vim.log.levels.ERROR
