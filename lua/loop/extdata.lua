@@ -11,7 +11,7 @@ local jsonschema = require('loop.tools.jsonschema')
 ---@type table<string,table>
 local _extension_states = {}
 
----@type table<string,loop.ExtensionWorspaceData>
+---@type table<string,loop.ExtensionData>
 local _extension_data = {}
 
 ---@type table<string,loop.UserCommandProvider>
@@ -164,7 +164,7 @@ function M.on_workspace_load(wsinfo)
     local names = extensions.ext_names()
     for _, name in ipairs(names) do
         _load_state(wsinfo.config_dir, name)
-        ---@type loop.ExtensionWorspaceData
+        ---@type loop.ExtensionData
         local ext_data = {
             ws_name = wsinfo.name,
             ws_dir = wsinfo.ws_dir,
