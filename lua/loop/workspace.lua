@@ -386,7 +386,7 @@ end
 
 ---@return string[]
 function M.get_commands()
-    local cmds = { "workspace", "ui", "page" }
+    local cmds = { "workspace", "ui", "page", "logs" }
     if _workspace_info then
         vim.list_extend(cmds, { "task", "var" })
     end
@@ -408,6 +408,8 @@ function M.run_command(cmd, rest, opts)
         M.task_command(unpack(rest))
     elseif cmd == "var" then
         M.var_command(unpack(rest))
+    elseif cmd == "logs" then
+        M.logs_command()
     else
         local provider = extdata.get_cmd_provider(cmd)
         if provider then
