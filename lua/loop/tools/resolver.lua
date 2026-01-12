@@ -5,8 +5,7 @@ local config = require('loop.config')
 local unpack = unpack or table.unpack
 
 ---@class loop.TaskContext
----@field task_name string
----@field root_dir string
+---@field ws_dir string
 ---@field variables table<string, string>
 
 --- Splits a string by a delimiter while respecting backslash escapes.

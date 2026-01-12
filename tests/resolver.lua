@@ -6,8 +6,7 @@ local config = require("loop.config")
 describe("loop.tools.resolver (variadic args)", function()
     --- Mock task context for testing
     local mock_ctx = {
-        task_name = "test",
-        root_dir = "/tmp",
+        ws_dir = "/tmp",
         variables = {}
     }
 

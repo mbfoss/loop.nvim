@@ -116,6 +116,10 @@ function M.task_types()
     return providers.names()
 end
 
+function M.reset_provider_list()
+    providers.reset()
+end
+
 ---@param name string
 ---@return loop.TaskProvider|nil
 function M.get_provider(name)

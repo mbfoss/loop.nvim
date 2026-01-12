@@ -13,7 +13,7 @@ local wssaveutil = require('loop.ws.saveutil')
 local migration = require('loop.ws.migration')
 local floatwin = require('loop.tools.floatwin')
 local selector = require('loop.tools.selector')
-local extstates = require("loop.extstates")
+local extdata = require("loop.extdata")
 
 local _init_done = false
 local _init_err_msg = "init() not called"
@@ -85,7 +85,7 @@ local function _save_workspace()
     end
     assert(_init_done, _init_err_msg)
     window.save_settings(_workspace_info.config_dir)
-    extstates.save(_workspace_info)
+    extdata.save(_workspace_info)
     return true
 end
 
@@ -99,10 +99,10 @@ local function _close_workspace(quiet)
 
     _save_workspace()
 
-    extstates.on_workspace_unload(_workspace_info)
+    extdata.on_workspace_unload(_workspace_info)
 
     if not quiet and _workspace_info then
-        local label = _workspace_info.name or _workspace_info.root_dir
+        local label = _workspace_info.name or _workspace_info.ws_dir
         logs.user_log("Workspace closed: " .. label, "workspace")
         vim.notify("Workspace closed")
     end
@@ -198,7 +198,7 @@ local function _load_workspace(dir)
     ---@type loop.ws.WorkspaceInfo
     _workspace_info = {
         name = ws_config.name,
-        root_dir = dir,
+        ws_dir = dir,
         config_dir = config_dir,
         config = ws_config,
     }
@@ -210,7 +210,8 @@ local function _load_workspace(dir)
 
     window.load_settings(config_dir)
 
-    extstates.on_workspace_load(_workspace_info)
+    taskmgr.reset_provider_list()
+    extdata.on_workspace_load(_workspace_info)
 
     if not _save_timer then
         local config = require('loop.config')
@@ -240,7 +241,7 @@ function _show_workspace_info_floatwin()
     local save_config = vim.fn.copy(info.config.save)
     ---@diagnostic disable-next-line: inject-field
     save_config.__order = { "include", "exclude" }
-    local str = ("Name: %s\nDirectory: %s\nFiles:\n%s"):format(info.name, info.root_dir,
+    local str = ("Name: %s\nDirectory: %s\nFiles:\n%s"):format(info.name, info.ws_dir,
         jsontools.to_string(save_config))
     floatwin.show_floatwin(str, { title = "Workspace" })
 end
@@ -341,7 +342,7 @@ function M.open_workspace(dir, at_startup)
         _add_recent_workspace(dir)
 
         local label = _workspace_info.name
-        if not label or label == "" then label = _workspace_info.root_dir end
+        if not label or label == "" then label = _workspace_info.ws_dir end
         logs.user_log("Workspace opened: " .. label, "workspace")
         if not at_startup then
             vim.notify("Workspace opened: " .. label)
@@ -360,7 +361,7 @@ function M.configure_workspace()
         vim.notify("No active workspace", vim.log.levels.WARN)
         return
     end
-    local ok, configfile = _configure_workspace(_workspace_info.root_dir)
+    local ok, configfile = _configure_workspace(_workspace_info.ws_dir)
     if not ok or not configfile then
         vim.notify("Failed to setup configuration file")
         return
@@ -383,6 +384,63 @@ function M.configure_workspace()
     end
 end
 
+---@return string[]
+function M.get_commands()
+    local cmds = { "workspace", "ui", "page" }
+    if _workspace_info then
+        vim.list_extend(cmds, { "task", "var" })
+    end
+        vim.list_extend(cmds, extdata.lead_commands())
+    return cmds
+end
+
+---@param cmd string
+---@param rest string[]
+---@param opts vim.api.keyset.create_user_command.command_args
+function M.run_command(cmd, rest, opts)
+    if cmd == "workspace" then
+        M.workspace_command(unpack(rest))
+    elseif cmd == "ui" then
+        M.ui_command(unpack(rest))
+    elseif cmd == "page" then
+        M.page_command(unpack(rest))
+    elseif cmd == "task" then
+        M.task_command(unpack(rest))
+    elseif cmd == "var" then
+        M.var_command(unpack(rest))
+    else
+        local provider = extdata.get_cmd_provider(cmd)
+        if provider then
+            provider.dispatch(rest, opts)
+        else
+            vim.notify("Invalid command: " .. tostring(cmd))
+        end
+    end
+end
+
+---@param cmd string
+---@param rest string[]
+---@return string[]
+function M.get_subcommands(cmd, rest)
+    if cmd == "task" then
+        return M.task_subcommands(rest)
+    elseif cmd == "workspace" then
+        return M.workspace_subcommands(rest)
+    elseif cmd == "ui" then
+        return M.ui_subcommands(rest)
+    elseif cmd == "page" then
+        return M.page_subcommands(rest)
+    elseif cmd == "var" then
+        return M.var_subcommands(rest)
+    else
+        local provider = extdata.get_cmd_provider(cmd)
+        if provider then
+            return provider.get_subcommands(rest)
+        end
+    end
+    return {}
+end
+
 ---@param args string[]
 ---@return string[]
 function M.workspace_subcommands(args)
@@ -393,7 +451,7 @@ function M.workspace_subcommands(args)
 end
 
 ---@param command string|nil
-function M.workspace_cmmand(command)
+function M.workspace_command(command)
     if not command or command == "" or command == "info" then
         _show_workspace_info_floatwin()
         return
@@ -515,11 +573,11 @@ function M.page_subcommands(args)
     if #args == 0 then
         return { "switch", "open" }
     end
-    if #args == 1 and (args[1] == "open") then
+    if #args == 1 and (args[1] == "open" or args[1] == "switch") then
         local names = window.get_pagegroup_names()
         return vim.tbl_map(vim.fn.fnameescape, names)
     end
-    if #args == 2 and (args[1] == "open") then
+    if #args == 2 and (args[1] == "open" or args[1] == "switch") then
         local group = args[2]
         local names = window.get_page_names(group)
         return vim.tbl_map(vim.fn.fnameescape, names)
@@ -529,7 +587,7 @@ end
 
 function M.page_command(command, arg1, arg2)
     if not command or command == "" or command == "switch" then
-        M.switch_page()
+        M.switch_page(arg1, arg2)
     elseif command == "open" then
         M.open_page(arg1, arg2)
     else
@@ -564,9 +622,9 @@ function M.toggle_window()
     window.toggle_window()
 end
 
-function M.switch_page()
+function M.switch_page(group_label, page_label)
     assert(_init_done, _init_err_msg)
-    window.switch_page()
+    window.open_page(nil, group_label, page_label)
 end
 
 ---@param group_label string|nil

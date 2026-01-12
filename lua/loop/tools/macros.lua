@@ -65,10 +65,10 @@ function M.filedir(ctx)
 end
 
 function M.wsdir(ctx)
-    if not ctx or not ctx.root_dir then
+    if not ctx or not ctx.ws_dir then
         return nil, "No active workspace"
     end
-    return ctx.root_dir
+    return ctx.ws_dir
 end
 
 function M.cwd(ctx)

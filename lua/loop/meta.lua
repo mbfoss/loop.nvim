@@ -22,14 +22,23 @@ error('Cannot require a meta file')
 
 ---@alias loop.TaskExitHandler fun(success:boolean,reason:string|nil)
 
----@class loop.TaskProviderStore
+---@class loop.ExtensionConfig
+---@field have_config_file fun():boolean
+---@field init_config_file fun(template:table,schema:table)
+---@field load_config_file fun(schema:table):table?,string?
+
+---@class loop.ExtensionState
 ---@field get fun(key:string):any
 ---@field set fun(key:string, value:any)
 ---@field keys fun():string[]
 
----@class loop.Workspace
----@field name string
----@field root string
+---@class loop.ExtensionWorspaceData
+---@field ws_name string
+---@field ws_dir string
+---@field state loop.ExtensionState
+---@field config loop.ExtensionConfig
+---@field register_task_provider fun(task_type:string, provider:loop.TaskProvider)
+---@field register_cmd_provider fun(lead_cmd:string, provider:loop.UserCommandProvider)
 
 ---@class loop.TaskProvider
 ---@field get_task_schema fun():table
@@ -43,11 +52,9 @@ error('Cannot require a meta file')
 ---@field dispatch fun(args:string[],opts:vim.api.keyset.create_user_command.command_args)
 
 ---@class loop.Extension
----@field on_workspace_load? fun(ws:loop.Workspace, store:loop.TaskProviderStore)
----@field on_workspace_unload? fun(ws:loop.Workspace)
----@field on_store_will_save? fun(ws:loop.Workspace, store:loop.TaskProviderStore)
----@field get_task_provider? fun():loop.TaskProvider
----@field get_cmd_provider? fun():loop.UserCommandProvider
+---@field on_workspace_load? fun(ext_data:loop.ExtensionWorspaceData)
+---@field on_workspace_unload? fun(ext_data:loop.ExtensionWorspaceData)
+---@field on_state_will_save? fun(ext_data:loop.ExtensionWorspaceData)
 
 ---@class loop.KeyMap
 ---@field callback fun()

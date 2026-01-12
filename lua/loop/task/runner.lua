@@ -202,11 +202,12 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
     local vars, _ = _load_variables(config_dir)
     local ws_dir = wsinfo.get_ws_dir()
 
+    assert(ws_dir)
+
     -- Build task context
     ---@type loop.TaskContext
     local task_ctx = {
-        task_name = root_name,
-        root_dir = ws_dir or config_dir, -- fallback to config_dir if no workspace
+        ws_dir = ws_dir,
         variables = vars or {}
     }
 

@@ -51,7 +51,7 @@ end
 
 ---@param count integer|nil Number of recent logs to retrieve (default: all)
 ---@return {text: string, level: integer|nil, timestamp: number, category: string|nil}[]
-function _get_logs(count)
+local function _get_logs(count)
     if not count or count <= 0 then
         return vim.list_extend({}, _log_history)
     end

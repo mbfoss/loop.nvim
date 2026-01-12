@@ -1,37 +1,43 @@
 local extensions = require("loop.extensions")
 
----@type table<string,string>  -- name -> module
-local _builtin = {
-    composite = "loop.coretasks.composite.provider",
-    build     = "loop.coretasks.build.provider",
-    run       = "loop.coretasks.run.provider",
-    vimcmd    = "loop.coretasks.vimcmd.provider",
-}
+---@type table<string,loop.TaskProvider>
+local _providers = {}
 
 ---@type string[]  -- keeps registration order
-local _order = { "composite", "build", "run", "vimcmd" }
+local _ordered = {}
 
 local M = {}
 
----@return boolean
-function M.is_valid_provider(name)
-    return _builtin[name] ~= nil
+function M.reset()
+    _providers = {
+        composite = require("loop.coretasks.composite.provider"),
+        build     = require("loop.coretasks.build.provider"),
+        run       = require("loop.coretasks.run.provider"),
+        vimcmd    = require("loop.coretasks.vimcmd.provider"),
+    }
+    _ordered = { "composite", "build", "run", "vimcmd" }
 end
 
 ---@return string[]
 function M.names()
-    local lst = vim.list_extend({}, _order)
-    vim.list_extend(lst, extensions.task_types())
-    return lst
+    return _ordered
 end
+
+---@param task_type string
+---@param provider loop.TaskProvider
+function M.register_task_provider(task_type, provider)
+    assert(type(task_type) == 'string' and task_type:match("[_%a][_%w]*") ~= nil,
+        "Invalid task type: " .. tostring(task_type))
+    assert(not _providers[task_type], "task type is already registered: " .. task_type)
+    assert(#task_type >= 2, "ext task type too short: " .. task_type)
+    _providers[task_type] = provider
+    table.insert(_ordered, task_type)
+end
+
 ---@param name string
 ---@return loop.TaskProvider|nil
 function M.get_provider(name)
-    local builtin = _builtin[name]
-    if builtin then 
-        return require(builtin)
-    end
-    return extensions.get_task_provider(name)
+    return _providers[name]
 end
 
 return M

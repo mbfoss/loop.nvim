@@ -1,6 +1,6 @@
 -- lua/loop/init.lua
 local strtools = require('loop.tools.strtools')
-local extensions = require('loop.extensions')
+local extdata = require('loop.extdata')
 
 local M = {}
 
@@ -77,34 +77,13 @@ function M.complete(arg_lead, cmd_line)
     end
 
     if #args == 2 then
-        local func_names = filter(vim.tbl_keys(_G.LoopWorkspace or {}))
-        -- sort because tbl_keys order may change every time
-        local cmds = vim.fn.sort(func_names)
-        cmds = vim.list_extend(cmds, extensions.cmd_leads())
-        return filter(cmds)
+        return filter(workspace.get_commands())
     elseif #args >= 3 then
         local cmd = args[2]
         local rest = { unpack(args, 3) }
         rest[#rest] = nil
-
-        if cmd == "task" then
-            return filter(workspace.task_subcommands(rest))
-        elseif cmd == "workspace" then
-            return filter(workspace.workspace_subcommands(rest))
-        elseif cmd == "ui" then
-            return filter(workspace.ui_subcommands(rest))
-        elseif cmd == "page" then
-            return filter(workspace.page_subcommands(rest))
-        elseif cmd == "var" then
-            return filter(workspace.var_subcommands(rest))
-        else
-            local cmd_provider = extensions.get_cmd_provider(cmd)
-            if cmd_provider then
-                return filter(cmd_provider.get_subcommands(rest))
-            end
-        end
+            return filter(workspace.get_subcommands(cmd, rest))
     end
-
     return {}
 end
 
@@ -181,24 +160,8 @@ function M.dispatch(opts)
         M.select_command()
         return
     end
-
-    local fn = _G.LoopWorkspace[subcmd]
-    if not fn then
-        local cmd_provider = extensions.get_cmd_provider(subcmd)
-        if cmd_provider then
-            local rest = { unpack(args, 2) }
-            cmd_provider.dispatch(rest, opts)
-            return            
-        end
-        vim.notify(
-            "Invalid command: " .. subcmd,
-            vim.log.levels.ERROR
-        )
-        return
-    end
-
     local rest = { unpack(args, 2) }
-    local ok, err = pcall(fn, unpack(rest))
+    local ok, err = pcall(workspace.run_command, subcmd, rest, opts)
     if not ok then
         vim.notify(
             "Loop " .. subcmd .. " failed: " .. tostring(err),
@@ -224,15 +187,7 @@ function M.init()
 
     workspace.init()
 
-    _G.LoopWorkspace = {
-        _winbar_click = workspace.winbar_click,
-        ui = workspace.ui_command,
-        page = workspace.page_command,
-        workspace = workspace.workspace_cmmand,
-        task = workspace.task_command,
-        var = workspace.var_command,
-        logs = workspace.logs_command,
-    }
+    _G.LoopPluginWinbarClick = workspace.winbar_click
 end
 
 function M.load_workspace(dir)

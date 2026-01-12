@@ -2,7 +2,7 @@ local M = {}
 
 ---@class loop.ws.WorkspaceInfo
 ---@field name string
----@field root_dir string
+---@field ws_dir string
 ---@field config_dir string
 ---@field config loop.WorkspaceConfig
 
@@ -16,7 +16,7 @@ function M.set_ws_info(info)
 end
 
 ---@return string|nil
-function M.get_ws_dir() return _info and _info.root_dir or nil end
+function M.get_ws_dir() return _info and _info.ws_dir or nil end
 
 ---@return string
 function M.status_line()
