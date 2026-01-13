@@ -386,7 +386,7 @@ end
 
 ---@return string[]
 function M.get_commands()
-    local cmds = { "workspace", "ui", "page", "logs" }
+    local cmds = { "workspace", "logs", "ui", "page" }
     if _workspace_info then
         vim.list_extend(cmds, { "task", "var" })
     end
@@ -481,7 +481,7 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "run", "repeat", "add", "terminate" }
+        return { "run", "repeat", "add", "terminate", "configure" }
     elseif #args == 1 then
         if args[1] == 'add' then
             return taskmgr.task_types()

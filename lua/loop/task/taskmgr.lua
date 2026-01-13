@@ -161,7 +161,7 @@ function M.save_last_task_name(name, config_dir)
 end
 
 ---@param config_dir string
-function M.configure(config_dir)
+function M.configure_tasks(config_dir)
     taskstore.open_tasks_config(config_dir)
     local _, task_errors = _load_tasks(config_dir)
     if task_errors then

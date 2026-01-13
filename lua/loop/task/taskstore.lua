@@ -223,7 +223,7 @@ function M.add_variable(config_dir, var_name, var_value, variables_schema)
 
         local data = data_or_err
         if not data.variables then
-            data.variables = {}
+            data.variables = vim.empty_dict()
         end
         if not data["$schema"] then
             local schema_filepath = vim.fs.joinpath(config_dir, 'variablesschema.json')
