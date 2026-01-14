@@ -17,6 +17,7 @@ local Trackers = require("loop.tools.Trackers")
 ---@field expanded boolean|nil
 ---@field reload_children boolean|nil
 ---@field children_loading boolean|nil
+---@field load_sequence number
 ---@field is_loading boolean|nil
 
 ---@class loop.comp.ItemTree.Tracker
@@ -48,6 +49,7 @@ local function _item_to_itemdata(item)
         children_callback = item.children_callback,
         expanded = item.expanded,
         reload_children = true,
+        load_sequence = 1,
     }
 end
 
@@ -76,14 +78,20 @@ local function _refresh_tree(tree, async_update)
         if item.expanded then
             local item_id = flat_node.id
             -- Lazy loading
-            if item.children_callback and item.reload_children ~= false and not item.children_loading then
-                item.children_loading = true
+            if item.children_callback and item.reload_children ~= false then
                 item.reload_children = false
+                item.children_loading = true
                 have_loading_nodes = true
 
+                local sequence = item.load_sequence
+
                 vim.schedule(function()
+                    if sequence ~= item.load_sequence then return end
                     -- Trigger async load
                     item.children_callback(function(loaded_children)
+                        if sequence ~= item.load_sequence then
+                            return
+                        end
                         -- process only if parent still exists
                         if tree:get_item(item_id) then
                             ---@type loop.tools.Tree.Item[]
@@ -237,6 +245,7 @@ function ItemTree:upsert_item(item)
         existing.userdata = new_data.userdata
         existing.children_callback = new_data.children_callback
         existing.reload_children = true
+        existing.load_sequence = existing.load_sequence + 1
         -- Keep expanded / loading flags
     else
         -- Insert new node
