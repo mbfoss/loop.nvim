@@ -784,3 +784,4 @@ describe("loop.tools.Tree", function()
         assert.equal(1, b_flat and b_flat.depth)
     end)
 end)
+

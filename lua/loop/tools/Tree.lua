@@ -34,7 +34,7 @@ end
 
 --==============================================================
 -- Internal Helpers
---==============================================================
+--====================================================∆==========
 
 ---Link a node as the last child of a parent.
 ---@private
@@ -209,6 +209,83 @@ function Tree:set_children(parent_id, items)
 		self._root_last  = last_new
 	end
 end
+
+---Update the children of a parent node, merging with existing nodes.
+---
+---Existing children are updated in place if present.
+---New children are added, and missing children are removed unless `loading` is true.
+---@param parent_id any|nil
+---@param items loop.tools.Tree.Item[]
+---@param remove_orphans boolean|nil If true, do not remove missing children
+function Tree:update_children(parent_id, items, remove_orphans)
+	if remove_orphans == nil then remove_orphans = true end
+
+	-- Index existing children by id
+	local existing = {}
+	for _, child in ipairs(self:get_children(parent_id)) do
+		existing[child.id] = self._nodes[child.id]
+	end
+
+	local final_children = {}
+	for _, incoming in ipairs(items) do
+		local node = existing[incoming.id]
+		if node then
+			-- Merge in place
+			node.data.userdata = incoming.data.userdata
+			node.data.children_callback = incoming.data.children_callback
+			node.data.reload_children = incoming.data.children_callback ~= nil
+			-- Keep expanded/loading flags intact
+			table.insert(final_children, node)
+			existing[incoming.id] = nil
+		else
+			-- New node
+			node = {
+				id           = incoming.id,
+				parent_id    = parent_id,
+				data         = incoming.data,
+				first_child  = nil,
+				last_child   = nil,
+				prev_sibling = nil,
+				next_sibling = nil,
+			}
+			self._nodes[incoming.id] = node
+			table.insert(final_children, node)
+		end
+	end
+
+	-- Remove orphans if not loading
+	if remove_orphans then
+		for _, orphan in pairs(existing) do
+			self:_remove_subtree(orphan.id)
+		end
+	end
+
+	-- Rebuild the linked list for parent
+	local prev_id = nil
+	local first_new = nil
+	local last_new = nil
+	for _, node in ipairs(final_children) do
+		local id = node.id
+		node.prev_sibling = prev_id
+		node.next_sibling = nil
+		if prev_id then
+			self._nodes[prev_id].next_sibling = id
+		end
+		if not first_new then first_new = id end
+		prev_id = id
+		last_new = id
+	end
+
+	if parent_id then
+		local parent_node = self._nodes[parent_id]
+		parent_node.first_child = first_new
+		parent_node.last_child  = last_new
+	else
+		self._root_first = first_new
+		self._root_last  = last_new
+	end
+end
+
 
 ---@generic T
 ---@param parent_id any|nil

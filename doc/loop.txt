@@ -137,7 +137,7 @@ All fields support macros.
 
 Common fields:
 - `name`: Task display name
-- `type`: Task type: build, run, vimcmd, composite
+- `type`: Task type: build, run, composite
 - `cwd`: Working directory
 - `command`: Command to execute (string or array)
 - `env`: Environment variables (object)
@@ -150,7 +150,6 @@ TASK TYPES                                                 *loop-task-types*
 
 - **build**: Commands with quickfix parsing (e.g. make, gcc)
 - **run**: Long-running processes (e.g. servers)
-- **vimcmd**: Neovim commands or Lua code
 - **composite**: Combine multiple tasks, parallel or sequential
 
 Example build task:
