@@ -118,7 +118,7 @@ local function _configure_workspace(ws_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     local bufnr = vim.fn.bufnr(config_file)
     if bufnr ~= -1 then
-        winid = uitools.smart_open_buffer(bufnr)
+        uitools.smart_open_buffer(bufnr)
         return true
     end
     if not filetools.file_exists(config_file) then
@@ -156,7 +156,6 @@ local function _load_workspace_config(config_dir)
         end
         config = migrated_config
         -- Save migrated config back to file
-        local config_file = vim.fs.joinpath(config_dir, "workspace.json")
         local save_ok = jsontools.save_to_file(config_file, config)
         if not save_ok then
             vim.notify("Migrated workspace config but failed to save. Please save manually.",
@@ -232,7 +231,7 @@ local function _load_workspace(dir)
     return true, nil
 end
 
-function _show_workspace_info_floatwin()
+local function _show_workspace_info_floatwin()
     if not _workspace_info then
         vim.notify("No active workspace")
         return
@@ -351,8 +350,7 @@ function M.open_workspace(dir, at_startup)
         if not at_startup and err_msg then
             vim.notify(err_msg, vim.log.levels.ERROR)
         end
-        errors = errors or {}
-        logs.user_log("Workspace not loaded\n" .. table.concat(errors, '\n'), "workspace")
+        logs.user_log("Workspace not loaded, " .. err_msg, "workspace")
     end
 end
 
@@ -389,8 +387,8 @@ function M.get_commands()
     local cmds = { "workspace", "logs", "ui", "page" }
     if _workspace_info then
         vim.list_extend(cmds, { "task", "var" })
-    end
         vim.list_extend(cmds, extdata.lead_commands())
+    end
     return cmds
 end
 

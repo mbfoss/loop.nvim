@@ -45,3 +45,4 @@ luac.out
 /lua/.nvimloop
 /lua/.luacheckrc
 /.nvimloop
+.luacheckrc

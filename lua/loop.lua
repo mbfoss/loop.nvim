@@ -8,6 +8,33 @@ local M = {}
 local workspace = require("loop.workspace")
 local config = require("loop.config")
 
+---@type table<string, string>
+local COMMAND_HELP = {
+    ["Loop workspace info"]      = "Show information about the current workspace",
+    ["Loop workspace create"]    = "Create a new workspace in the current working directory",
+    ["Loop workspace open"]      = "Open a workspace or reload the current one",
+    ["Loop workspace save"]      = "Save workspace buffers (as defined in the workspace configuration)",
+    ["Loop workspace configure"] = "Create/Open the workspace configuration file",
+
+    ["Loop ui"]        = "Toggle Loop window",
+    ["Loop ui toggle"] = "Toggle Loop window",
+    ["Loop ui show"]   = "Show Loop window",
+    ["Loop ui hide"]   = "Hide Loop window",
+
+    ["Loop page"]      = "Select the page shown in the Loop window",
+    ["Loop page open"] = "Select and open a page in the current window",
+
+    ["Loop logs"] = "Show recent logs",
+
+    ["Loop task run"]       = "Run task",
+    ["Loop task repeat"]    = "Repeat last task",
+    ["Loop task terminate"] = "Terminate running tasks",
+    ["Loop task configure"] = "Configure tasks or check the current configuration",
+
+    ["Loop var add"]        = "Create a new variable",
+    ["Loop var configure"] = "Configure variables or check the current configuration",
+}
+
 -----------------------------------------------------------
 -- Defaults
 -----------------------------------------------------------
@@ -86,61 +113,43 @@ function M.complete(arg_lead, cmd_line)
     end
     return {}
 end
+---@param prefix string[]   -- e.g. { "task" }
+---@param out loop.tools.Cmd[]
+local function _collect_commands(prefix, out)
+    local cmds = workspace.get_subcommands(prefix[1], { unpack(prefix, 2) })
+
+    for _, cmd in ipairs(cmds or {}) do
+        local parts = vim.list_extend(vim.deepcopy(prefix), { cmd })
+        local vimcmd = "Loop " .. table.concat(parts, " ")
+
+        table.insert(out, {
+            vimcmd = vimcmd,
+            help = COMMAND_HELP[vimcmd] or "",
+        })
+
+        -- recurse to catch deeper subcommands
+        _collect_commands(parts, out)
+    end
+end
 
 function M.select_command()
-    local task_types = require('loop.task.providers').names()
+    M.init()
 
     ---@type loop.tools.Cmd[]
-    local all_cmds = {
-        { vimcmd = "Loop workspace info",      help = "Show information about the current workspace" },
-        { vimcmd = "Loop workspace create",    help = "Create a new workspace in the current working directory" },
-        { vimcmd = "Loop workspace open",      help = "Open a workspace or reload the current one" },
-        { vimcmd = "Loop workspace save",      help = "Save workspace buffers (as defined in the workspace configuration)" },
-        { vimcmd = "Loop workspace configure", help = "Create/Open the workspace configuration file" },
-        { vimcmd = "Loop ui",                  help = "Toggle Loop window" },
-        { vimcmd = "Loop ui show",             help = "Show Loop window" },
-        { vimcmd = "Loop ui hide",             help = "Hide Loop window" },
-        { vimcmd = "Loop page",                help = "Select the page shown in the Loop window" },
-        { vimcmd = "Loop page open",           help = "Select and open a page in the current window" },
-        { vimcmd = "Loop logs",                help = "Show recent logs" },
-    }
+    local all_cmds = {}
 
-    ------------------------------------------------------------------
-    -- Task add subcommands
-    ------------------------------------------------------------------
-    for _, type in ipairs(task_types) do
+    -- Top-level commands
+    for _, cmd in ipairs(workspace.get_commands()) do
+        local vimcmd = "Loop " .. cmd
+
         table.insert(all_cmds, {
-            vimcmd = "Loop task add " .. type,
-            help = "Create a new task of type " .. type,
+            vimcmd = vimcmd,
+            help = COMMAND_HELP[vimcmd] or "",
         })
+
+        -- Subcommands (recursive)
+        _collect_commands({ cmd }, all_cmds)
     end
-
-    ------------------------------------------------------------------
-    -- Other task subcommands (ordered)
-    ------------------------------------------------------------------
-    local other_task_cmds = {
-        { "run",       "Run task" },
-        { "repeat",    "Repeat last task" },
-        { "terminate", "Terminate running tasks" },
-    }
-
-    for _, cmd in ipairs(other_task_cmds) do
-        table.insert(all_cmds, {
-            vimcmd = "Loop task " .. cmd[1],
-            help = cmd[2],
-        })
-    end
-
-    table.insert(all_cmds,
-        { vimcmd = "Loop task configure", help = "Configure tasks or check the current configuration" })
-
-    ------------------------------------------------------------------
-    -- Var subcommands
-    ------------------------------------------------------------------
-    table.insert(all_cmds,
-        { vimcmd = "Loop var add", help = "Create a new variable" })
-    table.insert(all_cmds,
-        { vimcmd = "Loop var configure", help = "Configure variables or check the current configuration" })
 
     require("loop.tools.cmdmenu").select_and_run_command(all_cmds)
 end
