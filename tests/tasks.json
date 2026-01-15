@@ -24,14 +24,14 @@
     },
     {
       "name": "create-temp-dir",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Creating temp dir'); vim.wait(800)",
+      "type": "run",
+      "command": "echo ('Creating temp dir'); vim.wait(800)",
       "depends_on": []
     },
     {
       "name": "install-deps",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Installing dependencies'); vim.wait(1500)",
+      "type": "run",
+      "command": "echo ('Installing dependencies'); vim.wait(1500)",
       "depends_on": []
     },
     {
@@ -45,16 +45,16 @@
     },
     {
       "name": "lua-lint",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Running luacheck'); vim.wait(1200)",
+      "type": "run",
+      "command": "echo ('Running luacheck'); vim.wait(1200)",
       "depends_on": [
         "install-deps"
       ]
     },
     {
       "name": "format-buffer",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Formatting with stylua'); vim.wait(900)",
+      "type": "run",
+      "command": "echo ('Formatting with stylua'); vim.wait(900)",
       "depends_on": [
         "install-deps"
       ]
@@ -70,16 +70,16 @@
     },
     {
       "name": "compile-lua",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Bytecode compilation'); vim.wait(1800)",
+      "type": "run",
+      "command": "echo ('Bytecode compilation'); vim.wait(1800)",
       "depends_on": [
         "lua-lint"
       ]
     },
     {
       "name": "generate-docs",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Generating LDoc'); vim.wait(2000)",
+      "type": "run",
+      "command": "echo ('Generating LDoc'); vim.wait(2000)",
       "depends_on": [
         "format-buffer"
       ]
@@ -95,16 +95,16 @@
     },
     {
       "name": "unit-tests",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Running plenary unit tests'); vim.wait(2500)",
+      "type": "run",
+      "command": "echo ('Running plenary unit tests'); vim.wait(2500)",
       "depends_on": [
         "compile-lua"
       ]
     },
     {
       "name": "integration-tests",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Running integration suite – this is long!'); vim.wait(5000)",
+      "type": "run",
+      "command": "echo ('Running integration suite – this is long!'); vim.wait(5000)",
       "depends_on": [
         "start-test-server",
         "compile-lua"
@@ -112,42 +112,42 @@
     },
     {
       "name": "start-test-server",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Starting mock LSP/server'); vim.wait(3000)",
+      "type": "run",
+      "command": "echo ('Starting mock LSP/server'); vim.wait(3000)",
       "depends_on": []
     },
     {
       "name": "cleanup",
-      "type": "vimcmd",
-      "command": "lua vim.notify('Cleaning up temp files'); vim.wait(600)",
+      "type": "run",
+      "command": "echo ('Cleaning up temp files'); vim.wait(600)",
       "depends_on": []
     },
     {
       "name": "failing-task",
-      "type": "vimcmd",
-      "command": "lua vim.notify('This task will fail'); vim.wait(1000); error('Intentional failure')",
+      "type": "run",
+      "command": "echo ('This task will fail'); vim.wait(1000); error('Intentional failure')",
       "depends_on": []
     },
     {
       "name": "cycle error check 2",
-      "type": "vimcmd",
-      "command": "lua vim.notify('THIS SHOULD NEVER RUN')",
+      "type": "run",
+      "command": "echo ('THIS SHOULD NEVER RUN')",
       "depends_on": [
         "cycle error check 1"
       ]
     },
     {
       "name": "cycle error check 1",
-      "type": "vimcmd",
-      "command": "lua vim.notify('THIS SHOULD NEVER RUN')",
+      "type": "run",
+      "command": "echo ('THIS SHOULD NEVER RUN')",
       "depends_on": [
         "cycle error check 2"
       ]
     },
     {
       "name": "should-not-run",
-      "type": "vimcmd",
-      "command": "lua vim.notify('THIS SHOULD NEVER RUN')",
+      "type": "run",
+      "command": "echo ('THIS SHOULD NEVER RUN')",
       "depends_on": [
         "failing-task"
       ]

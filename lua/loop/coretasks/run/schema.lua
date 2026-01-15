@@ -1,5 +1,5 @@
 local schema = {
-    required = { "command", "cwd" },
+    required = { "command" },
 
     properties = {
         command = {

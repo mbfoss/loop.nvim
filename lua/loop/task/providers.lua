@@ -13,9 +13,8 @@ function M.reset()
         composite = require("loop.coretasks.composite.provider"),
         build     = require("loop.coretasks.build.provider"),
         run       = require("loop.coretasks.run.provider"),
-        vimcmd    = require("loop.coretasks.vimcmd.provider"),
     }
-    _ordered = { "composite", "build", "run", "vimcmd" }
+    _ordered = { "composite", "build", "run" }
 end
 
 ---@return string[]

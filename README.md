@@ -9,7 +9,7 @@
 ## Features
 
 - **Automatic Workspace Detection:** Projects are recognized via a `.nvimloop` directory.
-- **Structured, Dependency-Aware Tasks:** Define build, run, vimcmd, or composite tasks with dependencies and parallel/sequential execution.
+- **Structured, Dependency-Aware Tasks:** Define build, run, or composite tasks with dependencies and parallel/sequential execution.
 - **Quickfix Integration:** Compiler output is parsed into the quickfix list for easy navigation.
 - **Macro System:** Use `${macro}` variable substitution for dynamic commands.
 - **Workspace Variables:** Manage per-project variables with `:Loop var`.
@@ -61,7 +61,6 @@ lualine_c = { function() return require('loop.wsinfo').status_line() end, 'filen
 
 - **build:** Run build commands with quickfix parsing (e.g. `make`, `gcc`).
 - **run:** Start long-running processes (e.g. servers).
-- **vimcmd:** Execute Neovim commands or Lua code.
 - **composite:** Combine multiple tasks, run in sequence or parallel.
 
 Example build task:

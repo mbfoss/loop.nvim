@@ -29,7 +29,7 @@ local _reserved_cmd_providers = {
 ---@type table<string,string>
 local _task_providers = {}
 local _reserved_task_types = {
-	composite = true, build = true, run = true, vimcmd = true
+	composite = true, build = true, run = true
 }
 
 ---@param config_dir string
