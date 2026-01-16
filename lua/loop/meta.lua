@@ -37,15 +37,18 @@ error('Cannot require a meta file')
 ---@field ws_dir string
 ---@field state loop.ExtensionState
 ---@field config loop.ExtensionConfig
----@field register_task_provider fun(task_type:string, provider:loop.TaskProvider)
----@field register_cmd_provider fun(lead_cmd:string, provider:loop.UserCommandProvider)
+---@field register_task_type fun(task_type:string, provider:loop.TaskTypeProvider)
+---@field register_task_templates fun(category:string, provider:loop.TaskTemplateProvider)
+---@field register_user_command fun(lead_cmd:string, provider:loop.UserCommandProvider)
 
----@class loop.TaskProvider
+---@class loop.TaskTypeProvider
 ---@field get_task_schema fun():table
----@field get_task_templates fun():loop.taskTemplate[]
 ---@field get_task_preview (fun(task:loop.Task):string,string)|nil
 ---@field start_one_task fun(task:loop.Task,page_manager:loop.PageManager, on_exit:loop.TaskExitHandler):(loop.TaskControl|nil,string|nil)
 ---@field on_tasks_cleanup fun()?
+
+---@class loop.TaskTemplateProvider
+---@field get_task_templates fun():loop.taskTemplate[]
 
 ---@class loop.UserCommandProvider
 ---@field get_subcommands fun(args:string[]):string[]

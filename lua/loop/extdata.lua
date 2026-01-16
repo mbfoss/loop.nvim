@@ -133,9 +133,15 @@ local function _load_state(config_dir, ext_name)
 end
 
 ---@param task_type string
----@param provider loop.TaskProvider
-local function _register_task_provider(task_type, provider)
+---@param provider loop.TaskTypeProvider
+local function _register_task_type_provider(task_type, provider)
 	taskproviders.register_task_provider(task_type, provider)
+end
+
+---@param category string
+---@param provider loop.TaskTemplateProvider
+local function _register_task_template_provider(category, provider)
+	taskproviders.register_template_provider(category, provider)
 end
 
 ---@param lead_cmd string
@@ -170,8 +176,9 @@ function M.on_workspace_load(wsinfo)
 			ws_dir = wsinfo.ws_dir,
 			config = _make_config_handler(wsinfo.config_dir, name),
 			state = _make_state_handler(name),
-			register_task_provider = _register_task_provider,
-			register_cmd_provider = _register_cmd_provider,
+			register_user_command = _register_cmd_provider,
+			register_task_type = _register_task_type_provider,
+            register_task_templates = _register_task_template_provider,
 		}
 		_extension_data[name] = ext_data
 		local ext = extensions.get_extension(name)

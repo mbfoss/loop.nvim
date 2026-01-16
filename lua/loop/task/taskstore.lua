@@ -37,7 +37,7 @@ local function _load_tasks_from_str(content, tasktype_to_schema)
     for _, task in ipairs(tasks) do
         local schema = tasktype_to_schema[task.type]
         if not schema then
-            return nil, { "Invalid task type: " .. task.type }
+            return nil, { "No schema for task type: " .. task.type }
         end
         local errors = jsonschema.validate(schema, task)
         if errors and #errors > 0 then

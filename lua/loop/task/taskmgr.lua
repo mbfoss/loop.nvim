@@ -10,7 +10,7 @@ local logs = require("loop.logs")
 ---@params task loop.Task
 ---@return string,string
 local function _task_preview(task)
-    local provider = M.get_provider(task.type)
+    local provider = M.get_task_type_provider(task.type)
     if provider and provider.get_task_preview then
         return provider.get_task_preview(task)
     end
@@ -55,7 +55,7 @@ end
 ---@param task_type  string
 ---@return table|nil
 local function _get_single_task_schema(task_type)
-    local provider = M.get_provider(task_type)
+    local provider = M.get_task_type_provider(task_type)
     if not provider then
         return nil
     end
@@ -113,7 +113,7 @@ end
 
 ---@return string[]
 function M.task_types()
-    return providers.names()
+    return providers.task_types()
 end
 
 function M.reset_provider_list()
@@ -121,15 +121,21 @@ function M.reset_provider_list()
 end
 
 ---@param name string
----@return loop.TaskProvider|nil
-function M.get_provider(name)
-    return providers.get_provider(name)
+---@return loop.TaskTypeProvider|nil
+function M.get_task_type_provider(name)
+    return providers.get_task_type_provider(name)
+end
+
+---@param category string
+---@return loop.TaskTemplateProvider|nil
+function M.get_task_template_provider(category)
+    return providers.get_task_template_provider(category)
 end
 
 function M.on_tasks_cleanup()
-    local names = providers.names()
+    local names = providers.task_types()
     for _, name in ipairs(names) do
-        local provider = M.get_provider(name)
+        local provider = M.get_task_type_provider(name)
         if provider and provider.on_tasks_cleanup then
             provider.on_tasks_cleanup()
         end
@@ -137,15 +143,15 @@ function M.on_tasks_cleanup()
 end
 
 ---@param config_dir string
----@param task_type string|nil
-function M.add_task(config_dir, task_type)
-    if not task_type or task_type == "" then
-        vim.notify("Task type required")
+---@param category string|nil
+function M.add_task(config_dir, category)
+    if not category or category == "" then
+        vim.notify("Task category required")
         return
     end
-    local provider = M.get_provider(task_type)
+    local provider = M.get_task_template_provider(category)
     if not provider then
-        vim.notify("Invalid task type: " .. tostring(task_type))
+        vim.notify("Invalid task category: " .. tostring(category))
         return
     end
     assert(type(provider) == "table")
@@ -280,7 +286,7 @@ end
 ---@return loop.TaskControl|nil, string|nil
 function M.run_one_task(task, page_manager, exit_handler)
     assert(task.type)
-    local provider = M.get_provider(task.type)
+    local provider = M.get_task_type_provider(task.type)
     if not provider then
         vim.notify("Invalid task type: " .. tostring(task.type))
         return nil, "Invalid task type"

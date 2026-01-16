@@ -36,6 +36,8 @@ local function _get_failure_message(trigger, param)
         reason = "Invalid task name: " .. tostring(param)
     elseif trigger == "interrupt" then
         reason = "Task interrupted"
+    elseif trigger == "deps_failed" then
+        reason = "Dependency task failed"
     else
         reason = param or "Task failed"
     end
@@ -154,7 +156,7 @@ function TaskScheduler:_run_plan(plan)
 
         logs.user_log("Starting task:\n" .. vim.inspect(task), "task")
 
-        local provider = taskmgr.get_provider(task.type)
+        local provider = taskmgr.get_task_type_provider(task.type)
         if not provider then
             on_node_exit(false, "No provider registered for task type: " .. task.type)
             return { terminate = function() end }

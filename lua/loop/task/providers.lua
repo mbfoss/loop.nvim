@@ -1,42 +1,75 @@
-local extensions = require("loop.extensions")
+local coreproviders = require("loop.coretasks.coreproviders")
 
----@type table<string,loop.TaskProvider>
-local _providers = {}
+---@type table<string,loop.TaskTypeProvider>
+local _task_type_providers = {}
+
+---@type table<string,loop.TaskTemplateProvider>
+local _template_providers = {}
 
 ---@type string[]  -- keeps registration order
-local _ordered = {}
+local _task_types = {}
+
+---@type string[]  -- keeps registration order
+local _template_types = {}
 
 local M = {}
 
 function M.reset()
-    _providers = {
-        composite = require("loop.coretasks.composite.provider"),
-        build     = require("loop.coretasks.build.provider"),
-        run       = require("loop.coretasks.run.provider"),
+    _task_type_providers = {
+        composite = coreproviders.get_composite_task_provider(),
+        run       = coreproviders.get_run_task_provider(),
     }
-    _ordered = { "composite", "build", "run" }
+    _task_types = { "composite", "run" }
+    _template_providers = {
+        composite = coreproviders.get_composite_templates_provider(),
+        build     = coreproviders.get_build_templates_provider(),
+        run       = coreproviders.get_run_templates_provider(),
+    }
+    _template_types = { "composite", "build", "run" }
 end
 
 ---@return string[]
-function M.names()
-    return _ordered
+function M.task_types()
+    return _task_types
+end
+
+---@return string[]
+function M.template_types()
+    return _template_types
 end
 
 ---@param task_type string
----@param provider loop.TaskProvider
+---@param provider loop.TaskTypeProvider
 function M.register_task_provider(task_type, provider)
     assert(type(task_type) == 'string' and task_type:match("[_%a][_%w]*") ~= nil,
         "Invalid task type: " .. tostring(task_type))
-    assert(not _providers[task_type], "task type is already registered: " .. task_type)
+    assert(not _task_type_providers[task_type], "task type is already registered: " .. task_type)
     assert(#task_type >= 2, "ext task type too short: " .. task_type)
-    _providers[task_type] = provider
-    table.insert(_ordered, task_type)
+    _task_type_providers[task_type] = provider
+    table.insert(_task_types, task_type)
+end
+
+---@param category string
+---@param provider loop.TaskTemplateProvider
+function M.register_template_provider(category, provider)
+    assert(type(category) == 'string' and category:match("[_%a][_%w]*") ~= nil,
+        "Invalid task category: " .. tostring(category))
+    assert(not _template_providers[category], "task category is already registered: " .. category)
+    assert(#category >= 2, "ext task category too short: " .. category)
+    _template_providers[category] = provider
+    table.insert(_template_types, category)
 end
 
 ---@param name string
----@return loop.TaskProvider|nil
-function M.get_provider(name)
-    return _providers[name]
+---@return loop.TaskTypeProvider|nil
+function M.get_task_type_provider(name)
+    return _task_type_providers[name]
+end
+
+---@param category string
+---@return loop.TaskTemplateProvider|nil
+function M.get_task_template_provider(category)
+    return _template_providers[category]
 end
 
 return M

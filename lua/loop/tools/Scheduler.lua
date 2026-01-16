@@ -1,6 +1,6 @@
 local class = require("loop.tools.class")
 
----@alias loop.scheduler.exit_trigger "cycle"|"invalid_node"|"interrupt"|"node"
+---@alias loop.scheduler.exit_trigger "cycle"|"invalid_node"|"interrupt"|"node"|"deps_failed"
 ---@alias loop.scheduler.exit_fn fun(success:boolean,trigger:loop.scheduler.exit_trigger,param:any)
 ---@alias loop.scheduler.NodeId string
 ---@alias loop.scheduler.StartNodeFn fun(id: loop.scheduler.NodeId, on_exit: fun(ok:boolean, reason:string|nil)): { terminate:fun() }|nil, string|nil
@@ -180,8 +180,8 @@ function Scheduler:_run_node(run_id, node_id, on_node_event, on_exit)
             if not ok then
                 if self._inflight[node_id] then
                     for _, cb in ipairs(self._inflight[node_id]) do
-                        cb.on_node_event(node_id, "stop", false, trigger, param)
-                        cb.on_exit(false, trigger, param)
+                        cb.on_node_event(node_id, "stop", false, "deps_failed")
+                        cb.on_exit(false, "deps_failed")
                     end
                 end
                 self._inflight[node_id] = nil
@@ -263,7 +263,6 @@ function Scheduler:_run_leaf(run_id, id, on_exit)
         return
     end
     self._pending_running = self._pending_running + 1
-    local my_run = self._run_id
 
     local ctl, err = self._start_node(id, function(ok, reason)
         vim.schedule(function()

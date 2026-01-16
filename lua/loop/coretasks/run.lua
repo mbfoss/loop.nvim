@@ -62,7 +62,7 @@ end
 ---@param on_exit loop.TaskExitHandler
 ---@return loop.TaskControl|nil
 ---@return string|nil
-function M.start_build(task, page_manager, on_exit)
+function M.start_task(task, page_manager, on_exit)
     if not task.command then
         return nil, "task.command is required"
     end
