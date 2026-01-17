@@ -5,7 +5,7 @@ local filetools = require('loop.tools.file')
 local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
 local jsonschema = require('loop.tools.jsonschema')
-local resolver = require('loop.tools.resolver')
+local JsonEditor = require('loop.json.JsonEditor')
 
 ---@param content string
 ---@param tasktype_to_schema table<string,Object>
@@ -252,16 +252,19 @@ end
 ---@param config_dir string
 function M.open_variables_config(config_dir)
     local filepath = vim.fs.joinpath(config_dir, "variables.json")
+    local schema
     if not filetools.file_exists(filepath) then
         -- Create the file with schema reference and empty variables object
         local schema_filepath = vim.fs.joinpath(config_dir, 'variablesschema.json')
-        local schema = require("loop.task.variablesschema").base_schema
+        schema = require("loop.task.variablesschema").base_schema
         jsontools.save_to_file(schema_filepath, schema)
         local file_data = {}
         file_data["$schema"] = './variablesschema.json'
         file_data["variables"] = {}
         jsontools.save_to_file(filepath, file_data)
     end
+    --local editor = JsonEditor:new()
+    --editor:open(0, filepath, schema)
     uitools.smart_open_file(filepath)
 end
 
