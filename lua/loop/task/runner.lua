@@ -10,8 +10,8 @@ local taskstore     = require("loop.task.taskstore")
 local strtools      = require("loop.tools.strtools")
 local wsinfo        = require("loop.wsinfo")
 
----@type loop.task.TasksStatusComp?,loop.PageController
-local _status_comp, _status_page
+---@type loop.task.TasksStatusComp?,loop.PageController?,loop.PageGroup?
+local _status_comp, _status_page, _status_pagegroup
 
 ---@type loop.TaskScheduler
 local _scheduler    = TaskScheduler:new()
@@ -35,7 +35,7 @@ local function print_task_tree(node, prefix, is_last)
 end
 
 ---@param page_manager_fact loop.PageManagerFactory
----@return loop.task.TasksStatusComp,loop.PageController
+---@return loop.task.TasksStatusComp,loop.PageController,loop.PageGroup
 local function _create_status_page(page_manager_fact)
     local group = page_manager_fact().add_page_group("status", "Status")
     assert(group, "page mgr error")
@@ -50,7 +50,7 @@ local function _create_status_page(page_manager_fact)
     page_data.comp_buf.disable_change_events()
     local comp = StatusComp:new()
     comp:link_to_buffer(page_data.comp_buf)
-    return comp, page_data.page
+    return comp, page_data.page, group
 end
 
 ---@param config_dir string
@@ -87,8 +87,10 @@ end
 function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
     if not _status_comp then
         assert(not _status_page)
-        _status_comp, _status_page = _create_status_page(page_manager_fact)
+        assert(not _status_pagegroup)
+        _status_comp, _status_page, _status_pagegroup = _create_status_page(page_manager_fact)
     end
+    assert(_status_comp and _status_page and _status_pagegroup)
     -- Log task start
     logs.user_log("Task started: " .. root_name, "task")
     local symbols = config.current.window.symbols
@@ -115,6 +117,7 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
     for _, task in ipairs(used_tasks) do
         _status_comp:add_task(task.name)
     end
+    _status_pagegroup.activate_page("status")
 
     local vars, _ = _load_variables(config_dir)
     local ws_dir = wsinfo.get_ws_dir()

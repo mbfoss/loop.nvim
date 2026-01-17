@@ -28,7 +28,7 @@ local base_items = {
         name = {
             type = "string",
             minLength = 1,
-            description = "Non-empty task name (supports ${VAR} templates)"
+            description = "Non-empty unique task name"
         },
         type = { type = "string" }, -- no enum here anymore — dynamic!
         depends_on = {
@@ -41,7 +41,7 @@ local base_items = {
         },
         save_buffers = {
             type = { "boolean", "null" },
-            description = "If true, ensures workspace buffers are saved before this task chain starts"
+            description = "If true, ensures workspace buffers are saved before this task starts"
         },
     },
 }

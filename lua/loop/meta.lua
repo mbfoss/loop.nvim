@@ -11,7 +11,7 @@ error('Cannot require a meta file')
 ---@field type "composite"|string # task type
 ---@field depends_on string[]? # optional list of dependent task names
 ---@field depends_order "sequence"|"parallel"|nil # default is sequence
----@field save_buffers boolean? # if true, ensures workspace buffers are saved before this task chain starts
+---@field save_buffers boolean? # if true, ensures workspace buffers are saved before this task starts
 
 ---@class loop.taskTemplate
 ---@field name string
