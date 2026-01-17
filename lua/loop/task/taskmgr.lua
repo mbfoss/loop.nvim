@@ -134,23 +134,16 @@ end
 ---@param config_dir string
 function M.add_task(config_dir)
     local choices = {}
-    for _, type in ipairs(providers.template_categories()) do
+    for _, elem in ipairs(providers.get_task_template_providers()) do
         ---@type loop.SelectorItem
         local item = {
-            label = type,
-            data = type,
+            label = elem.category,
+            data = elem.provider,
         }
         table.insert(choices, item)
     end
-    selector.select("Task category", choices, nil, function(category)
-        if category then
-            local provider = providers.get_task_template_provider(category)
-            if not provider then
-                vim.notify("Invalid task category: " .. tostring(category))
-                return
-            end
-            assert(type(provider) == "table")
-
+    selector.select("Task category", choices, nil, function(provider)
+        if provider then
             local templates = provider.get_task_templates()
             _select_and_add_task(config_dir, templates, "Select template")
         end

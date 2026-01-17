@@ -10,39 +10,11 @@ local taskstore     = require("loop.task.taskstore")
 local strtools      = require("loop.tools.strtools")
 local wsinfo        = require("loop.wsinfo")
 
-local _status_node_id = "\027STATUS\027"
-
 ---@type loop.task.TasksStatusComp?,loop.PageController
 local _status_comp, _status_page
 
 ---@type loop.TaskScheduler
-local _scheduler = TaskScheduler:new()
-
----@param node table Task node from generate_task_plan_tree
----@param tree_comp loop.comp.ItemTree
----@param parent_id any
-local function _convert_task_tree(node, tree_comp, parent_id)
-    local name = node.name
-    if node.deps and #node.deps > 1 then
-        name = name .. " (" .. (node.order or "sequence") .. ")"
-    end
-    ---@type loop.comp.ItemTree.Item
-    local comp_item = {
-        id = node.name,
-        parent_id = parent_id,
-        expanded = true,
-        data = {
-            name = name
-        }
-    }
-    tree_comp:upsert_item(comp_item)
-    if node.deps then
-        for _, child in ipairs(node.deps) do
-            _convert_task_tree(child, tree_comp, comp_item.id)
-        end
-    end
-end
-
+local _scheduler    = TaskScheduler:new()
 
 ---@param node table Task node from generate_task_plan_tree
 ---@param prefix? string Internal use for indentation
@@ -122,26 +94,27 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
     local symbols = config.current.window.symbols
     _status_page.set_ui_flags(symbols.waiting)
 
-    local function report_status(msg, is_error)
+    local function report_failure(msg)
         logs.user_log(msg, "task")
-        _status_comp:upsert_item({ id = _status_node_id, data = { log_message = msg, log_level = is_error and vim.log.levels.ERROR or nil } })
         _status_page.set_ui_flags(symbols.failure)
     end
 
     if #all_tasks == 0 then
-        report_status("No tasks found", true)
+        logs.user_log("No tasks found")
         return
     end
 
     local node_tree, used_tasks, plan_error_msg = _scheduler:generate_task_plan(all_tasks, root_name)
     if not node_tree or not used_tasks then
-        report_status(plan_error_msg or "Failed to build task plan", true)
+        report_failure(plan_error_msg or "Failed to build task plan")
         return
     end
 
     logs.user_log("Scheduling tasks:\n" .. print_task_tree(node_tree))
 
-    _status_comp:upsert_item({ id = _status_node_id, data = { log_message = "Resolving macros" } })
+    for _, task in ipairs(used_tasks) do
+        _status_comp:add_task(task.name)
+    end
 
     local vars, _ = _load_variables(config_dir)
     local ws_dir = wsinfo.get_ws_dir()
@@ -158,7 +131,9 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
     -- Resolve macros only on the tasks that will be used
     resolver.resolve_macros(used_tasks, task_ctx, function(resolve_ok, resolved_tasks, resolve_error)
         if not resolve_ok or not resolved_tasks then
-            report_status(resolve_error or "Failed to resolve macros in tasks", true)
+            local err_msg = resolve_error or "Failed to resolve macros in tasks"
+            report_failure(err_msg)
+            _status_comp:set_task_status(root_name, "stop", false, err_msg)
             return
         end
 
@@ -188,22 +163,11 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
             root_name,
             page_manager_fact,
             function() -- on start
-                _status_comp:clear_items()
-                _convert_task_tree(node_tree, _status_comp)
                 _status_page.set_ui_flags(config.current.window.symbols.running)
             end,
             function(name, event, success, reason) -- on task event
                 logs.user_log(("%s: %s"):format(name, reason ~= "" and reason or event), "task")
-                local tree_comp = _status_comp
-                if tree_comp then
-                    local item = tree_comp:get_item(name)
-                    if item then
-                        item.data.event = event
-                        item.data.success = success
-                        item.data.error_msg = (not success) and reason or nil
-                        tree_comp:refresh_content()
-                    end
-                end
+                _status_comp:set_task_status(name, event, success, reason)
             end,
             function(success, reason) -- on exit
                 _status_page.set_ui_flags(success and symbols.success or symbols.failure)

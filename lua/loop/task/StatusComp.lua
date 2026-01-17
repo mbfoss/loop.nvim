@@ -1,11 +1,11 @@
 local class        = require('loop.tools.class')
-local ItemTreeComp = require('loop.comp.ItemTree')
+local ItemListComp = require('loop.comp.ItemList')
 local config       = require("loop.config")
 
----@alias loop.task.TasksStatusComp.Item loop.comp.ItemTree.Item
+---@alias loop.task.TasksStatusComp.Item loop.comp.ItemList.Item
 
 -- Example state-to-highlight mapping
-local _highlights     = {
+local _highlights  = {
     pending = "LoopPluginTaskPending",
     running = "LoopPluginTaskRunning",
     success = "LoopPluginTaskSuccess",
@@ -19,21 +19,15 @@ vim.api.nvim_set_hl(0, _highlights.success, { link = "DiffAdd" })
 vim.api.nvim_set_hl(0, _highlights.warning, { link = "WarningMsg" })
 vim.api.nvim_set_hl(0, _highlights.failure, { link = "ErrorMsg" })
 
----@class loop.task.TasksStatusComp : loop.comp.ItemTree
----@field new fun(self: loop.task.TasksStatusComp): loop.task.TasksStatusComp
-local TasksStatusComp = class(ItemTreeComp)
+local _line_id = 0
 
----@param id any
----@param data any
----@param highlights loop.Highlight[]
----@return string
-local function _node_formatter(id, data, highlights)
-    return "formatter not implemented"
-end
+---@class loop.task.TasksStatusComp : loop.comp.ItemList
+---@field new fun(self: loop.task.TasksStatusComp): loop.task.TasksStatusComp
+local TasksStatusComp = class(ItemListComp)
 
 function TasksStatusComp:init()
     local symbols = config.current.window.symbols
-    ---@type loop.comp.ItemTree.InitArgs
+    ---@type loop.comp.ItemList.InitArgs
     local comp_args = {
         formatter = function(id, data, out_highlights)
             if data.log_message then
@@ -60,12 +54,42 @@ function TasksStatusComp:init()
             table.insert(out_highlights, { group = hl, end_col = #prefix })
             local text = prefix .. data.name
             if data.error_msg then
-                text = text .. '\n' .. data.error_msg
+                text = text .. ' - ' .. data.error_msg
             end
             return text
         end,
     }
-    ItemTreeComp.init(self, comp_args)
+    ItemListComp.init(self, comp_args)
+end
+
+---@param name string
+---@return number
+function TasksStatusComp:add_task(name)
+    _line_id = _line_id + 1
+    local id = _line_id
+    ---@type loop.comp.ItemList.Item
+    local item = {
+        id = name,
+        data = {
+            name = name
+        }
+    }
+    self:upsert_item(item)
+    return id
+end
+
+---@param name string
+---@param event "start"|"stop"
+---@param success boolean
+---@param reason string?
+function TasksStatusComp:set_task_status(name, event, success, reason)
+    local item = self:get_item(name)
+    if item then
+        item.data.event = event
+        item.data.success = success
+        item.data.error_msg = (not success) and reason or nil
+        self:refresh_content()
+    end
 end
 
 return TasksStatusComp
