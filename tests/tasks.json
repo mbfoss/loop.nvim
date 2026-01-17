@@ -7,7 +7,7 @@
       "depends_on": [
         "setup",
         "lint-and-format",
-        "build",
+        "run",
         "test-all",
         "cleanup"
       ],

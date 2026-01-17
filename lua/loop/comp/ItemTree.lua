@@ -29,6 +29,7 @@ local Trackers = require("loop.tools.Trackers")
 ---@field formatter fun(id:any,data:any,out_highlights:loop.Highlight[]):string
 ---@field expand_char string?
 ---@field collapse_char string?
+---@field enable_loading_indictaor boolean?
 ---@field loading_char string?
 ---@field indent_string string?
 ---@field render_delay_ms number|nil
@@ -122,7 +123,7 @@ function ItemTree:init(args)
 
     self._expand_char = args.expand_char or "▸"
     self._collapse_char = args.collapse_char or "▾"
-    self._loading_char = args.loading_char or "⧗"
+    self._loading_char = args.enable_loading_indictaor and (args.loading_char or "⧗") or nil
     self._indent_string = args.indent_string or "  "
     self._render_delay_ms = args.render_delay_ms or 150
 
@@ -332,7 +333,7 @@ function ItemTree:_on_render_request(buf)
         local icon = ""
         -- Determine if this node should have an icon (has children or can load them)
         if item_id and (self._tree:have_children(item_id) or item.children_callback) then
-            if item.children_loading then
+            if self._loading_char and item.children_loading then
                 -- Show loading icon instead of the folding symbol
                 icon = self._loading_char
             elseif item.expanded then

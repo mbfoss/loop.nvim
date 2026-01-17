@@ -10,7 +10,7 @@ local _template_providers = {}
 local _task_types = {}
 
 ---@type string[]  -- keeps registration order
-local _template_types = {}
+local _template_categories = {}
 
 local M = {}
 
@@ -25,7 +25,7 @@ function M.reset()
         build     = coreproviders.get_build_templates_provider(),
         run       = coreproviders.get_run_templates_provider(),
     }
-    _template_types = { "composite", "build", "run" }
+    _template_categories = { "composite", "build", "run" }
 end
 
 ---@return string[]
@@ -34,8 +34,8 @@ function M.task_types()
 end
 
 ---@return string[]
-function M.template_types()
-    return _template_types
+function M.template_categories()
+    return _template_categories
 end
 
 ---@param task_type string
@@ -57,7 +57,7 @@ function M.register_template_provider(category, provider)
     assert(not _template_providers[category], "task category is already registered: " .. category)
     assert(#category >= 2, "ext task category too short: " .. category)
     _template_providers[category] = provider
-    table.insert(_template_types, category)
+    table.insert(_template_categories, category)
 end
 
 ---@param name string

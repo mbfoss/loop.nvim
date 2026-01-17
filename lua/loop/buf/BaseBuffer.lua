@@ -139,12 +139,12 @@ function BaseBuffer:_setup_buf()
     do
         local b = vim.bo[buf]
         b.buftype = "nofile"
-        b.modifiable = false
         b.bufhidden = "hide"
+        b.filetype = "loop-" .. self._type
+        b.modifiable = false
         b.swapfile = false
         b.undolevels = -1   -- buffer can't become "modified"
         b.buflisted = false -- hide from :ls
-        b.filetype = "loop-" .. self._type
     end
 
     vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {

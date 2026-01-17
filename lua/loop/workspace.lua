@@ -480,10 +480,6 @@ end
 function M.task_subcommands(args)
     if #args == 0 then
         return { "run", "repeat", "add", "terminate", "configure" }
-    elseif #args == 1 then
-        if args[1] == 'add' then
-            return taskmgr.task_types()
-        end
     end
     return {}
 end
@@ -508,7 +504,7 @@ function M.task_command(command, arg1, arg2)
     elseif command == "repeat" then
         runner.load_and_run_task(config_dir, window.page_manger_factory(), "repeat")
     elseif command == "add" then
-        taskmgr.add_task(config_dir, arg1)
+        taskmgr.add_task(config_dir)
     elseif command == "configure" then
         taskmgr.configure_tasks(config_dir)
     elseif command == "terminate" then

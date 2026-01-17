@@ -28,11 +28,11 @@ local function _build_taskfile_schema()
     schema.properties.tasks.items.oneOf = {}
     local oneOf = schema.properties.tasks.items.oneOf
 
-    local task_types = M.task_types()
-    for _, provider_name in ipairs(task_types) do
-        local provider = M.get_provider(provider_name)
+    local task_types = providers.task_types()
+    for _, type in ipairs(task_types) do
+        local provider = M.get_task_type_provider(type)
         if provider then
-            assert(provider.get_task_schema, "get_task_schema() not implemented for: " .. provider_name)
+            assert(provider.get_task_schema, "get_task_schema() not implemented for: " .. type)
             local provider_schema = provider.get_task_schema()
             if provider_schema then
                 local oneOfItem = {
@@ -40,7 +40,7 @@ local function _build_taskfile_schema()
                     properties = vim.tbl_extend("error", base_items.properties, provider_schema.properties or {}),
                     required = vim.deepcopy(base_items.required),
                 }
-                oneOfItem.properties.type = { const = provider_name }
+                oneOfItem.properties.type = { const = type }
                 oneOfItem.additionalProperties = provider_schema.additionalProperties or false
                 for _, req in ipairs(provider_schema.required or {}) do
                     table.insert(oneOfItem.required, req)
@@ -80,7 +80,7 @@ end
 ---@return loop.Task[]?,string[]?
 local function _load_tasks(config_dir)
     local tasktype_to_schema = {}
-    for _, tasktype in ipairs(M.task_types()) do
+    for _, tasktype in ipairs(providers.task_types()) do
         tasktype_to_schema[tasktype] = _get_single_task_schema(tasktype)
     end
     return taskstore.load_tasks(config_dir, tasktype_to_schema)
@@ -111,11 +111,6 @@ local function _select_and_add_task(config_dir, templates, prompt)
     end)
 end
 
----@return string[]
-function M.task_types()
-    return providers.task_types()
-end
-
 function M.reset_provider_list()
     providers.reset()
 end
@@ -124,12 +119,6 @@ end
 ---@return loop.TaskTypeProvider|nil
 function M.get_task_type_provider(name)
     return providers.get_task_type_provider(name)
-end
-
----@param category string
----@return loop.TaskTemplateProvider|nil
-function M.get_task_template_provider(category)
-    return providers.get_task_template_provider(category)
 end
 
 function M.on_tasks_cleanup()
@@ -143,21 +132,29 @@ function M.on_tasks_cleanup()
 end
 
 ---@param config_dir string
----@param category string|nil
-function M.add_task(config_dir, category)
-    if not category or category == "" then
-        vim.notify("Task category required")
-        return
+function M.add_task(config_dir)
+    local choices = {}
+    for _, type in ipairs(providers.template_categories()) do
+        ---@type loop.SelectorItem
+        local item = {
+            label = type,
+            data = type,
+        }
+        table.insert(choices, item)
     end
-    local provider = M.get_task_template_provider(category)
-    if not provider then
-        vim.notify("Invalid task category: " .. tostring(category))
-        return
-    end
-    assert(type(provider) == "table")
+    selector.select("Task category", choices, nil, function(category)
+        if category then
+            local provider = providers.get_task_template_provider(category)
+            if not provider then
+                vim.notify("Invalid task category: " .. tostring(category))
+                return
+            end
+            assert(type(provider) == "table")
 
-    local templates = provider.get_task_templates()
-    _select_and_add_task(config_dir, templates, "Select template")
+            local templates = provider.get_task_templates()
+            _select_and_add_task(config_dir, templates, "Select template")
+        end
+    end)
 end
 
 ---@param name string

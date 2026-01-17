@@ -8,7 +8,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Build",
-			type = "build",
+			type = "run",
 			command = "",
 			cwd = "${wsdir}",
 			quickfix_matcher = "",
@@ -23,7 +23,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Make",
-			type = "build",
+			type = "run",
 			command = "make",
 			cwd = "${wsdir}",
 			quickfix_matcher = "gcc",
@@ -35,7 +35,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Compile file",
-			type = "build",
+			type = "run",
 			command = "g++ -g -Wall -Wextra ${file} -o ${fileroot}.out",
 			cwd = "${filedir}",
 			quickfix_matcher = "gcc",
@@ -51,7 +51,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Build",
-			type = "build",
+			type = "run",
 			command = "cargo build --message-format=short",
 			cwd = "${wsdir}",
 			quickfix_matcher = "cargo",
@@ -63,7 +63,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Build (Release)",
-			type = "build",
+			type = "run",
 			command = "cargo build --release --message-format=short",
 			cwd = "${wsdir}",
 			quickfix_matcher = "cargo",
@@ -75,7 +75,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Check",
-			type = "build",
+			type = "run",
 			command = "cargo check --message-format=short",
 			cwd = "${wsdir}",
 			quickfix_matcher = "cargo",
@@ -91,7 +91,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Build",
-			type = "build",
+			type = "run",
 			command = "go build ./...",
 			cwd = "${wsdir}",
 			quickfix_matcher = "go",
@@ -103,7 +103,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Build File",
-			type = "build",
+			type = "run",
 			command = "go build ${file}",
 			cwd = "${filedir}",
 			quickfix_matcher = "go",
@@ -119,7 +119,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Luacheck",
-			type = "build",
+			type = "run",
 			command = "luacheck ${file} --formatter plain --codes",
 			cwd = "${filedir}",
 			quickfix_matcher = "linter",
@@ -131,7 +131,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Check",
-			type = "build",
+			type = "run",
 			command = "tsc --noEmit --pretty false",
 			cwd = "${wsdir}",
 			quickfix_matcher = "tsc",
@@ -143,7 +143,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Pylint",
-			type = "build",
+			type = "run",
 			command = "pylint --output-format=parseable ${file}",
 			cwd = "${filedir}",
 			quickfix_matcher = "linter",
