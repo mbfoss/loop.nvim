@@ -8,7 +8,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Run",
-			type = "run",
+			type = "command",
 			command = "",
 			cwd = "${wsdir}",
 			save_buffers = false,
@@ -22,7 +22,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Run Binary",
-			type = "run",
+			type = "command",
 			command = "${fileroot}.out",
 			cwd = "${filedir}",
 			env = nil,
@@ -39,7 +39,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Python Run",
-			type = "run",
+			type = "command",
 			command = "python3 ${file}",
 			cwd = "${filedir}",
 			env = nil,
@@ -52,7 +52,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Static Server",
-			type = "run",
+			type = "command",
 			command = "python3 -m http.server 8000",
 			cwd = "${wsdir}",
 			env = { PORT = "8000" },
@@ -69,7 +69,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Cargo Run",
-			type = "run",
+			type = "command",
 			command = "cargo run",
 			cwd = "${wsdir}",
 			env = nil,
@@ -82,7 +82,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Cargo Run",
-			type = "run",
+			type = "command",
 			command = "cargo run --release",
 			cwd = "${wsdir}",
 			env = nil,
@@ -95,7 +95,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Go Run",
-			type = "run",
+			type = "command",
 			command = "go run ${file}",
 			cwd = "${filedir}",
 			env = nil,
@@ -112,7 +112,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "Node Run",
-			type = "run",
+			type = "command",
 			command = "node ${file}",
 			cwd = "${filedir}",
 			env = nil,
@@ -125,7 +125,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "NPM Dev",
-			type = "run",
+			type = "command",
 			command = "npm run dev",
 			cwd = "${wsdir}",
 			env = nil,
@@ -138,7 +138,7 @@ return {
 		task = {
 			__order = field_order,
 			name = "NPM Watch",
-			type = "run",
+			type = "command",
 			command = "npm run watch",
 			cwd = "${wsdir}",
 			env = nil,

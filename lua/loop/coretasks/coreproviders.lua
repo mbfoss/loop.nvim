@@ -1,4 +1,4 @@
-local run = require('loop.coretasks.run')
+local command_task = require('loop.coretasks.command')
 local jsontools = require('loop.tools.json')
 
 local M = {}
@@ -53,11 +53,11 @@ function M.get_composite_task_provider()
     }
 end
 
-function M.get_run_task_provider()
+function M.get_command_task_provider()
     ---@type loop.TaskTypeProvider
     return {
         get_task_schema = function()
-            local schema = require('loop.coretasks.schema.run')
+            local schema = require('loop.coretasks.schema.command')
             return schema
         end,
         get_task_preview = function(task)
@@ -67,7 +67,7 @@ function M.get_run_task_provider()
             cpy.__order = templates[1].task.__order
             return jsontools.to_string(cpy), "json"
         end,
-        start_one_task = run.start_task
+        start_one_task = command_task.start_task
     }
 end
 

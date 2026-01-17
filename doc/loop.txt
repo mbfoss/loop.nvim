@@ -80,7 +80,7 @@ QUICK START                                                *loop-quickstart*
     :Loop workspace create
 <
 2. Add a task: >
-    :Loop task add build
+    :Loop task add
 <
 3. Run the task: >
     :Loop task run
@@ -137,7 +137,7 @@ All fields support macros.
 
 Common fields:
 - `name`: Task display name
-- `type`: Task type: build, run, composite
+- `type`: Task type: command, composite
 - `cwd`: Working directory
 - `command`: Command to execute (string or array)
 - `env`: Environment variables (object)
@@ -258,7 +258,7 @@ Build current file:
 ```json
 {
   "name": "Compile Current File",
-  "type": "build",
+  "type": "command",
   "command": "gcc ${file} -o ${fileroot}.out",
   "cwd": "${wsdir}"
 }
@@ -268,7 +268,7 @@ Run with prompted port:
 ```json
 {
   "name": "Run with Port",
-  "type": "run",
+  "type": "command",
   "command": "python server.py --port ${prompt:Enter port,8000}",
   "cwd": "${wsdir}"
 }
@@ -288,7 +288,7 @@ Using workspace variables:
 ```json
 {
   "name": "Custom Output",
-  "type": "build",
+  "type": "command",
   "command": "gcc ${file} -o ${var:OUTPUT_DIR}/${fileroot}.out",
   "cwd": "${wsdir}"
 }
@@ -305,7 +305,7 @@ TROUBLESHOOTING                                            *loop-troubleshooting
 ==============================================================================
 TIPS & BEST PRACTICES                                      *loop-tips*
 
-- Use workspace variables for paths, build types, and other frequently changed values.
+- Use workspace variables for paths and other frequently changed values.
 - Use composite tasks to automate multi-step workflows.
 - Use the UI window to monitor long-running tasks and switch between outputs.
 - Keep workspace.json and tasks.json under version control for team sharing.

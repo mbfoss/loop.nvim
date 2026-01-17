@@ -9,7 +9,7 @@
 ## Features
 
 - **Automatic Workspace Detection:** Projects are recognized via a `.nvimloop` directory.
-- **Structured, Dependency-Aware Tasks:** Define build, run, or composite tasks with dependencies and parallel/sequential execution.
+- **Structured, Dependency-Aware Tasks:** Define simple or composite tasks with dependencies and parallel/sequential execution.
 - **Quickfix Integration:** Compiler output is parsed into the quickfix list for easy navigation.
 - **Macro System:** Use `${macro}` variable substitution for dynamic commands.
 - **Workspace Variables:** Manage per-project variables with `:Loop var`.
@@ -45,7 +45,7 @@ After installation, generate helptags with `:helptags ALL` for documentation.
 
 1. `:Loop workspace create` — Initialize a workspace in your project.
 2. `:Loop workspace open` — Open a workspace or reload the current one.
-3. `:Loop task add build` — Add a build task (or other types).
+3. `:Loop task add` — Add a task (choose from a list of templates).
 4. `:Loop task run` — Run a task (choose from a list).
 5. `:Loop var add` — Add workspace variables (optional).
 6. `:Loop show` — Open the Loop UI window.
@@ -59,15 +59,14 @@ lualine_c = { function() return require('loop.wsinfo').status_line() end, 'filen
 
 ## Task Types
 
-- **build:** Run build commands with quickfix parsing (e.g. `make`, `gcc`).
-- **run:** Start long-running processes (e.g. servers).
+- **command:** Run build commands with quickfix parsing (e.g. `make`, `gcc`) or long-running processes (e.g. servers).
 - **composite:** Combine multiple tasks, run in sequence or parallel.
 
 Example build task:
 ```json
 {
   "name": "Build",
-  "type": "run",
+  "type": "command",
   "command": "make",
   "cwd": "${wsdir}"
 }

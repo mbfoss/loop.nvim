@@ -16,10 +16,10 @@ local M = {}
 
 function M.reset()
     _task_type_providers = {
+        command   = coreproviders.get_command_task_provider(),
         composite = coreproviders.get_composite_task_provider(),
-        run       = coreproviders.get_run_task_provider(),
     }
-    _task_types = { "composite", "run" }
+    _task_types = { "command", "composite" }
     _template_providers = {
         composite = coreproviders.get_composite_templates_provider(),
         build     = coreproviders.get_build_templates_provider(),

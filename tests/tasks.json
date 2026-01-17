@@ -24,13 +24,13 @@
     },
     {
       "name": "create-temp-dir",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Creating temp dir'); vim.wait(800)",
       "depends_on": []
     },
     {
       "name": "install-deps",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Installing dependencies'); vim.wait(1500)",
       "depends_on": []
     },
@@ -45,7 +45,7 @@
     },
     {
       "name": "lua-lint",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Running luacheck'); vim.wait(1200)",
       "depends_on": [
         "install-deps"
@@ -53,7 +53,7 @@
     },
     {
       "name": "format-buffer",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Formatting with stylua'); vim.wait(900)",
       "depends_on": [
         "install-deps"
@@ -70,7 +70,7 @@
     },
     {
       "name": "compile-lua",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Bytecode compilation'); vim.wait(1800)",
       "depends_on": [
         "lua-lint"
@@ -78,7 +78,7 @@
     },
     {
       "name": "generate-docs",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Generating LDoc'); vim.wait(2000)",
       "depends_on": [
         "format-buffer"
@@ -95,7 +95,7 @@
     },
     {
       "name": "unit-tests",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Running plenary unit tests'); vim.wait(2500)",
       "depends_on": [
         "compile-lua"
@@ -103,7 +103,7 @@
     },
     {
       "name": "integration-tests",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Running integration suite – this is long!'); vim.wait(5000)",
       "depends_on": [
         "start-test-server",
@@ -112,25 +112,25 @@
     },
     {
       "name": "start-test-server",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Starting mock LSP/server'); vim.wait(3000)",
       "depends_on": []
     },
     {
       "name": "cleanup",
-      "type": "run",
+      "type": "command",
       "command": "echo ('Cleaning up temp files'); vim.wait(600)",
       "depends_on": []
     },
     {
       "name": "failing-task",
-      "type": "run",
+      "type": "command",
       "command": "echo ('This task will fail'); vim.wait(1000); error('Intentional failure')",
       "depends_on": []
     },
     {
       "name": "cycle error check 2",
-      "type": "run",
+      "type": "command",
       "command": "echo ('THIS SHOULD NEVER RUN')",
       "depends_on": [
         "cycle error check 1"
@@ -138,7 +138,7 @@
     },
     {
       "name": "cycle error check 1",
-      "type": "run",
+      "type": "command",
       "command": "echo ('THIS SHOULD NEVER RUN')",
       "depends_on": [
         "cycle error check 2"
@@ -146,7 +146,7 @@
     },
     {
       "name": "should-not-run",
-      "type": "run",
+      "type": "command",
       "command": "echo ('THIS SHOULD NEVER RUN')",
       "depends_on": [
         "failing-task"
