@@ -53,7 +53,19 @@ local function _setup_tabs()
     end
 
     local active_tab = _tabs_arr[_active_tab_idx]
-    local page_idx = active_tab and active_tab.active_page_idx or 1
+    if not active_tab or vim.tbl_isempty(active_tab.pages) then
+        for i, t in ipairs(_tabs_arr) do
+            if #t.pages > 0 then
+                _active_tab_idx = i
+                break
+            end
+        end
+    end
+    local page_idx = 1
+    if active_tab and active_tab.pages[active_tab.active_page_idx] then
+        page_idx = active_tab.active_page_idx
+    end
+
     local symbols = config.current.window.symbols
     -- update window if visible
     local win = _loop_win

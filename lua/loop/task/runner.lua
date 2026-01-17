@@ -1,37 +1,22 @@
-local M               = {}
+local M             = {}
 
-local taskmgr         = require("loop.task.taskmgr")
-local resolver        = require("loop.tools.resolver")
-local logs            = require("loop.logs")
-local TaskScheduler   = require("loop.task.TaskScheduler")
-local ItemTreeComp    = require("loop.comp.ItemTree")
-local config          = require("loop.config")
-local taskstore       = require("loop.task.taskstore")
-local strtools        = require("loop.tools.strtools")
-local wsinfo          = require("loop.wsinfo")
+local taskmgr       = require("loop.task.taskmgr")
+local resolver      = require("loop.tools.resolver")
+local logs          = require("loop.logs")
+local TaskScheduler = require("loop.task.TaskScheduler")
+local StatusComp    = require("loop.task.StatusComp")
+local config        = require("loop.config")
+local taskstore     = require("loop.task.taskstore")
+local strtools      = require("loop.tools.strtools")
+local wsinfo        = require("loop.wsinfo")
 
 local _status_node_id = "\027STATUS\027"
 
--- Example state-to-highlight mapping
-local _highlights     = {
-    pending = "LoopPluginTaskPending",
-    running = "LoopPluginTaskRunning",
-    success = "LoopPluginTaskSuccess",
-    warning = "LoopPluginTaskWarning",
-    failure = "LoopPluginTaskFailure",
-}
-
-vim.api.nvim_set_hl(0, _highlights.pending, { link = "Comment" })
-vim.api.nvim_set_hl(0, _highlights.running, { link = "DiffChange" })
-vim.api.nvim_set_hl(0, _highlights.success, { link = "DiffAdd" })
-vim.api.nvim_set_hl(0, _highlights.warning, { link = "WarningMsg" })
-vim.api.nvim_set_hl(0, _highlights.failure, { link = "ErrorMsg" })
+---@type loop.task.TasksStatusComp?,loop.PageController
+local _status_comp, _status_page
 
 ---@type loop.TaskScheduler
-local _scheduler             = TaskScheduler:new()
-
----@type loop.PageManager?
-local _current_progress_pmgr = nil
+local _scheduler = TaskScheduler:new()
 
 ---@param node table Task node from generate_task_plan_tree
 ---@param tree_comp loop.comp.ItemTree
@@ -78,49 +63,9 @@ local function print_task_tree(node, prefix, is_last)
 end
 
 ---@param page_manager_fact loop.PageManagerFactory
----@return loop.comp.ItemTree,loop.PageController
-local function _create_progress_page(page_manager_fact)
-    local symbols = config.current.window.symbols
-    ---@type loop.comp.ItemTree.InitArgs
-    local comp_args = {
-        formatter = function(id, data, out_highlights)
-            if data.log_message then
-                if data.log_level == vim.log.levels.ERROR then
-                    table.insert(out_highlights, { group = _highlights.failure })
-                end
-                return data.log_message
-            end
-            local hl = _highlights.pending
-            local icon = symbols.waiting
-            if data.event == "start" then
-                icon = symbols.running
-                hl = _highlights.running
-            elseif data.event == "stop" then
-                if data.success then
-                    icon = symbols.success
-                    hl = _highlights.success
-                else
-                    icon = symbols.failure
-                    hl = _highlights.failure
-                end
-            end
-            local prefix = "[" .. icon .. "]"
-            table.insert(out_highlights, { group = hl, end_col = #prefix })
-            local text = prefix .. data.name
-            if data.error_msg then
-                text = text .. '\n' .. data.error_msg
-            end
-            return text
-        end,
-    }
-    local comp = ItemTreeComp:new(comp_args)
-
-    if _current_progress_pmgr then
-        _current_progress_pmgr.delete_all_groups(true)
-    end
-
-    _current_progress_pmgr = page_manager_fact()
-    local group = _current_progress_pmgr.add_page_group("status", "Status")
+---@return loop.task.TasksStatusComp,loop.PageController
+local function _create_status_page(page_manager_fact)
+    local group = page_manager_fact().add_page_group("status", "Status")
     assert(group, "page mgr error")
     local page_data = group.add_page({
         id = "status",
@@ -131,6 +76,7 @@ local function _create_progress_page(page_manager_fact)
     })
     assert(page_data)
     page_data.comp_buf.disable_change_events()
+    local comp = StatusComp:new()
     comp:link_to_buffer(page_data.comp_buf)
     return comp, page_data.page
 end
@@ -167,21 +113,19 @@ end
 ---@param all_tasks loop.Task[]
 ---@param root_name string
 function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
+    if not _status_comp then
+        assert(not _status_page)
+        _status_comp, _status_page = _create_status_page(page_manager_fact)
+    end
     -- Log task start
     logs.user_log("Task started: " .. root_name, "task")
     local symbols = config.current.window.symbols
-
-    local progress_info = {
-        ---@type loop.comp.ItemTree|nil
-        tree_comp = nil,
-    }
-    progress_info.tree_comp, progress_info.page = _create_progress_page(page_manager_fact)
-    progress_info.page.set_ui_flags(symbols.waiting)
+    _status_page.set_ui_flags(symbols.waiting)
 
     local function report_status(msg, is_error)
         logs.user_log(msg, "task")
-        progress_info.tree_comp:upsert_item({ id = _status_node_id, data = { log_message = msg, log_level = is_error and vim.log.levels.ERROR or nil } })
-        progress_info.page.set_ui_flags(symbols.failure)
+        _status_comp:upsert_item({ id = _status_node_id, data = { log_message = msg, log_level = is_error and vim.log.levels.ERROR or nil } })
+        _status_page.set_ui_flags(symbols.failure)
     end
 
     if #all_tasks == 0 then
@@ -197,7 +141,7 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
 
     logs.user_log("Scheduling tasks:\n" .. print_task_tree(node_tree))
 
-    progress_info.tree_comp:upsert_item({ id = _status_node_id, data = { log_message = "Resolving macros" } })
+    _status_comp:upsert_item({ id = _status_node_id, data = { log_message = "Resolving macros" } })
 
     local vars, _ = _load_variables(config_dir)
     local ws_dir = wsinfo.get_ws_dir()
@@ -244,13 +188,13 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
             root_name,
             page_manager_fact,
             function() -- on start
-                progress_info.tree_comp:clear_items()
-                _convert_task_tree(node_tree, progress_info.tree_comp)
-                progress_info.page.set_ui_flags(config.current.window.symbols.running)
+                _status_comp:clear_items()
+                _convert_task_tree(node_tree, _status_comp)
+                _status_page.set_ui_flags(config.current.window.symbols.running)
             end,
             function(name, event, success, reason) -- on task event
                 logs.user_log(("%s: %s"):format(name, reason ~= "" and reason or event), "task")
-                local tree_comp = progress_info.tree_comp
+                local tree_comp = _status_comp
                 if tree_comp then
                     local item = tree_comp:get_item(name)
                     if item then
@@ -262,7 +206,7 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
                 end
             end,
             function(success, reason) -- on exit
-                progress_info.page.set_ui_flags(success and symbols.success or symbols.failure)
+                _status_page.set_ui_flags(success and symbols.success or symbols.failure)
                 -- Log task completion
                 if success then
                     logs.user_log("Task completed: " .. root_name, "task")

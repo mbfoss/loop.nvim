@@ -19,7 +19,7 @@ local function _make_output_parser(task)
 
     local qf_parser = config.current.quickfix_matchers[task.quickfix_matcher]
     if not qf_parser then
-        local builtin = require('loop.coretasks.build.qfmatchers')
+        local builtin = require('loop.coretasks.qfmatchers')
         qf_parser = builtin[task.quickfix_matcher]
         if not qf_parser then
             return nil, "invalid quickfix matcher: " .. tostring(task.quickfix_matcher)
