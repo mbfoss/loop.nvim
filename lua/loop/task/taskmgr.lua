@@ -40,6 +40,7 @@ local function _build_taskfile_schema()
                     properties = vim.tbl_extend("error", base_items.properties, provider_schema.properties or {}),
                     required = vim.deepcopy(base_items.required),
                 }
+                oneOfItem.__name = provider_schema.__name
                 oneOfItem.properties.type = { const = type }
                 oneOfItem.additionalProperties = provider_schema.additionalProperties or false
                 for _, req in ipairs(provider_schema.required or {}) do
@@ -158,13 +159,7 @@ end
 
 ---@param config_dir string
 function M.configure_tasks(config_dir)
-    taskstore.open_tasks_config(config_dir)
-    local _, task_errors = _load_tasks(config_dir)
-    if task_errors then
-        vim.notify("Failed to load task configuration file", vim.log.levels.ERROR)
-        logs.log(task_errors, vim.log.levels.ERROR)
-        return
-    end
+    taskstore.open_tasks_config(config_dir, _build_taskfile_schema())
 end
 
 ---@param config_dir string

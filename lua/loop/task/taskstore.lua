@@ -123,9 +123,12 @@ function M.add_task(config_dir, new_task, tasks_file_schema)
 end
 
 ---@param config_dir string
-function M.open_tasks_config(config_dir)
+---@param schema table
+function M.open_tasks_config(config_dir, schema)
     local filepath = vim.fs.joinpath(config_dir, "tasks.json")
-    uitools.smart_open_file(filepath)
+    local editor = JsonEditor:new()
+    editor:open(0, filepath, schema)    
+    --uitools.smart_open_file(filepath)
 end
 
 ---@param config_dir string

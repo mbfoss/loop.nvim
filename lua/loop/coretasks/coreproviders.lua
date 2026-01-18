@@ -34,7 +34,9 @@ function M.get_composite_task_provider()
     ---@type loop.TaskTypeProvider
     return {
         get_task_schema = function()
-            return {}
+            return {
+                __name = "Composite",
+            }
         end,
         get_task_preview = function(task)
             local cpy = vim.fn.copy(task)
@@ -43,9 +45,9 @@ function M.get_composite_task_provider()
             cpy.__order = templates[1].task.__order
             return jsontools.to_string(cpy), "json"
         end,
-        start_one_task = function (task, page_manager, on_exit)       
+        start_one_task = function(task, page_manager, on_exit)
             -- composite task does nothing by itself
-            on_exit(true) 
+            on_exit(true)
             ---@type loop.TaskControl
             local controller = { terminate = function() end }
             return controller, nil

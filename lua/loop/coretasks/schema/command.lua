@@ -1,6 +1,6 @@
 local schema = {
+    __name = "Command",
     required = { "command" },
-
     properties = {
         command = {
             description = "Command to run (string or array of strings).",

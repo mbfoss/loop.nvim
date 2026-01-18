@@ -209,7 +209,6 @@ function M.select(prompt, items, formatter, callback)
         if closed then return end
         closed = true
         vim.schedule(function()
-            vim.cmd("stopinsert")
             for _, w in ipairs({ pwin, lwin, vwin }) do
                 if w and vim.api.nvim_win_is_valid(w) then
                     vim.api.nvim_win_close(w, true)
@@ -222,7 +221,10 @@ function M.select(prompt, items, formatter, callback)
             end
             pwin, lwin, vwin, pbuf, lbuf, vbuf = -1, -1, -1, -1, -1, -1
             if res then
-                callback(res)
+                -- schedule to avoid having the closing windows break user handling
+                vim.schedule(function()
+                    callback(res)
+                end)
             end
         end)
     end
@@ -271,7 +273,12 @@ function M.select(prompt, items, formatter, callback)
             query = query .. c; redraw()
         end, opts)
     end
-    vim.cmd("startinsert")
+    vim.api.nvim_set_current_win(pwin)
+    vim.schedule(function()
+        if vim.api.nvim_get_current_win() == pwin then
+            vim.cmd("startinsert!")
+        end
+    end)
 end
 
 return M

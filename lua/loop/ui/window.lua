@@ -484,10 +484,6 @@ local function _create_term(page, args)
         end
     end
 
-    local prev_win = vim.api.nvim_get_current_win()
-    local prev_buf = vim.api.nvim_win_get_buf(prev_win)
-
-    vim.api.nvim_set_current_win(_loop_win)
     local bufnr = page:get_or_create_buf()
 
     local do_scroll = true
@@ -509,24 +505,15 @@ local function _create_term(page, args)
         end
     end
 
-    vim.wo[_loop_win].winfixbuf = false
-    vim.api.nvim_win_set_buf(_loop_win, bufnr)
-    vim.wo[_loop_win].winfixbuf = true
-
     local TermProc = require('loop.tools.TermProc')
-    local proc = TermProc:new()
-    local proc_ok, proc_err = proc:start(args_cpy)
+
+    local proc, proc_ok, proc_err
+    vim.api.nvim_buf_call(bufnr, function()
+        proc = TermProc:new()
+        proc_ok, proc_err = proc:start(args_cpy)
+    end)
 
     vim.keymap.set('t', '<Esc>', function() vim.cmd('stopinsert') end, { buffer = bufnr })
-
-    vim.api.nvim_set_current_win(prev_win)
-    if prev_win ~= _loop_win then
-        vim.api.nvim_set_current_buf(prev_buf)
-    else
-        vim.wo[_loop_win].winfixbuf = false
-        vim.api.nvim_win_set_buf(_loop_win, prev_buf)
-        vim.wo[_loop_win].winfixbuf = true
-    end
 
     if not proc_ok then
         return nil, proc_err

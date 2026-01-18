@@ -57,7 +57,10 @@ function CompBuffer:set_renderer(renderer)
 end
 
 function CompBuffer:render()
-    self._throttled_render()
+    -- the schedule() improves the first render when it's called multiple times
+    vim.schedule(function () 
+        self._throttled_render()        
+    end)
 end
 
 function CompBuffer:_immediate_render()

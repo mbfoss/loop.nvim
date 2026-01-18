@@ -190,7 +190,8 @@ local function validate(schema, data, path)
                 matched = true
                 break
             else
-                table.insert(details, ("option %d: %s"):format(i, table.concat(sub_err, "; ")))
+                local sub_name = sub.__name or ""
+                table.insert(details, ("option %d (%s): %s"):format(i, sub_name, table.concat(sub_err, "; ")))
             end
         end
         if not matched then

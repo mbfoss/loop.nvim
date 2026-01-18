@@ -109,7 +109,7 @@ function M.input_at_cursor(opts)
     for k, v in pairs(buf_opts) do vim.bo[buf][k] = v end
 
     -- Initial size calculations
-    local min_width = opts.default_width or 10
+    local min_width = opts.default_width or math.max(10, opts.title and (vim.fn.strdisplaywidth(opts.title) + 2) or 0)
     local max_width = math.floor(vim.o.columns * 0.8)
     local initial_text = opts.default_text or ""
     local current_width = math.max(min_width, #initial_text + 1)
@@ -123,13 +123,26 @@ function M.input_at_cursor(opts)
         height = 1,
         style = "minimal",
         border = "rounded",
+        title = opts.title and (" %s "):format(opts.title) or nil
     })
 
     vim.wo[win].winhighlight = "Normal:Normal,NormalNC:Normal,EndOfBuffer:Normal,FloatBorder:Normal"
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { initial_text })
     vim.api.nvim_win_set_cursor(win, { 1, #initial_text })
+    vim.schedule(function()
+        if vim.api.nvim_get_current_win() == win then
+            vim.cmd("startinsert!")
+        end
+    end)
 
-    -- 1. AUTO-RESIZE LOGIC
+    -- Setup completion if completions provided
+    if opts.completions and #opts.completions > 0 then
+        vim.bo[buf].omnifunc = 'v:lua.require("loop.tools.floatwin")._complete'
+        M._complete_cache = opts.completions
+        M._complete_buf = buf
+    end
+
+    -- AUTO-RESIZE LOGIC & COMPLETION TRIGGER
     vim.api.nvim_create_autocmd("TextChangedI", {
         buffer = buf,
         callback = function()
@@ -137,15 +150,22 @@ function M.input_at_cursor(opts)
             local new_width = math.max(min_width, vim.fn.strwidth(line) + 1)
             new_width = math.min(new_width, max_width)
 
-            -- Only call API if width actually changed to save performance
             if new_width ~= current_width then
                 current_width = new_width
                 vim.api.nvim_win_set_config(win, { width = current_width })
             end
+
+            -- Trigger completions while typing
+            if opts.completions and #opts.completions > 0 then
+                local col = vim.fn.col(".")
+                local base = line:sub(1, col - 1)
+                local matches = M._complete(1, base)
+                if matches and #matches > 0 then
+                    vim.fn.complete(col, matches)
+                end
+            end
         end,
     })
-
-    vim.cmd("startinsert!")
 
     local closed = false
     local function close(value)
@@ -166,11 +186,27 @@ function M.input_at_cursor(opts)
     vim.keymap.set("i", "<CR>", function() close(vim.api.nvim_get_current_line()) end, kopts)
     vim.keymap.set("n", "<Esc>", function() close(nil) end, kopts)
     vim.keymap.set("i", "<C-c>", function() close(nil) end, kopts)
+    if opts.completions and #opts.completions > 0 then
+        vim.keymap.set("i", "<C-x><C-o>", function()
+            vim.fn.feedkeys(vim.api.nvim_replace_termcodes("<C-x><C-o>", true, true, true), "n")
+        end, kopts)
+    end
 
     vim.api.nvim_create_autocmd("WinLeave", {
         once = true,
         callback = function() close(nil) end,
     })
+end
+
+function M._complete(findstart, base)
+    local completions = M._complete_cache or {}
+    local matches = {}
+    for _, item in ipairs(completions) do
+        if vim.startswith(item, base) then
+            table.insert(matches, item)
+        end
+    end
+    return matches
 end
 
 return M
