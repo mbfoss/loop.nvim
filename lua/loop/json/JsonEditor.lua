@@ -19,7 +19,8 @@ local validator    = require("loop.tools.jsonschema")
 local json_util    = require("loop.tools.json")
 
 ---@class loop.JsonEditor
----@field new fun(self: loop.JsonEditor): loop.JsonEditor
+---@field new fun(self: loop.JsonEditor, opts:table): loop.JsonEditor
+---@field inint fun(self: loop.JsonEditor)
 ---@field _filepath string
 ---@field _data table
 ---@field _schema table|nil
@@ -27,6 +28,7 @@ local json_util    = require("loop.tools.json")
 ---@field _undo_stack table
 ---@field _redo_stack table
 ---@field _is_dirty boolean
+---@field _on_node_added fun(path:string,callback:fun(nodes:any))|nil
 local JsonEditor   = class()
 
 local function is_array(t) return type(t) == "table" and vim.islist(t) end
@@ -171,24 +173,24 @@ local function formatter(_, data, hls)
 end
 
 function JsonEditor:init(opts)
-    self._opts = opts or {}
-    self._undo_stack = {}
-    self._redo_stack = {}
-    self._is_dirty = false
+    self._opts              = opts or {}
+    self._undo_stack        = {}
+    self._redo_stack        = {}
+    self._is_dirty          = false
     self._validation_errors = {}
+    self._filepath          = opts.filepath
+    self._schema            = opts.schema
+    self._on_node_added     = opts.on_node_added
+    self._fold_cache        = {}
 end
 
-function JsonEditor:open(winid, filepath, schema)
-    self:init()
-
-    self._filepath   = filepath
-    self._schema     = schema
-    self._fold_cache = {}
-    self._is_open    = true
+function JsonEditor:open(winid)
+    assert(not self._is_open)
+    self._is_open  = true
 
     ---@type loop.comp.ItemTree
     ---@diagnostic disable-next-line: undefined-field
-    self._itemtree   = ItemTreeComp:new({
+    self._itemtree = ItemTreeComp:new({
         formatter       = formatter,
         render_delay_ms = 40,
     })
@@ -433,6 +435,20 @@ function JsonEditor:_rename_key(item)
 end
 
 function JsonEditor:_add_new(item)
+    if self._on_node_added then
+        self._on_node_added(item.data.path, function(to_add)
+            if to_add ~= nil then
+                self:_add_new_from_object(item, to_add)
+            else
+                self:_add_new_default(item)
+            end
+        end)
+    else
+        self:_add_new_default(item)
+    end
+end
+
+function JsonEditor:_add_new_default(item)
     local path   = item.data.path
     local vt     = item.data.value_type
     local schema = resolve_schema(self._schema, path) or {}
@@ -444,6 +460,37 @@ function JsonEditor:_add_new(item)
     else
         vim.notify("Can only add to object or array", vim.log.levels.INFO)
     end
+end
+
+function JsonEditor:_add_new_from_object(item, to_add)
+    local vt = item.data.value_type
+    local path = item.data.path
+
+    -- Add to array → append
+    if vt == "array" then
+        self:_push_undo()
+        table.insert(item.data.value, to_add)
+        self:_set_value(path, item.data.value)
+        return
+    end
+
+    -- Add to object → merge keys
+    if vt == "object" then
+        self:_push_undo()
+        local obj = item.data.value
+
+        for k, v in pairs(to_add) do
+            -- Do not overwrite existing keys
+            if obj[k] == nil then
+                obj[k] = v
+            end
+        end
+
+        self:_set_value(path, obj)
+        return
+    end
+
+    vim.notify("Can only add JSON object to object or array", vim.log.levels.INFO)
 end
 
 function JsonEditor:_delete(item)
@@ -723,7 +770,7 @@ function JsonEditor:_create_default_value(type_choice, schema)
     elseif type_choice == "array" then
         return {}
     elseif type_choice == "object" then
-        return {}
+        return vim.empty_dict()
     end
     return vim.NIL
 end
@@ -834,7 +881,7 @@ end
 
 function JsonEditor:_get_parent_and_key(path)
     local parts = split_path(path)
-    if #parts == 0 then return self._data, nil end
+    if #parts <= 1 then return nil, nil end
 
     local cur = self._data
     for i = 1, #parts - 1 do
@@ -848,13 +895,12 @@ function JsonEditor:_get_parent_and_key(path)
 end
 
 function JsonEditor:_set_value(path, new_value)
-    self:_push_undo()
-
     local parent, key = self:_get_parent_and_key(path)
     if not parent or key == nil then
-        table.remove(self._undo_stack)
         return
     end
+
+    self:_push_undo()
 
     parent[key] = new_value
 

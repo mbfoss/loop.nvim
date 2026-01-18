@@ -5,7 +5,6 @@ local filetools = require('loop.tools.file')
 local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
 local jsonschema = require('loop.tools.jsonschema')
-local JsonEditor = require('loop.json.JsonEditor')
 
 ---@param content string
 ---@param tasktype_to_schema table<string,Object>
@@ -122,14 +121,6 @@ function M.add_task(config_dir, new_task, tasks_file_schema)
     return true
 end
 
----@param config_dir string
----@param schema table
-function M.open_tasks_config(config_dir, schema)
-    local filepath = vim.fs.joinpath(config_dir, "tasks.json")
-    local editor = JsonEditor:new()
-    editor:open(0, filepath, schema)    
-    --uitools.smart_open_file(filepath)
-end
 
 ---@param config_dir string
 ---@param tasktype_to_schema table<string,Object>

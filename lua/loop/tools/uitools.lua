@@ -30,7 +30,7 @@ function M.is_regular_buffer(bufnr)
 end
 
 ---@return number window number
-local function find_regular_window()
+function M.get_regular_window()
     -- Get current tabpage and all its windows
     local tabpage = vim.api.nvim_get_current_tabpage()
     local windows = vim.api.nvim_tabpage_list_wins(tabpage)
@@ -119,7 +119,7 @@ function M.smart_open_file(filepath, line, col)
         end
     end
 
-    local winid = find_regular_window()
+    local winid = M.get_regular_window()
     vim.api.nvim_set_current_win(winid)
 
     vim.cmd.edit(vim.fn.fnameescape(filepath))
@@ -154,7 +154,7 @@ function M.smart_open_buffer(bufnr)
         end
     end
     -- Buffer not visible in any window, find or create an empty window
-    local winid = find_regular_window()
+    local winid = M.get_regular_window()
     vim.api.nvim_set_current_win(winid)
     vim.api.nvim_win_set_buf(winid, bufnr)
     return winid

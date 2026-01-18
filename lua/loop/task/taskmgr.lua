@@ -1,6 +1,7 @@
 local M = {}
 
-local jsontools = require('loop.tools.json')
+local JsonEditor = require('loop.json.JsonEditor')
+local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
 local taskstore = require("loop.task.taskstore")
 local providers = require("loop.task.providers")
@@ -159,7 +160,47 @@ end
 
 ---@param config_dir string
 function M.configure_tasks(config_dir)
-    taskstore.open_tasks_config(config_dir, _build_taskfile_schema())
+    local tasks_file_schema = _build_taskfile_schema()
+    local filepath = vim.fs.joinpath(config_dir, "tasks.json")
+
+    local editor = JsonEditor:new({
+        filepath = filepath,
+        schema = tasks_file_schema,
+        on_node_added = function(path, continue)
+            if not path:match("^/tasks$") then
+                continue(nil)
+                return
+            end
+            local category_choices = {}
+            for _, elem in ipairs(providers.get_task_template_providers()) do
+                ---@type loop.SelectorItem
+                local item = {
+                    label = elem.category,
+                    data = elem.provider,
+                }
+                table.insert(category_choices, item)
+            end
+            selector.select("Task category", category_choices, nil, function(provider)
+                if provider then
+                    local templates = provider.get_task_templates()
+                    local choices = {}
+                    for _, template in pairs(templates) do
+                        ---@type loop.SelectorItem
+                        local item = {
+                            label = template.name,
+                            data = template.task,
+                        }
+                        table.insert(choices, item)
+                    end
+                    selector.select("Select template", choices, _task_preview, function(task)
+                        if task then continue(task) end
+                    end)
+                end
+            end)
+        end
+    })
+
+    editor:open(uitools.get_regular_window())
 end
 
 ---@param config_dir string
