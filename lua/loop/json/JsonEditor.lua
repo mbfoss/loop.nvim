@@ -170,7 +170,8 @@ local function formatter(_, data, hls)
     return line
 end
 
-function JsonEditor:init()
+function JsonEditor:init(opts)
+    self._opts = opts or {}
     self._undo_stack = {}
     self._redo_stack = {}
     self._is_dirty = false
@@ -312,7 +313,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
 
         for _, k in ipairs(keys) do
             if k == "$schema" then goto continue end
-            
+
             local v = tbl[k]
             local p = join_path(path, k)
             local id = parent_id and (parent_id .. "::" .. k) or k
@@ -325,7 +326,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
                     prop_schema = self:_resolve_oneof_schema(parent_schema.oneOf, v, k)
                 elseif parent_schema.additionalProperties then
                     prop_schema = parent_schema.additionalProperties == true and {} or parent_schema
-                    .additionalProperties
+                        .additionalProperties
                 end
             end
 
@@ -460,6 +461,7 @@ function JsonEditor:_delete(item)
     end
 
     parent[key] = nil
+    self._itemtree:remove_item(item.id)
 
     local ok, err = json_util.save_to_file(self._filepath, self._data)
     if not ok then
@@ -468,8 +470,8 @@ function JsonEditor:_delete(item)
         return
     end
 
-    self._itemtree:remove_item(item.id)
     self:_validate_data()
+    vim.schedule(function() self:_reload_data_and_tree() end)
 end
 
 function JsonEditor:_add_array_item(item, schema)
@@ -527,7 +529,7 @@ function JsonEditor:_add_object_property(item, schema)
     local suggested_keys = {}
     local key_schemas = {}
     local obj = item.data.value
-    
+
     if schema.oneOf then
         -- Find which oneOf subschemas validate the current data
         local valid_schemas = {}
@@ -548,7 +550,8 @@ function JsonEditor:_add_object_property(item, schema)
                         table.insert(suggested_keys, k)
                     end
                     if obj[k] == nil then
-                        table.insert(key_schemas[k], { schema = subschema.properties[k], parent = subschema, index = schema_info.index })
+                        table.insert(key_schemas[k],
+                            { schema = subschema.properties[k], parent = subschema, index = schema_info.index })
                     end
                 end
             end
@@ -561,7 +564,7 @@ function JsonEditor:_add_object_property(item, schema)
             end
         end
     end
-    
+
     table.sort(suggested_keys)
 
     floatwin.input_at_cursor({
@@ -576,7 +579,7 @@ function JsonEditor:_add_object_property(item, schema)
             end
 
             local matched_schemas = key_schemas[key]
-            
+
             if matched_schemas and #matched_schemas > 1 then
                 local choices = {}
                 for _, schema_info in ipairs(matched_schemas) do
@@ -599,6 +602,20 @@ function JsonEditor:_add_object_property(item, schema)
 
             if #allowed_types == 0 then
                 allowed_types = { "string", "number", "boolean", "null", "object", "array" }
+            end
+
+            -- Filter out null if option is enabled (default: true)
+            local exclude_null = self._opts.exclude_null_from_property_type ~= false
+            if exclude_null then
+                local filtered = {}
+                for _, t in ipairs(allowed_types) do
+                    if t ~= "null" then
+                        table.insert(filtered, t)
+                    end
+                end
+                if #filtered > 0 then
+                    allowed_types = filtered
+                end
             end
 
             if #allowed_types == 1 then
@@ -826,7 +843,7 @@ function JsonEditor:_get_parent_and_key(path)
     end
 
     local last = parts[#parts]
-    local key = tonumber(last) and tonumber(last) + 1 or last
+    local key = tonumber(last) and tonumber(last) or last
     return cur, key
 end
 

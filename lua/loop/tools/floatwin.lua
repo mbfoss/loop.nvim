@@ -1,10 +1,27 @@
+---@class loop.tools.floatwin
+---@field _complete_cache? string[]
+---@field _complete_buf? integer
 local M = {}
 
 local debug_win_augroup = vim.api.nvim_create_augroup("LoopPluginModalWin", { clear = true })
 local _current_win = nil
 
+---@class loop.floatwin.FloatwinOpts
+---@field title? string
+---@field at_cursor? boolean
+---@field move_to_bot? boolean
+
+---@class loop.floatwin.InputOpts
+---@field title? string
+---@field default_text? string
+---@field default_width? number
+---@field row_offset? number
+---@field col_offset? number
+---@field completions? string[]
+---@field on_confirm fun(value: string|nil)
+
 ---@param text string
----@param opts  {title:string,at_cursor:boolean?,move_to_bot:boolean?}?
+---@param opts loop.floatwin.FloatwinOpts?
 function M.show_floatwin(text, opts)
     if _current_win and vim.api.nvim_win_is_valid(_current_win) then
         vim.api.nvim_win_close(_current_win, true)
@@ -95,6 +112,7 @@ function M.show_floatwin(text, opts)
     end
 end
 
+---@param opts loop.floatwin.InputOpts
 function M.input_at_cursor(opts)
     local prev_win = vim.api.nvim_get_current_win()
     local buf = vim.api.nvim_create_buf(false, true)
@@ -108,11 +126,11 @@ function M.input_at_cursor(opts)
     }
     for k, v in pairs(buf_opts) do vim.bo[buf][k] = v end
 
-    -- Initial size calculations
+    local initial_text = opts.default_text or ""
+
     local min_width = opts.default_width or math.max(10, opts.title and (vim.fn.strdisplaywidth(opts.title) + 2) or 0)
     local max_width = math.floor(vim.o.columns * 0.8)
-    local initial_text = opts.default_text or ""
-    local current_width = math.max(min_width, #initial_text + 1)
+    local current_width = math.max(min_width, 40)
     current_width = math.min(current_width, max_width)
 
     local win = vim.api.nvim_open_win(buf, true, {
@@ -129,6 +147,7 @@ function M.input_at_cursor(opts)
     vim.wo[win].winhighlight = "Normal:Normal,NormalNC:Normal,EndOfBuffer:Normal,FloatBorder:Normal"
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { initial_text })
     vim.api.nvim_win_set_cursor(win, { 1, #initial_text })
+
     vim.schedule(function()
         if vim.api.nvim_get_current_win() == win then
             vim.cmd("startinsert!")
@@ -152,7 +171,9 @@ function M.input_at_cursor(opts)
 
             if new_width ~= current_width then
                 current_width = new_width
-                vim.api.nvim_win_set_config(win, { width = current_width })
+                if vim.api.nvim_win_is_valid(win) then
+                    vim.api.nvim_win_set_config(win, { width = current_width })
+                end
             end
 
             -- Trigger completions while typing
@@ -168,6 +189,7 @@ function M.input_at_cursor(opts)
     })
 
     local closed = false
+    ---@param value string|nil
     local function close(value)
         if closed then return end
         closed = true
@@ -184,8 +206,8 @@ function M.input_at_cursor(opts)
     -- Keybindings
     local kopts = { buffer = buf, nowait = true }
     vim.keymap.set("i", "<CR>", function() close(vim.api.nvim_get_current_line()) end, kopts)
-    vim.keymap.set("n", "<Esc>", function() close(nil) end, kopts)
     vim.keymap.set("i", "<C-c>", function() close(nil) end, kopts)
+    vim.keymap.set("n", "<Esc>", function() close(nil) end, kopts)
     if opts.completions and #opts.completions > 0 then
         vim.keymap.set("i", "<C-x><C-o>", function()
             vim.fn.feedkeys(vim.api.nvim_replace_termcodes("<C-x><C-o>", true, true, true), "n")
@@ -198,6 +220,9 @@ function M.input_at_cursor(opts)
     })
 end
 
+---@param findstart integer
+---@param base string
+---@return string[]
 function M._complete(findstart, base)
     local completions = M._complete_cache or {}
     local matches = {}

@@ -209,6 +209,7 @@ function M.select(prompt, items, formatter, callback)
         if closed then return end
         closed = true
         vim.schedule(function()
+            vim.cmd("stopinsert")
             for _, w in ipairs({ pwin, lwin, vwin }) do
                 if w and vim.api.nvim_win_is_valid(w) then
                     vim.api.nvim_win_close(w, true)
