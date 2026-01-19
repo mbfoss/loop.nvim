@@ -1,41 +1,56 @@
 local schema = {
+    ["$schema"] = "http://json-schema.org/draft-07/schema#",
+    title = "Loop Variables Configuration",
+    description = "Configuration file for loop.nvim custom variables",
     type = "object",
-    required = { "name", "save" },
+    additionalProperties = false,
+    required = { "workspace" },
     properties = {
-        version = {
-            type = { "string", "number" },
-            default = "1.0",
-            description = "Workspace configuration version for migration purposes",
+        ["$schema"] = {
+            type = "string"
         },
-        name = {
-            type = { "string" },
-            default = "",
-            description = "Optional name/identifier for this configuration entry",
-        },
-        save = {
-            type = { "object", "nil" },
-            description = "File saving/filtering options",
-            default = {},
+        workspace = {
+            type = "object",
+            required = { "name", "save" },
             properties = {
-                include = {
-                    type = { "array" },
-                    description = "Glob patterns for files to include when saving",
-                    items = { type = "string" },
+                version = {
+                    type = { "string", "number" },
+                    default = "1.0",
+                    description = "Workspace configuration version for migration purposes",
                 },
-                exclude = {
-                    type = { "array" },
-                    description = "Glob patterns for files/directories to exclude",
-                    items = { type = "string" },
+                name = {
+                    type = { "string" },
+                    default = "",
+                    description = "Optional name/identifier for this configuration entry",
                 },
-                follow_symlinks = {
-                    type = { "boolean" },
-                    description = "Whether to follow symbolic links when scanning",
+                save = {
+                    type = { "object", "nil" },
+                    description = "File saving/filtering options",
+                    default = {},
+                    properties = {
+                        include = {
+                            type = { "array" },
+                            description = "Glob patterns for files to include when saving",
+                            items = { type = "string" },
+                        },
+                        exclude = {
+                            type = { "array" },
+                            description = "Glob patterns for files/directories to exclude",
+                            items = { type = "string" },
+                        },
+                        follow_symlinks = {
+                            type = { "boolean" },
+                            description = "Whether to follow symbolic links when scanning",
+                        },
+                    },
+                    additionalProperties = false,
                 },
             },
             additionalProperties = false,
+
         },
     },
-    additionalProperties = false,
 }
+
 
 return schema

@@ -130,31 +130,15 @@ local function smart_coerce(input, schema)
     return input
 end
 
-local function format_value(value, max_len)
-    max_len = max_len or 50
-    local s
-    if type(value) == "string" then
-        s = '"' .. vim.fn.escape(value, '"') .. '"'
-    else
-        s = vim.json.encode(value)
-    end
-    if #s > max_len then
-        return s:sub(1, max_len - 3) .. "…"
-    end
-    return s
-end
-
 local function formatter(_, data, hls)
     if not data then return "" end
 
     local key   = tostring(data.key or "")
     local vt    = data.value_type
     local value = data.value
-    local icon  = " "
 
-    table.insert(hls, { group = "@property", start_col = #icon, end_col = #icon + #key })
-
-    local line = icon .. key
+    table.insert(hls, { group = "@property", start_col = 0, end_col = #key })
+    local line = key
 
     if vt == "object" or vt == "array" then
         local count = type(value) == "table" and #value or 0
@@ -162,7 +146,7 @@ local function formatter(_, data, hls)
         line = line .. ": " .. bracket
     elseif vt == "string" then
         table.insert(hls, { group = "@string", start_col = #line + 2 })
-        line = line .. ": " .. format_value(value, 40)
+        line = line .. ": " .. value
     elseif vt == "null" then
         table.insert(hls, { group = "@constant", start_col = #line + 2 })
         line = line .. ": null"
@@ -197,6 +181,10 @@ function JsonEditor:open(winid)
     assert(not self._is_open)
     self._is_open  = true
 
+    local name = self._opts.name or "JSON Editor"
+    local header_line = " (For help: g?)"
+
+
     ---@type loop.comp.ItemTree
     ---@diagnostic disable-next-line: undefined-field
     self._itemtree = ItemTreeComp:new({
@@ -212,7 +200,7 @@ function JsonEditor:open(winid)
         end,
     })
 
-    local buf = CompBuffer:new("jsoneditor", self._opts.name or "JSON Editor")
+    local buf = CompBuffer:new("jsoneditor", name)
     local ctrl = buf:make_controller()
 
     local function with_current_item(fn)
@@ -256,7 +244,6 @@ function JsonEditor:open(winid)
 
     local bufid, _ = buf:get_or_create_buf()
     vim.api.nvim_win_set_buf(winid, bufid)
-    vim.notify("JSON Editor opened. Press ? for help.", vim.log.levels.INFO)
 end
 
 function JsonEditor:_reload_data_and_tree()
@@ -377,6 +364,8 @@ function JsonEditor:_edit_value(item)
     local path   = item.data.path
     local schema = item.data.schema or {}
 
+    if not item.data.value or type(item.data.value) == "table" then return end
+ 
     if schema.const ~= nil then
         vim.notify("Value is const = " .. vim.inspect(schema.const), vim.log.levels.WARN)
         return
@@ -812,7 +801,6 @@ function JsonEditor:save()
         self._is_dirty = false
         self._undo_stack = {}
         self._redo_stack = {}
-        vim.notify("Saved: " .. self._filepath, vim.log.levels.INFO)
     end
 end
 
@@ -832,8 +820,6 @@ end
 
 function JsonEditor:_show_help()
     local help_text = {
-        "=== JSON Editor Help ===",
-        "",
         "Navigation:",
         "  <CR>     Toggle expand/collapse",
         "  j/k      Move up/down",

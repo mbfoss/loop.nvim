@@ -1,6 +1,6 @@
 local M = {}
 
-local JsonEditor = require('loop.json.JsonEditor')
+local JsonEditor = require('loop.tools.JsonEditor')
 local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
 local jsontools = require('loop.tools.json')
@@ -197,13 +197,15 @@ function M.configure_tasks(config_dir)
     local filepath = vim.fs.joinpath(config_dir, "tasks.json")
 
     local editor = JsonEditor:new({
-        name = "Configuration editor",
+        name = "Tasks editor",
         filepath = filepath,
         schema = tasks_file_schema,
         on_data_open = function(data)
             if not data or not data.tasks or not data["$schema"] then
                 local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
-                jsontools.save_to_file(schema_filepath, tasks_file_schema)
+                if not filetools.file_exists(schema_filepath) then
+                    jsontools.save_to_file(schema_filepath, tasks_file_schema)
+                end
                 data = {}
                 data["$schema"] = './tasksschema.json'
                 data["tasks"] = {}

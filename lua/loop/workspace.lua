@@ -11,10 +11,10 @@ local jsontools = require('loop.tools.json')
 local jsonschema = require('loop.tools.jsonschema')
 local filetools = require('loop.tools.file')
 local wssaveutil = require('loop.ws.saveutil')
-local migration = require('loop.ws.migration')
 local floatwin = require('loop.tools.floatwin')
 local selector = require('loop.tools.selector')
 local extdata = require("loop.extdata")
+local JsonEditor = require('loop.tools.JsonEditor')
 
 local _init_done = false
 local _init_err_msg = "init() not called"
@@ -112,25 +112,32 @@ local function _close_workspace(quiet)
 end
 
 ---@param ws_dir string
----@return boolean
----@return string?
 local function _configure_workspace(ws_dir)
     local config_dir = _get_config_dir(ws_dir)
-    local config_file = vim.fs.joinpath(config_dir, "workspace.json")
-    local bufnr = vim.fn.bufnr(config_file)
-    if bufnr ~= -1 then
-        uitools.smart_open_buffer(bufnr)
-        return true
-    end
-    if not filetools.file_exists(config_file) then
-        local model = require('loop.ws.template')
-        model = vim.fn.copy(model)
-        model.name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
-        jsontools.save_to_file(config_file, model)
-    end
-    local winid = uitools.smart_open_file(config_file)
-    uitools.move_to_first_occurence(winid, '"name": "')
-    return true, config_file
+    local schema = require('loop.ws.schema')
+    local filepath = vim.fs.joinpath(config_dir, "workspace.json")
+
+    local editor = JsonEditor:new({
+        name = "Workspace configuration",
+        filepath = filepath,
+        schema = schema,
+        on_data_open = function(data)
+            if not data or not data.variables or not data["$schema"] then
+                local schema_filepath = vim.fs.joinpath(config_dir, 'wsschema.json')
+                if not filetools.file_exists(schema_filepath) then
+                    jsontools.save_to_file(schema_filepath, schema)
+                end
+                data = {}
+                data["$schema"] = './wsschema.json'
+                data["workspace"] = vim.fn.deepcopy(require('loop.ws.template'))
+                data["workspace"].name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
+                return data
+            end
+        end,
+    })
+
+    editor:open(uitools.get_regular_window())
+    editor:save()
 end
 
 ---@param config_dir string
@@ -147,31 +154,11 @@ local function _load_workspace_config(config_dir)
     end
     local config = data_or_err
     local schema = require('loop.ws.schema')
-
-    -- Check if migration is needed
-    local needs_migrate, current_ver = migration.needs_migration(config)
-    if needs_migrate then
-        local migrated_config, migrate_err = migration.migrate_config(config)
-        if migrate_err then
-            return nil, { "Migration failed: " .. migrate_err }
-        end
-        config = migrated_config
-        -- Save migrated config back to file
-        local save_ok = jsontools.save_to_file(config_file, config)
-        if not save_ok then
-            vim.notify("Migrated workspace config but failed to save. Please save manually.",
-                vim.log.levels.WARN)
-        else
-            vim.notify("Migrated workspace config from version " .. current_ver .. " to " .. config.version,
-                vim.log.levels.INFO)
-        end
-    end
-
     local errors = jsonschema.validate(schema, config)
     if errors then
         return nil, errors
     end
-    return config
+    return config.workspace
 end
 
 ---@param dir string
@@ -278,12 +265,10 @@ function M.create_workspace(dir)
 
     vim.fn.mkdir(config_dir, "p")
 
-    if not _configure_workspace(dir) then
-        vim.notify("Failed to setup configuration file")
-    else
-        local ws_name = vim.fn.fnamemodify(dir, ":p:h:t")
-        logs.user_log("Workspace created: " .. ws_name, "workspace")
-    end
+    local ws_name = vim.fn.fnamemodify(dir, ":p:h:t")
+    logs.user_log("Workspace created: " .. ws_name, "workspace")
+    
+    _configure_workspace(dir)
 end
 
 ---@param dir string?
@@ -360,27 +345,7 @@ function M.configure_workspace()
         vim.notify("No active workspace", vim.log.levels.WARN)
         return
     end
-    local ok, configfile = _configure_workspace(_workspace_info.ws_dir)
-    if not ok or not configfile then
-        vim.notify("Failed to setup configuration file")
-        return
-    end
-    local read_ok, data_or_err = uitools.smart_read_file(configfile)
-    if not read_ok then
-        vim.notify("Workspace configuration error - " .. tostring(data_or_err))
-        return
-    end
-    local config_ok, config_or_err = jsontools.from_string(data_or_err)
-    if not config_ok then
-        vim.notify("Workspace configuration is not a valid JSON - " .. tostring(config_or_err))
-        return
-    end
-    local config = config_or_err
-    local schema = require('loop.ws.schema')
-    local errors = jsonschema.validate(schema, config)
-    if errors then
-        vim.notify("Workspace configuration error\n" .. table.concat(errors, '\n'))
-    end
+    _configure_workspace(_workspace_info.ws_dir)
 end
 
 ---@return string[]
@@ -529,7 +494,7 @@ end
 ---@return string[]
 function M.var_subcommands(args)
     if #args == 0 then
-        return { "add", "configure" }
+        return { "list", "configure" }
     end
     return {}
 end
@@ -544,12 +509,12 @@ function M.var_command(command)
 
     command = command and command:match("^%s*(.-)%s*$") or ""
     if command == "" then
-        command = "add"
+        command = "list"
     end
 
     local config_dir = ws_info.config_dir
-    if command == "add" then
-        variablesmgr.add_variable(config_dir)
+    if command == "list" then
+        variablesmgr.show_variables(config_dir)
     elseif command == "configure" then
         variablesmgr.configure_variables(config_dir)
     else
