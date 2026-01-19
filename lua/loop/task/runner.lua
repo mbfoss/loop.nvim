@@ -6,7 +6,7 @@ local logs          = require("loop.logs")
 local TaskScheduler = require("loop.task.TaskScheduler")
 local StatusComp    = require("loop.task.StatusComp")
 local config        = require("loop.config")
-local taskstore     = require("loop.task.taskstore")
+local variablesmgr  = require("loop.task.variablesmgr")
 local strtools      = require("loop.tools.strtools")
 local wsinfo        = require("loop.wsinfo")
 
@@ -57,7 +57,7 @@ end
 ---@return table<string, string>|nil variables, string[]|nil errors
 local function _load_variables(config_dir)
     -- Load variables after loading tasks (errors are logged but don't block task loading)
-    local vars, var_errors = taskstore.load_variables(config_dir)
+    local vars, var_errors = variablesmgr.load_variables(config_dir)
     if var_errors then
         vim.notify("error(s) loading variables.json")
         logs.log(strtools.indent_errors(var_errors, "Error(s) loading variables.json"),
@@ -96,9 +96,11 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
     local symbols = config.current.window.symbols
     _status_page.set_ui_flags(symbols.waiting)
 
+    _status_comp:add_task(root_name)
     local function report_failure(msg)
         logs.user_log(msg, "task")
         _status_page.set_ui_flags(symbols.failure)
+        _status_comp:set_task_status(root_name, "stop", false, msg)
     end
 
     if #all_tasks == 0 then
@@ -115,7 +117,9 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
     logs.user_log("Scheduling tasks:\n" .. print_task_tree(node_tree))
 
     for _, task in ipairs(used_tasks) do
-        _status_comp:add_task(task.name)
+        if task.name ~= root_name then
+            _status_comp:add_task(task.name)
+        end
     end
     _status_pagegroup.activate_page("status")
 
@@ -136,7 +140,6 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
         if not resolve_ok or not resolved_tasks then
             local err_msg = resolve_error or "Failed to resolve macros in tasks"
             report_failure(err_msg)
-            _status_comp:set_task_status(root_name, "stop", false, err_msg)
             return
         end
 

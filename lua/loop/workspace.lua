@@ -2,6 +2,7 @@ local M = {}
 
 local logs = require('loop.logs')
 local taskmgr = require("loop.task.taskmgr")
+local variablesmgr = require("loop.task.variablesmgr")
 local window = require("loop.ui.window")
 local wsinfo = require("loop.wsinfo")
 local runner = require("loop.task.runner")
@@ -479,7 +480,7 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "run", "repeat", "add", "terminate", "configure" }
+        return { "run", "repeat", "terminate", "configure" }
     end
     return {}
 end
@@ -503,8 +504,6 @@ function M.task_command(command, arg1, arg2)
         runner.load_and_run_task(config_dir, window.page_manger_factory(), "task", arg1)
     elseif command == "repeat" then
         runner.load_and_run_task(config_dir, window.page_manger_factory(), "repeat")
-    elseif command == "add" then
-        taskmgr.add_task(config_dir)
     elseif command == "configure" then
         taskmgr.configure_tasks(config_dir)
     elseif command == "terminate" then
@@ -550,9 +549,9 @@ function M.var_command(command)
 
     local config_dir = ws_info.config_dir
     if command == "add" then
-        taskmgr.add_variable(config_dir)
+        variablesmgr.add_variable(config_dir)
     elseif command == "configure" then
-        taskmgr.configure_variables(config_dir)
+        variablesmgr.configure_variables(config_dir)
     else
         vim.notify('Invalid var command: ' .. command)
     end

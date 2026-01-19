@@ -3,7 +3,9 @@ local M = {}
 local JsonEditor = require('loop.json.JsonEditor')
 local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
-local taskstore = require("loop.task.taskstore")
+local jsontools = require('loop.tools.json')
+local jsonschema = require('loop.tools.jsonschema')
+local filetools = require('loop.tools.file')
 local providers = require("loop.task.providers")
 local selector = require("loop.tools.selector")
 local logs = require("loop.logs")
@@ -78,6 +80,65 @@ local function _get_single_task_schema(task_type)
     return schema
 end
 
+
+---@param content string
+---@param tasktype_to_schema table<string,Object>
+---@return loop.Task[]|nil
+---@return string[]|nil
+local function _load_tasks_from_str(content, tasktype_to_schema)
+    if content == "" then
+        return {}, nil
+    end
+    local loaded, data_or_err = jsontools.from_string(content)
+    if not loaded or type(data_or_err) ~= 'table' then
+        return nil, { data_or_err }
+    end
+
+    local data = data_or_err
+    do
+        local schema = require("loop.task.tasksschema").base_schema
+        local errors = jsonschema.validate(schema, data)
+        if errors and #errors > 0 then
+            return nil, errors
+        end
+        if not data or not data.tasks then
+            return nil, { "Parsing error" }
+        end
+    end
+
+    ---@type loop.Task[]
+    local tasks = data.tasks
+    for _, task in ipairs(tasks) do
+        local schema = tasktype_to_schema[task.type]
+        if not schema then
+            return nil, { "No schema for task type: " .. task.type }
+        end
+        local errors = jsonschema.validate(schema, task)
+        if errors and #errors > 0 then
+            table.insert(errors, 1, "Failed to load task: " .. task.name)
+            return nil, errors
+        end
+    end
+
+    return data.tasks, nil
+end
+
+---@param filepath string
+---@param tasktype_to_schema table<string,Object>
+---@return loop.Task[]|nil
+---@return string[]|nil
+local function _load_tasks_file(filepath, tasktype_to_schema)
+    local loaded, contents_or_err = uitools.smart_read_file(filepath)
+    if not loaded then
+        if not filetools.file_exists(filepath) then
+            return {}, nil -- not an error
+        end
+        return nil, { contents_or_err }
+    end
+    return _load_tasks_from_str(contents_or_err, tasktype_to_schema)
+end
+
+
 ---@param config_dir string
 ---@return loop.Task[]?,string[]?
 local function _load_tasks(config_dir)
@@ -85,32 +146,21 @@ local function _load_tasks(config_dir)
     for _, tasktype in ipairs(providers.task_types()) do
         tasktype_to_schema[tasktype] = _get_single_task_schema(tasktype)
     end
-    return taskstore.load_tasks(config_dir, tasktype_to_schema)
-end
-
----@param config_dir string
----@param templates loop.taskTemplate[]
----@param prompt string
-local function _select_and_add_task(config_dir, templates, prompt)
-    local choices = {}
-    for _, template in pairs(templates) do
-        ---@type loop.SelectorItem
-        local item = {
-            label = template.name,
-            data = template.task,
-        }
-        table.insert(choices, item)
+    local filepath = vim.fs.joinpath(config_dir, "tasks.json")
+    local tasks, errors = _load_tasks_file(filepath, tasktype_to_schema)
+    if not tasks then
+        return nil, strtools.indent_errors(errors, "error(s) in: " .. filepath)
     end
-    selector.select(prompt, choices, _task_preview, function(task)
-        if task then
-            local ok, errors = taskstore.add_task(config_dir, task, _build_taskfile_schema())
-            if not ok then
-                vim.notify("Failed to add task")
-                logs.log(strtools.indent_errors(errors, "Failed to add task"), vim.log.levels.ERROR)
-                return
-            end
+
+    local byname = {}
+    for _, task in ipairs(tasks) do
+        if byname[task.name] ~= nil then
+            return nil, { "error in: " .. filepath, "  duplicate task name: " .. task.name }
         end
-    end)
+        byname[task.name] = task
+    end
+
+    return tasks, nil
 end
 
 function M.reset_provider_list()
@@ -133,29 +183,12 @@ function M.on_tasks_cleanup()
     end
 end
 
----@param config_dir string
-function M.add_task(config_dir)
-    local choices = {}
-    for _, elem in ipairs(providers.get_task_template_providers()) do
-        ---@type loop.SelectorItem
-        local item = {
-            label = elem.category,
-            data = elem.provider,
-        }
-        table.insert(choices, item)
-    end
-    selector.select("Task category", choices, nil, function(provider)
-        if provider then
-            local templates = provider.get_task_templates()
-            _select_and_add_task(config_dir, templates, "Select template")
-        end
-    end)
-end
-
 ---@param name string
 ---@param config_dir string
 function M.save_last_task_name(name, config_dir)
-    taskstore.save_last_task_name(name, config_dir)
+    local filepath = vim.fs.joinpath(config_dir, "last.json")
+    local data = { task = name }
+    jsontools.save_to_file(filepath, data)
 end
 
 ---@param config_dir string
@@ -164,8 +197,19 @@ function M.configure_tasks(config_dir)
     local filepath = vim.fs.joinpath(config_dir, "tasks.json")
 
     local editor = JsonEditor:new({
+        name = "Configuration editor",
         filepath = filepath,
         schema = tasks_file_schema,
+        on_data_open = function(data)
+            if not data or not data.tasks or not data["$schema"] then
+                local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
+                jsontools.save_to_file(schema_filepath, tasks_file_schema)
+                data = {}
+                data["$schema"] = './tasksschema.json'
+                data["tasks"] = {}
+                return data
+            end
+        end,
         on_node_added = function(path, continue)
             if not path:match("^/tasks$") then
                 continue(nil)
@@ -203,41 +247,6 @@ function M.configure_tasks(config_dir)
     editor:open(uitools.get_regular_window())
 end
 
----@param config_dir string
-function M.add_variable(config_dir)
-    -- Prompt for variable name
-    vim.ui.input({ prompt = "Variable name: " }, function(var_name)
-        if not var_name or var_name == "" then
-            return
-        end
-
-        -- Validate variable name pattern: ^[A-Za-z_][A-Za-z0-9_]*$
-        if not var_name:match("^[A-Za-z_][A-Za-z0-9_]*$") then
-            vim.notify("Invalid variable name. Must match pattern: ^[A-Za-z_][A-Za-z0-9_]*$", vim.log.levels.ERROR)
-            return
-        end
-
-        -- Prompt for variable value
-        vim.ui.input({ prompt = "Variable value: " }, function(var_value)
-            if not var_value then
-                return
-            end
-
-            local schema = require("loop.task.variablesschema").base_schema
-            local ok, errors = taskstore.add_variable(config_dir, var_name, var_value, schema)
-            if not ok then
-                vim.notify("Failed to add variable")
-                logs.log(strtools.indent_errors(errors, "Failed to add variable"), vim.log.levels.ERROR)
-            end
-        end)
-    end)
-end
-
----@param config_dir string
-function M.configure_variables(config_dir)
-    taskstore.open_variables_config(config_dir)
-end
-
 ---@class loop.SelectTaskArgs
 ---@field tasks loop.Task[]
 ---@field prompt string
@@ -265,12 +274,23 @@ local function _select_task(args, task_handler)
 end
 
 ---@param config_dir string
+---@return string|nil
+local function _load_last_task_name(config_dir)
+    local filepath = vim.fs.joinpath(config_dir, "last.json")
+    local ok, payload = jsontools.load_from_file(filepath)
+    if not ok then
+        return nil
+    end
+    return payload and payload.task or nil
+end
+
+---@param config_dir string
 ---@param mode "task"|"repeat"
 ---@param task_name string|nil
 ---@param handler fun(main_task:string|nil,all_tasks:loop.Task[]|nil)
 function M.get_or_select_task(config_dir, mode, task_name, handler)
     if mode == "repeat" then
-        task_name = taskstore.load_last_task_name(config_dir)
+        task_name = _load_last_task_name(config_dir)
     end
 
     local tasks, task_errors = _load_tasks(config_dir)

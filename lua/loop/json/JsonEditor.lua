@@ -17,9 +17,18 @@ local floatwin     = require("loop.tools.floatwin")
 local selector     = require("loop.tools.selector")
 local validator    = require("loop.tools.jsonschema")
 local json_util    = require("loop.tools.json")
+local file_util    = require("loop.tools.file")
+
+---@class loop.JsonEditorOpts
+---@field name? string -- Buffer display name (default: "JSON Editor")
+---@field filepath string -- Absolute or relative path to JSON file
+---@field schema? table -- JSON Schema (draft-agnostic, validator-compatible)
+---@field on_data_open? fun(data:table):any -- Called after JSON is loaded, before render
+---@field on_node_added? fun(path:string,allback:fun(to_add:any|nil)) -- Custom add hook (object or array)
+---@field exclude_null_from_property_type? boolean --- When true (default), filters "null" from selectable property types
 
 ---@class loop.JsonEditor
----@field new fun(self: loop.JsonEditor, opts:table): loop.JsonEditor
+---@field new fun(self: loop.JsonEditor, opts:loop.JsonEditorOpts): loop.JsonEditor
 ---@field inint fun(self: loop.JsonEditor)
 ---@field _filepath string
 ---@field _data table
@@ -203,7 +212,7 @@ function JsonEditor:open(winid)
         end,
     })
 
-    local buf = CompBuffer:new("jsoneditor", "JSON Editor")
+    local buf = CompBuffer:new("jsoneditor", self._opts.name or "JSON Editor")
     local ctrl = buf:make_controller()
 
     local function with_current_item(fn)
@@ -211,17 +220,10 @@ function JsonEditor:open(winid)
         if item then fn(item) end
     end
 
-    buf:add_keymap("e", {
-        desc = "Edit value (e)",
+    buf:add_keymap("c", {
+        desc = "Change value (c)",
         callback = function()
             with_current_item(function(i) self:_edit_value(i) end)
-        end
-    })
-
-    buf:add_keymap("E", {
-        desc = "Rename key (E)",
-        callback = function()
-            with_current_item(function(i) self:_rename_key(i) end)
         end
     })
 
@@ -245,9 +247,9 @@ function JsonEditor:open(winid)
 
     buf:add_keymap("<C-r>", { desc = "Redo (C-r)", callback = function() self:redo() end })
 
-    buf:add_keymap("?", { desc = "Help (?)", callback = function() self:_show_help() end })
+    buf:add_keymap("g?", { desc = "Help (?)", callback = function() self:_show_help() end })
 
-    buf:add_keymap("!", { desc = "Show errors (!)", callback = function() self:_show_errors() end })
+    buf:add_keymap("ge", { desc = "Show errors (!)", callback = function() self:_show_errors() end })
 
     self._itemtree:link_to_buffer(ctrl)
     self._buf_ctrl = ctrl
@@ -261,8 +263,17 @@ function JsonEditor:_reload_data_and_tree()
     local ok, data = json_util.load_from_file(self._filepath)
 
     if not ok then
-        vim.notify("Failed to load JSON: " .. tostring(data), vim.log.levels.WARN)
-        return
+        if file_util.file_exists(self._filepath) then
+            vim.notify("Failed to load JSON: " .. tostring(data), vim.log.levels.WARN)
+            return
+        else
+            data = {}
+        end
+    end
+
+    if self._opts.on_data_open then
+        local ret = self._opts.on_data_open(data)
+        if ret ~= nil then data = ret end
     end
 
     self._data = data
@@ -386,50 +397,12 @@ function JsonEditor:_edit_value(item)
         or vim.json.encode(item.data.value)
 
     floatwin.input_at_cursor({
-        title = "Edit value",
+        title = "Value",
         default_text = default,
         on_confirm = function(txt)
             if txt == nil then return end
             local coerced = smart_coerce(txt, schema)
             self:_set_value(path, coerced)
-        end,
-    })
-end
-
-function JsonEditor:_rename_key(item)
-    if item.data.path == "" then
-        vim.notify("Cannot rename root", vim.log.levels.WARN)
-        return
-    end
-
-    local parent_path = item.data.path:match("^(.*)/[^/]+$") or ""
-    local schema = resolve_schema(self._schema, parent_path)
-    if schema and schema.additionalProperties == false then
-        vim.notify("Object does not allow additional properties", vim.log.levels.WARN)
-        return
-    end
-
-    local old_key = item.data.key:match("^%[(%d+)%]$") or item.data.key
-
-    floatwin.input_at_cursor({
-        title = "New key name",
-        default_text = old_key,
-        on_confirm = function(newkey)
-            if not newkey or newkey == "" or newkey == old_key then return end
-
-            self:_push_undo()
-
-            local parent, oldkey = self:_get_parent_and_key(item.data.path)
-            if not parent then
-                table.remove(self._undo_stack)
-                return
-            end
-            if oldkey then
-                local value = parent[oldkey]
-                parent[oldkey] = nil
-                parent[newkey] = value
-            end
-            self:_set_value("", self._data)
         end,
     })
 end
@@ -507,7 +480,11 @@ function JsonEditor:_delete(item)
         return
     end
 
-    parent[key] = nil
+    if vim.islist(parent) then
+        table.remove(parent, key)
+    else
+        parent[key] = nil
+    end
     self._itemtree:remove_item(item.id)
 
     local ok, err = json_util.save_to_file(self._filepath, self._data)
@@ -862,9 +839,8 @@ function JsonEditor:_show_help()
         "  j/k      Move up/down",
         "",
         "Editing:",
-        "  e        Edit value",
-        "  E        Rename key",
         "  a        Add property/item",
+        "  c        Change value",
         "  d        Delete",
         "",
         "File:",
@@ -874,14 +850,14 @@ function JsonEditor:_show_help()
         "",
         "Other:",
         "  !        Show validation errors",
-        "  ?        Show this help",
+        "  g?       Show this help",
     }
     floatwin.show_floatwin(table.concat(help_text, "\n"), { title = "Help" })
 end
 
 function JsonEditor:_get_parent_and_key(path)
     local parts = split_path(path)
-    if #parts <= 1 then return nil, nil end
+    if #parts < 1 then return nil, nil end
 
     local cur = self._data
     for i = 1, #parts - 1 do
@@ -890,7 +866,8 @@ function JsonEditor:_get_parent_and_key(path)
     end
 
     local last = parts[#parts]
-    local key = tonumber(last) and tonumber(last) or last
+    local numkey = tonumber(last)
+    local key = numkey or last
     return cur, key
 end
 
