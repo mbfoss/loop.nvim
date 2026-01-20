@@ -36,8 +36,8 @@ local function _serialize(value, level, path, schema)
             for k in pairs(value) do
                 table.insert(keys, k)
             end
-            if value.__order then
-                local ordered = value.__order
+            local ordered = order_keys(keys, schema)
+            if ordered then
                 local index = 1
                 local priorities = {}
                 if ordered then
@@ -60,11 +60,9 @@ local function _serialize(value, level, path, schema)
             if #keys == 0 then return "{}" end
             local parts = { "{" }
             for _, k in ipairs(keys) do
-                if k ~= "__order" then
-                    local key_json = type(k) == "string" and encode_one(k) or ('"' .. tostring(k) .. '"')
-                    local val_json = _serialize(value[k], level + 1, path .. k .. '/')
-                    table.insert(parts, "\n" .. next_indent .. key_json .. ": " .. val_json .. ",")
-                end
+                local key_json = type(k) == "string" and encode_one(k) or ('"' .. tostring(k) .. '"')
+                local val_json = _serialize(value[k], level + 1, path .. k .. '/')
+                table.insert(parts, "\n" .. next_indent .. key_json .. ": " .. val_json .. ",")
             end
             -- Remove trailing comma
             parts[#parts] = parts[#parts]:gsub(",$", "")
