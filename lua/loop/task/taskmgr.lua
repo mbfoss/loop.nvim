@@ -32,8 +32,10 @@ local function _build_taskfile_schema()
                     type = "object",
                     properties = vim.tbl_extend("error", base_items.properties, provider_schema.properties or {}),
                     required = vim.deepcopy(base_items.required),
+                    __order = base_items.__order or {},
                 }
                 oneOfItem.__name = provider_schema.__name
+                if provider_schema.__order then vim.list_extend(oneOfItem.__order, provider_schema.__order) end
                 oneOfItem.properties.type = { const = type }
                 oneOfItem.additionalProperties = provider_schema.additionalProperties or false
                 for _, req in ipairs(provider_schema.required or {}) do
@@ -61,10 +63,7 @@ local function _get_single_task_schema(task_type)
 
     local provider_schema = provider.get_task_schema()
     if provider_schema then
-        
-        if provider_schema.__order then
-            vim.list_extend(schema.__order, provider_schema.__order)
-        end
+        if provider_schema.__order then vim.list_extend(schema.__order, provider_schema.__order) end
         schema.properties = vim.tbl_extend("error", schema.properties, provider_schema.properties or {})
         schema.additionalProperties = provider_schema.additionalProperties or false
         for _, req in ipairs(provider_schema.required or {}) do

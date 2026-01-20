@@ -37,6 +37,8 @@ local ItemTree = class()
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemTreeComp')
 
+---@param item loop.comp.ItemTree.Item
+---@return loop.comp.ItemTree.ItemData
 local function _item_to_itemdata(item)
     return {
         userdata = item.data,
@@ -45,6 +47,17 @@ local function _item_to_itemdata(item)
         reload_children = true,
         load_sequence = 1,
     }
+end
+
+---@param old loop.comp.ItemTree.ItemData
+---@param new loop.comp.ItemTree.ItemData
+local function _merge_itemdata(old, new)
+    local data = old or {}
+    data.userdata = new.userdata
+    data.children_callback = new.children_callback
+    data.reload_children = new.children_callback ~= nil
+    -- Keep expanded/loading flags intact
+    return data
 end
 
 local function _refresh_tree(tree, async_update)
@@ -78,7 +91,7 @@ local function _refresh_tree(tree, async_update)
                                 local basetreeitem = { id = child.id, data = _item_to_itemdata(child) }
                                 table.insert(treeitems, basetreeitem)
                             end
-                            tree:update_children(item_id, treeitems)
+                            tree:update_children(item_id, treeitems, _merge_itemdata)
                             item.children_loading = false
                             async_update()
                         end
@@ -178,6 +191,23 @@ function ItemTree:upsert_items(items)
     for _, item in ipairs(items) do
         self._tree:upsert_item(item.parent_id, item.id, _item_to_itemdata(item))
     end
+    self:_request_render()
+end
+
+---@param parent_id any
+---@param children loop.comp.ItemTree.Item[]
+function ItemTree:update_children(parent_id, children)
+    ---@type loop.tools.Tree.Item[]
+    local baseitems = {}
+    for _, child_item in ipairs(children) do
+        ---@type loop.tools.Tree.Item
+        local item = {
+            id = child_item.id,
+            data = _item_to_itemdata(child_item)
+        }
+        table.insert(baseitems, item)
+    end
+    self._tree:update_children(parent_id, baseitems, _merge_itemdata)
     self:_request_render()
 end
 

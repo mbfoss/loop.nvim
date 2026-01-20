@@ -94,6 +94,51 @@ local function resolve_schema(schema, path)
     return cur
 end
 
+function _resolve_oneof_schema(value, schema)
+    if schema and schema.oneOf then
+        for _, subschema in ipairs(schema.oneOf) do
+            local errs = validator.validate(subschema, value)
+            if not errs then
+                return subschema
+            end
+        end
+        return nil
+    end
+    return schema
+end
+
+---@param keys string[]
+---@param schema table|nil        -- schema node for this table
+local function _order_keys(keys, schema)
+    local order = type(schema) == "table" and schema.__order or nil
+    if not order then
+        vim.fn.sort(keys)
+        return
+    end
+
+    -- Return a shallow copy to avoid mutation
+    local ordered = {}
+    for i = 1, #order do
+        ordered[i] = order[i]
+    end
+
+    local index = 1
+    local priorities = {}
+    for _, v in ipairs(ordered) do
+        priorities[v] = index
+        index = index + 1
+    end
+
+    for _, v in ipairs(keys) do
+        if not priorities[v] then
+            priorities[v] = index
+            index = index + 1
+        end
+    end
+
+    table.sort(keys, function(a, b) return priorities[a] < priorities[b] end)
+end
+
 local function smart_coerce(input, schema)
     if not schema or not schema.type then return input end
 
@@ -179,9 +224,9 @@ end
 
 function JsonEditor:open(winid)
     assert(not self._is_open)
-    self._is_open  = true
+    self._is_open     = true
 
-    local name = self._opts.name or "JSON Editor"
+    local name        = self._opts.name or "JSON Editor"
     local header_line = " (For help: g?)"
 
 
@@ -283,16 +328,21 @@ function JsonEditor:_reload_tree()
 end
 
 function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
+    assert(type(tbl) == "table")
+    ---@type loop.comp.ItemTree.Item[]
+    local items = {}
+
+    parent_schema = _resolve_oneof_schema(tbl, parent_schema)
+
     if is_array(tbl) then
         for i, v in ipairs(tbl) do
             local str_i = tostring(i)
             local p = join_path(path, str_i)
             local id = parent_id and (parent_id .. "::" .. str_i) or str_i
             local item_schema = parent_schema and parent_schema.items or nil
-
+            ---@type loop.comp.ItemTree.Item
             local item = {
                 id = id,
-                parent_id = parent_id,
                 expanded = self._fold_cache[p] ~= false,
                 data = {
                     key = "[" .. str_i .. "]",
@@ -302,15 +352,11 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
                     schema = item_schema,
                 },
             }
-            self._itemtree:upsert_item(item)
-            if type(v) == "table" then
-                self:_upsert_tree_items(v, p, id, item_schema)
-            end
+            table.insert(items, item)
         end
     else
         local keys = vim.tbl_keys(tbl)
-        table.sort(keys)
-
+        _order_keys(keys, parent_schema)
         for _, k in ipairs(keys) do
             if k == "$schema" then goto continue end
 
@@ -322,14 +368,14 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
             if parent_schema then
                 if parent_schema.properties and parent_schema.properties[k] then
                     prop_schema = parent_schema.properties[k]
-                elseif parent_schema.oneOf then
-                    prop_schema = self:_resolve_oneof_schema(parent_schema.oneOf, v, k)
-                elseif parent_schema.additionalProperties then
-                    prop_schema = parent_schema.additionalProperties == true and {} or parent_schema
-                        .additionalProperties
+                end
+                if prop_schema then
+                    if prop_schema.additionalProperties == nil then
+                        prop_schema.additionalProperties = parent_schema.additionalProperties
+                    end
                 end
             end
-
+            ---@type loop.comp.ItemTree.Item
             local item = {
                 id = id,
                 parent_id = parent_id,
@@ -342,22 +388,18 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
                     schema = prop_schema,
                 },
             }
-            self._itemtree:upsert_item(item)
-            if type(v) == "table" then
-                self:_upsert_tree_items(v, p, id, prop_schema)
-            end
+            table.insert(items, item)
             ::continue::
         end
     end
-end
 
-function JsonEditor:_resolve_oneof_schema(one_of_schemas, value, key)
-    for _, subschema in ipairs(one_of_schemas) do
-        if subschema.properties and subschema.properties[key] then
-            return subschema.properties[key]
+    self._itemtree:update_children(parent_id, items)
+    for _, item in ipairs(items) do
+        if type(item.data.value) == "table" then
+            local data = item.data
+            self:_upsert_tree_items(data.value, data.path, item.id, data.schema)
         end
     end
-    return nil
 end
 
 function JsonEditor:_edit_value(item)
@@ -365,7 +407,7 @@ function JsonEditor:_edit_value(item)
     local schema = item.data.schema or {}
 
     if not item.data.value or type(item.data.value) == "table" then return end
- 
+
     if schema.const ~= nil then
         vim.notify("Value is const = " .. vim.inspect(schema.const), vim.log.levels.WARN)
         return
@@ -474,7 +516,6 @@ function JsonEditor:_delete(item)
     else
         parent[key] = nil
     end
-    self._itemtree:remove_item(item.id)
 
     local ok, err = json_util.save_to_file(self._filepath, self._data)
     if not ok then
@@ -585,14 +626,11 @@ function JsonEditor:_add_object_property(item, schema)
         completions = suggested_keys,
         on_confirm = function(key)
             if not key or key == "" then return end
-            local obj = item.data.value
-            if obj[key] ~= nil then
+            if item.data.value[key] ~= nil then
                 vim.notify("Key already exists", vim.log.levels.WARN)
                 return
             end
-
             local matched_schemas = key_schemas[key]
-
             if matched_schemas and #matched_schemas > 1 then
                 local choices = {}
                 for _, schema_info in ipairs(matched_schemas) do

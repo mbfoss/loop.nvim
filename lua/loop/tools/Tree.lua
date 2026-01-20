@@ -216,10 +216,8 @@ end
 ---New children are added, and missing children are removed unless `loading` is true.
 ---@param parent_id any|nil
 ---@param items loop.tools.Tree.Item[]
----@param remove_orphans boolean|nil If true, do not remove missing children
-function Tree:update_children(parent_id, items, remove_orphans)
-	if remove_orphans == nil then remove_orphans = true end
-
+---@param merge_data_fn fun(old:any,new:any):any
+function Tree:update_children(parent_id, items, merge_data_fn)
 	-- Index existing children by id
 	local existing = {}
 	for _, child in ipairs(self:get_children(parent_id)) do
@@ -231,10 +229,11 @@ function Tree:update_children(parent_id, items, remove_orphans)
 		local node = existing[incoming.id]
 		if node then
 			-- Merge in place
-			node.data.userdata = incoming.data.userdata
-			node.data.children_callback = incoming.data.children_callback
-			node.data.reload_children = incoming.data.children_callback ~= nil
-			-- Keep expanded/loading flags intact
+            if merge_data_fn then 
+                node.data = merge_data_fn(node.data, incoming.data)
+            else
+                node.data = incoming.data
+            end
 			table.insert(final_children, node)
 			existing[incoming.id] = nil
 		else
@@ -253,12 +252,10 @@ function Tree:update_children(parent_id, items, remove_orphans)
 		end
 	end
 
-	-- Remove orphans if not loading
-	if remove_orphans then
-		for _, orphan in pairs(existing) do
-			self:_remove_subtree(orphan.id)
-		end
-	end
+	-- Remove orphans
+    for _, orphan in pairs(existing) do
+        self:_remove_subtree(orphan.id)
+    end
 
 	-- Rebuild the linked list for parent
 	local prev_id = nil

@@ -115,7 +115,8 @@ local function validate(schema, data, path)
 
         local props = schema.properties or {}
         local required = schema.required or {}
-
+        local pattern_props = schema.patternProperties or {}
+        
         -- Required fields
         for _, key in ipairs(required) do
             if data[key] == nil then

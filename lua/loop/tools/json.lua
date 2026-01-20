@@ -42,16 +42,17 @@ local function resolve_subschema(schema, key, value)
 end
 
 
+---@param keys string[]
 ---@param schema table|nil        -- schema node for this table
----@return string[]|nil           -- ordered keys or nil if no ordering defined
-local function get_order(schema)
+---@return string[]           -- ordered keys or nil if no ordering defined
+local function _order_keys(keys, schema)
     if type(schema) ~= "table" then
-        return nil
+        return keys
     end
 
     local order = schema.__order
     if type(order) ~= "table" then
-        return nil
+        return keys
     end
 
     -- Return a shallow copy to avoid mutation
@@ -60,9 +61,23 @@ local function get_order(schema)
         ordered[i] = order[i]
     end
 
-    return ordered
-end
+    local index = 1
+    local priorities = {}
+    for _, v in ipairs(ordered) do
+        priorities[v] = index
+        index = index + 1
+    end
 
+    for _, v in ipairs(keys) do
+        if not priorities[v] then
+            priorities[v] = index
+            index = index + 1
+        end
+    end
+    
+    table.sort(keys, function(a, b) return priorities[a] < priorities[b] end)
+    return keys
+end
 
 ---@param value string
 ---@param level number
@@ -93,27 +108,7 @@ local function _serialize(value, level, path, schema)
             for k in pairs(value) do
                 table.insert(keys, k)
             end
-            local ordered = get_order(schema)
-            if ordered then
-                local index = 1
-                local priorities = {}
-                if ordered then
-                    for _, v in ipairs(ordered) do
-                        priorities[v] = index
-                        index = index + 1
-                    end
-                end
-                for _, v in ipairs(keys) do
-                    if not priorities[v] then
-                        priorities[v] = index
-                        index = index + 1
-                    end
-                end
-                --vim.notify(vim.inspect({path, priorities}))
-                table.sort(keys, function(a, b) return priorities[a] < priorities[b] end)
-            else
-                table.sort(keys)
-            end
+            keys = _order_keys(keys, schema)
             if #keys == 0 then return "{}" end
             local parts = { "{" }
             for _, k in ipairs(keys) do
