@@ -40,9 +40,6 @@ function M.get_composite_task_provider()
         end,
         get_task_preview = function(task)
             local cpy = vim.fn.copy(task)
-            local templates = require('loop.coretasks.templates.composite')
-            ---@diagnostic disable-next-line: undefined-field, inject-field
-            cpy.__order = templates[1].task.__order
             return jsontools.to_string(cpy), "json"
         end,
         start_one_task = function(task, page_manager, on_exit)
@@ -64,9 +61,6 @@ function M.get_command_task_provider()
         end,
         get_task_preview = function(task)
             local cpy = vim.fn.copy(task)
-            local templates = require('loop.coretasks.templates.build')
-            ---@diagnostic disable-next-line: undefined-field, inject-field
-            cpy.__order = templates[1].task.__order
             return jsontools.to_string(cpy), "json"
         end,
         start_one_task = command_task.start_task

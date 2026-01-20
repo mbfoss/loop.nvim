@@ -1,12 +1,9 @@
-local field_order = { "name", "type", "command", "cwd", "save_buffers", "quickfix_matcher", "depends_on", "depends_order" }
-
 ---@type loop.taskTemplate[]
 return {
 	--- empty generic task
 	{
 		name = "Build task",
 		task = {
-			__order = field_order,
 			name = "Build",
 			type = "command",
 			command = "",
@@ -21,7 +18,6 @@ return {
 	{
 		name = "C++: Build Project (Make)",
 		task = {
-			__order = field_order,
 			name = "Make",
 			type = "command",
 			command = "make",
@@ -33,7 +29,6 @@ return {
 	{
 		name = "C++: Build Single File (G++)",
 		task = {
-			__order = field_order,
 			name = "Compile file",
 			type = "command",
 			command = "g++ -g -Wall -Wextra ${file} -o ${fileroot}.out",
@@ -49,7 +44,6 @@ return {
 	{
 		name = "Rust: Cargo Build",
 		task = {
-			__order = field_order,
 			name = "Build",
 			type = "command",
 			command = "cargo build --message-format=short",
@@ -61,7 +55,6 @@ return {
 	{
 		name = "Rust: Cargo Build (Release)",
 		task = {
-			__order = field_order,
 			name = "Build (Release)",
 			type = "command",
 			command = "cargo build --release --message-format=short",
@@ -73,7 +66,6 @@ return {
 	{
 		name = "Rust: Cargo Check",
 		task = {
-			__order = field_order,
 			name = "Check",
 			type = "command",
 			command = "cargo check --message-format=short",
@@ -89,7 +81,6 @@ return {
 	{
 		name = "Go: Build Project",
 		task = {
-			__order = field_order,
 			name = "Build",
 			type = "command",
 			command = "go build ./...",
@@ -101,7 +92,6 @@ return {
 	{
 		name = "Go: Build Current File",
 		task = {
-			__order = field_order,
 			name = "Build File",
 			type = "command",
 			command = "go build ${file}",
@@ -117,7 +107,6 @@ return {
 	{
 		name = "Lua: Lint Current File",
 		task = {
-			__order = field_order,
 			name = "Luacheck",
 			type = "command",
 			command = "luacheck ${file} --formatter plain --codes",
@@ -129,7 +118,6 @@ return {
 	{
 		name = "TS: Type Check Project",
 		task = {
-			__order = field_order,
 			name = "Check",
 			type = "command",
 			command = "tsc --noEmit --pretty false",
@@ -141,7 +129,6 @@ return {
 	{
 		name = "Python: Lint Current File",
 		task = {
-			__order = field_order,
 			name = "Pylint",
 			type = "command",
 			command = "pylint --output-format=parseable ${file}",
