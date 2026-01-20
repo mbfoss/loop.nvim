@@ -1,5 +1,4 @@
 local command_task = require('loop.coretasks.command')
-local jsontools = require('loop.tools.json')
 
 local M = {}
 
@@ -38,10 +37,6 @@ function M.get_composite_task_provider()
                 __name = "Composite",
             }
         end,
-        get_task_preview = function(task)
-            local cpy = vim.fn.copy(task)
-            return jsontools.to_string(cpy), "json"
-        end,
         start_one_task = function(task, page_manager, on_exit)
             -- composite task does nothing by itself
             on_exit(true)
@@ -58,10 +53,6 @@ function M.get_command_task_provider()
         get_task_schema = function()
             local schema = require('loop.coretasks.schema.command')
             return schema
-        end,
-        get_task_preview = function(task)
-            local cpy = vim.fn.copy(task)
-            return jsontools.to_string(cpy), "json"
         end,
         start_one_task = command_task.start_task
     }

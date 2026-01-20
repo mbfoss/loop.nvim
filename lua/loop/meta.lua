@@ -43,7 +43,6 @@ error('Cannot require a meta file')
 
 ---@class loop.TaskTypeProvider
 ---@field get_task_schema fun():table
----@field get_task_preview (fun(task:loop.Task):string,string)|nil
 ---@field start_one_task fun(task:loop.Task,page_manager:loop.PageManager, on_exit:loop.TaskExitHandler):(loop.TaskControl|nil,string|nil)
 ---@field on_tasks_cleanup fun()?
 

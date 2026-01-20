@@ -1,7 +1,7 @@
 local schema = {
     __name = "Command",
     required = { "command" },
-    __order = { "name", "type", "command", "cwd", "save_buffers", "quickfix_matcher", "depends_on", "depends_order" },
+    __order = { "command", "cwd", "quickfix_matcher" },
     properties = {
         command = {
             description = "Command to run (string or array of strings).",

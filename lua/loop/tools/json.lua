@@ -7,6 +7,63 @@ end
 
 local _indent = "  "
 
+local jsonschema = require("loop.tools.jsonschema")
+
+---@param schema table|nil
+---@param key string|number
+---@param value any
+---@return table|nil
+local function resolve_subschema(schema, key, value)
+    if type(schema) ~= "table" then
+        return nil
+    end
+
+    -- 1. Direct property
+    if schema.properties and schema.properties[key] then
+        return schema.properties[key]
+    end
+
+    -- 2. oneOf resolution (full validation)
+    if schema.oneOf then
+        for _, candidate in ipairs(schema.oneOf) do
+            -- validate returns nil on success
+            if jsonschema.validate(candidate, value) == nil then
+                return candidate
+            end
+        end
+    end
+
+    -- 3. additionalProperties (fallback)
+    if type(schema.additionalProperties) == "table" then
+        return schema.additionalProperties
+    end
+
+    return nil
+end
+
+
+---@param schema table|nil        -- schema node for this table
+---@return string[]|nil           -- ordered keys or nil if no ordering defined
+local function get_order(schema)
+    if type(schema) ~= "table" then
+        return nil
+    end
+
+    local order = schema.__order
+    if type(order) ~= "table" then
+        return nil
+    end
+
+    -- Return a shallow copy to avoid mutation
+    local ordered = {}
+    for i = 1, #order do
+        ordered[i] = order[i]
+    end
+
+    return ordered
+end
+
+
 ---@param value string
 ---@param level number
 ---@param path string
@@ -36,7 +93,7 @@ local function _serialize(value, level, path, schema)
             for k in pairs(value) do
                 table.insert(keys, k)
             end
-            local ordered = order_keys(keys, schema)
+            local ordered = get_order(schema)
             if ordered then
                 local index = 1
                 local priorities = {}
@@ -61,7 +118,8 @@ local function _serialize(value, level, path, schema)
             local parts = { "{" }
             for _, k in ipairs(keys) do
                 local key_json = type(k) == "string" and encode_one(k) or ('"' .. tostring(k) .. '"')
-                local val_json = _serialize(value[k], level + 1, path .. k .. '/')
+                local subschema = resolve_subschema(schema, k, value[k])
+                local val_json = _serialize(value[k], level + 1, path .. k .. '/', subschema)
                 table.insert(parts, "\n" .. next_indent .. key_json .. ": " .. val_json .. ",")
             end
             -- Remove trailing comma
@@ -87,7 +145,7 @@ end
 ---@return boolean
 ---@return string | nil
 function M.save_to_file(filepath, data)
-    local json = json_encode_pretty(data, nil, nil)
+    local json = json_encode_pretty(data, nil)
     assert(type(json) == 'string')
     local fd = io.open(filepath, "w")
     if not fd then

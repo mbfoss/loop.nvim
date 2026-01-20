@@ -5,7 +5,6 @@ local floatwin = require('loop.tools.floatwin')
 local jsontools = require('loop.tools.json')
 local filetools = require('loop.tools.file')
 local uitools = require('loop.tools.uitools')
-local strtools = require('loop.tools.strtools')
 local jsonschema = require('loop.tools.jsonschema')
 
 ---@param config_dir string

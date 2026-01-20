@@ -6,7 +6,6 @@ return {
 	{
 		name = "Run task",
 		task = {
-			__order = field_order,
 			name = "Run",
 			type = "command",
 			command = "",
@@ -20,7 +19,6 @@ return {
 	{
 		name = "C++: Run Current Binary",
 		task = {
-			__order = field_order,
 			name = "Run Binary",
 			type = "command",
 			command = "${fileroot}.out",
@@ -37,7 +35,6 @@ return {
 	{
 		name = "Python: Run Current File",
 		task = {
-			__order = field_order,
 			name = "Python Run",
 			type = "command",
 			command = "python3 ${file}",
@@ -50,7 +47,6 @@ return {
 	{
 		name = "Python: HTTP Server",
 		task = {
-			__order = field_order,
 			name = "Static Server",
 			type = "command",
 			command = "python3 -m http.server 8000",
@@ -67,7 +63,6 @@ return {
 	{
 		name = "Rust: Cargo Run",
 		task = {
-			__order = field_order,
 			name = "Cargo Run",
 			type = "command",
 			command = "cargo run",
@@ -80,7 +75,6 @@ return {
 	{
 		name = "Rust: Cargo Run (Release)",
 		task = {
-			__order = field_order,
 			name = "Cargo Run",
 			type = "command",
 			command = "cargo run --release",
@@ -93,7 +87,6 @@ return {
 	{
 		name = "Go: Run Current File",
 		task = {
-			__order = field_order,
 			name = "Go Run",
 			type = "command",
 			command = "go run ${file}",
@@ -110,7 +103,6 @@ return {
 	{
 		name = "Node: Run Current File",
 		task = {
-			__order = field_order,
 			name = "Node Run",
 			type = "command",
 			command = "node ${file}",
@@ -123,7 +115,6 @@ return {
 	{
 		name = "Web: Dev Server (NPM)",
 		task = {
-			__order = field_order,
 			name = "NPM Dev",
 			type = "command",
 			command = "npm run dev",
@@ -136,7 +127,6 @@ return {
 	{
 		name = "Web: Watch Mode",
 		task = {
-			__order = field_order,
 			name = "NPM Watch",
 			type = "command",
 			command = "npm run watch",

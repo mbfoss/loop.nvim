@@ -24,6 +24,7 @@ local base_items = {
     type = "object",
     additionalProperties = false,
     required = { "name", "type" },
+    __order = {"name", "type", "depends_on", "depends_order", "save_buffers"},
     properties = {
         name = {
             type = "string",

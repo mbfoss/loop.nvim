@@ -226,9 +226,10 @@ local function _show_workspace_info_floatwin()
     end
     local info = _workspace_info
     local save_config = vim.fn.copy(info.config.save)
+    local schema = require('loop.ws.schema')
     ---@diagnostic disable-next-line: inject-field
     local str = ("Name: %s\nDirectory: %s\nFiles:\n%s"):format(info.name, info.ws_dir,
-        jsontools.to_string(save_config))
+        jsontools.to_string(save_config, schema))
     floatwin.show_floatwin(str, { title = "Workspace" })
 end
 

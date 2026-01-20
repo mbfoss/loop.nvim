@@ -10,16 +10,6 @@ local providers = require("loop.task.providers")
 local selector = require("loop.tools.selector")
 local logs = require("loop.logs")
 
----@params task loop.Task
----@return string,string
-local function _task_preview(task)
-    local provider = M.get_task_type_provider(task.type)
-    if provider and provider.get_task_preview then
-        return provider.get_task_preview(task)
-    end
-    return "", ""
-end
-
 ---@return table
 local function _build_taskfile_schema()
     local schema_data = require("loop.task.tasksschema")
@@ -71,6 +61,10 @@ local function _get_single_task_schema(task_type)
 
     local provider_schema = provider.get_task_schema()
     if provider_schema then
+        
+        if provider_schema.__order then
+            vim.list_extend(schema.__order, provider_schema.__order)
+        end
         schema.properties = vim.tbl_extend("error", schema.properties, provider_schema.properties or {})
         schema.additionalProperties = provider_schema.additionalProperties or false
         for _, req in ipairs(provider_schema.required or {}) do
@@ -80,6 +74,17 @@ local function _get_single_task_schema(task_type)
     return schema
 end
 
+
+---@params task loop.Task
+---@return string,string
+local function _task_preview(task)
+    local provider = M.get_task_type_provider(task.type)
+    if provider then
+        local schema = _get_single_task_schema(task.type)
+        return jsontools.to_string(task, schema), "json"
+    end
+    return "", ""
+end
 
 ---@param content string
 ---@param tasktype_to_schema table<string,Object>
