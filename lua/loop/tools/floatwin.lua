@@ -133,6 +133,10 @@ function M.input_at_cursor(opts)
     local current_width = math.max(min_width, 40)
     current_width = math.min(current_width, max_width)
 
+    local min_height = 1
+    local max_height = math.floor(vim.o.lines * 0.8)
+    local current_height = 1
+
     local win = vim.api.nvim_open_win(buf, true, {
         relative = "cursor",
         row = opts.row_offset or 1,
@@ -144,15 +148,18 @@ function M.input_at_cursor(opts)
         title = opts.title and (" %s "):format(opts.title) or nil
     })
 
+    vim.wo[win].wrap = true
     vim.wo[win].winhighlight = "Normal:Normal,NormalNC:Normal,EndOfBuffer:Normal,FloatBorder:Normal"
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { initial_text })
     vim.api.nvim_win_set_cursor(win, { 1, #initial_text })
 
-    vim.schedule(function()
-        if vim.api.nvim_get_current_win() == win then
-            vim.cmd("startinsert!")
-        end
-    end)
+    if initial_text == "" then
+        vim.schedule(function()
+            if vim.api.nvim_get_current_win() == win then
+                vim.cmd("startinsert!")
+            end
+        end)
+    end
 
     -- Setup completion if completions provided
     if opts.completions and #opts.completions > 0 then
@@ -162,11 +169,13 @@ function M.input_at_cursor(opts)
     end
 
     -- AUTO-RESIZE LOGIC & COMPLETION TRIGGER
-    vim.api.nvim_create_autocmd("TextChangedI", {
+    vim.api.nvim_create_autocmd({ "TextChangedI", "TextChanged" }, {
         buffer = buf,
         callback = function()
             local line = vim.api.nvim_get_current_line()
-            local new_width = math.max(min_width, vim.fn.strwidth(line) + 1)
+
+            -- ---- WIDTH ----
+            local new_width = math.max(min_width, vim.fn.strdisplaywidth(line) + 2)
             new_width = math.min(new_width, max_width)
 
             if new_width ~= current_width then
@@ -176,7 +185,19 @@ function M.input_at_cursor(opts)
                 end
             end
 
-            -- Trigger completions while typing
+            -- ---- HEIGHT (WRAP-AWARE) ----
+            if vim.api.nvim_win_is_valid(win) and vim.wo[win].wrap then
+                local display_width = math.max(1, current_width - 2) -- borders
+                local needed_rows = math.ceil(vim.fn.strdisplaywidth(line) / display_width)
+                local new_height = math.min(math.max(needed_rows, min_height), max_height)
+
+                if new_height ~= current_height then
+                    current_height = new_height
+                    vim.api.nvim_win_set_config(win, { height = current_height })
+                end
+            end
+
+            -- ---- COMPLETION ----
             if opts.completions and #opts.completions > 0 then
                 local col = vim.fn.col(".")
                 local base = line:sub(1, col - 1)
@@ -185,7 +206,8 @@ function M.input_at_cursor(opts)
                     vim.fn.complete(col, matches)
                 end
             end
-        end,
+        end
+
     })
 
     local closed = false
@@ -205,7 +227,7 @@ function M.input_at_cursor(opts)
 
     -- Keybindings
     local kopts = { buffer = buf, nowait = true }
-    vim.keymap.set("i", "<CR>", function() close(vim.api.nvim_get_current_line()) end, kopts)
+    vim.keymap.set({ "i", "n" }, "<CR>", function() close(vim.api.nvim_get_current_line()) end, kopts)
     vim.keymap.set("i", "<C-c>", function() close(nil) end, kopts)
     vim.keymap.set("n", "<Esc>", function() close(nil) end, kopts)
     if opts.completions and #opts.completions > 0 then
