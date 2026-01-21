@@ -116,7 +116,7 @@ local function validate(schema, data, path)
         local props = schema.properties or {}
         local required = schema.required or {}
         local pattern_props = schema.patternProperties or {}
-        
+
         -- Required fields
         for _, key in ipairs(required) do
             if data[key] == nil then
@@ -134,23 +134,32 @@ local function validate(schema, data, path)
             end
         end
 
-        -- Handle additionalProperties
+        -- Handle additionalProperties + patternProperties
         local addl = schema.additionalProperties
-        if addl == false then
-            for key in pairs(data) do
-                if not props[key] then
-                    local valid = table.concat(vim.tbl_keys(props), ", ")
-                    add_error(errors, join_path(path, key),
-                        "invalid property, allowed: " .. (valid ~= "" and valid or "(none)"))
-                end
+
+        for key, value in pairs(data) do
+            local handled = false
+            -- Exact properties
+            if props[key] then
+                handled = true
             end
-        elseif addl and type(addl) == "table" then
-            for key, value in pairs(data) do
-                if not props[key] then
-                    local sub_err = validate(addl, value, join_path(path, key))
+            -- Pattern properties
+            for pattern, subschema in pairs(pattern_props) do
+                if type(key) == "string" and key:match(pattern) then
+                    handled = true
+                    local sub_err = validate(subschema, value, join_path(path, key))
                     if sub_err then
                         vim.list_extend(errors, sub_err)
                     end
+                end
+            end
+            -- Additional properties
+            if not handled then
+                if addl == false then
+                    add_error(errors, join_path(path, key), "invalid property name")
+                elseif type(addl) == "table" then
+                    local sub_err = validate(addl, value, join_path(path, key))
+                    if sub_err then vim.list_extend(errors, sub_err) end
                 end
             end
         end

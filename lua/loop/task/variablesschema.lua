@@ -15,7 +15,7 @@ local schema = {
                 ["^[A-Za-z_][A-Za-z0-9_]*$"] = { type = "string" }
             },
             additionalProperties = false,
-            description = "Object mapping variable names to their values"
+            description = "Object mapping variable names to their values",
         },
     },
 }

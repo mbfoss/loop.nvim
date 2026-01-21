@@ -575,11 +575,6 @@ function JsonEditor:_create_and_add_array_item(item, type_choice, schema)
 end
 
 function JsonEditor:_add_object_property(item, schema)
-    if schema.additionalProperties == false then
-        vim.notify("Object does not allow additional properties", vim.log.levels.WARN)
-        return
-    end
-
     local suggested_keys = {}
     local key_schemas = {}
     local obj = item.data.value
