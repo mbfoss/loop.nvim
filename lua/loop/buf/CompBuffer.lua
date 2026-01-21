@@ -6,6 +6,7 @@ local throttle = require('loop.tools.throttle')
 ---@class loop.comp.CompBuffer:loop.comp.BaseBuffer
 ---@field new fun(self: loop.comp.CompBuffer, type : string, name:string): loop.comp.CompBuffer
 ---@field _renderer loop.CompRenderer|nil
+---@field _render_schdl_pending boolean?
 local CompBuffer = class(BaseBuffer)
 
 ---@param type string
@@ -58,9 +59,13 @@ end
 
 function CompBuffer:render()
     -- the schedule() improves the first render when it's called multiple times
-    vim.schedule(function () 
-        self._throttled_render()        
-    end)
+    if self._render_schdl_pending ~= true then
+        self._render_schdl_pending = true
+        vim.schedule(function () 
+            self._render_schdl_pending = false
+            self._throttled_render()        
+        end)
+    end
 end
 
 function CompBuffer:_immediate_render()
