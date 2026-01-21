@@ -254,21 +254,28 @@ function JsonEditor:open(winid)
     end
 
     buf:add_keymap("c", {
-        desc = "Change value (c)",
+        desc = "Change value",
         callback = function()
             with_current_item(function(i) self:_edit_value(i) end)
         end
     })
 
+    buf:add_keymap("C", {
+        desc = "Change value (multiline)",
+        callback = function()
+            with_current_item(function(i) self:_edit_value(i, true) end)
+        end
+    })    
+
     buf:add_keymap("a", {
-        desc = "Add property/item (a)",
+        desc = "Add property/item",
         callback = function()
             with_current_item(function(i) self:_add_new(i) end)
         end
     })
 
     buf:add_keymap("d", {
-        desc = "Delete (d)",
+        desc = "Delete",
         callback = function()
             with_current_item(function(i) self:_delete(i) end)
         end
@@ -402,7 +409,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
     end
 end
 
-function JsonEditor:_edit_value(item)
+function JsonEditor:_edit_value(item, multiline)
     local path   = item.data.path
     local schema = item.data.schema or {}
 
@@ -427,7 +434,7 @@ function JsonEditor:_edit_value(item)
     local default = item.data.value_type == "string" and item.data.value
         or vim.json.encode(item.data.value)
 
-    floatwin.input_at_cursor({
+    local opts = {
         title = "Value",
         default_text = default,
         on_confirm = function(txt)
@@ -435,7 +442,12 @@ function JsonEditor:_edit_value(item)
             local coerced = smart_coerce(txt, schema)
             self:_set_value(path, coerced)
         end,
-    })
+    }
+    if multiline then
+        floatwin.input_multiline(opts)
+    else
+        floatwin.input_at_cursor(opts)
+    end
 end
 
 function JsonEditor:_add_new(item)

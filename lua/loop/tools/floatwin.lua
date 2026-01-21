@@ -112,6 +112,9 @@ function M.show_floatwin(text, opts)
     end
 end
 
+-- ===================================================================
+-- Single-line input function (existing behavior)
+-- ===================================================================
 ---@param opts loop.floatwin.InputOpts
 function M.input_at_cursor(opts)
     local prev_win = vim.api.nvim_get_current_win()
@@ -127,8 +130,9 @@ function M.input_at_cursor(opts)
     for k, v in pairs(buf_opts) do vim.bo[buf][k] = v end
 
     local initial_text = opts.default_text or ""
+    if initial_text:match("\n") then initial_text = "" end
 
-    local min_width = opts.default_width or math.max(10, opts.title and (vim.fn.strdisplaywidth(opts.title) + 2) or 0)
+    local min_width = math.max(opts.default_width or 20, vim.fn.strdisplaywidth(opts.title or "") + 2)
     local max_width = math.floor(vim.o.columns * 0.8)
     local current_width = math.max(min_width, 40)
     current_width = math.min(current_width, max_width)
@@ -174,7 +178,7 @@ function M.input_at_cursor(opts)
         callback = function()
             local line = vim.api.nvim_get_current_line()
 
-            -- ---- WIDTH ----
+            -- Width
             local new_width = math.max(min_width, vim.fn.strdisplaywidth(line) + 2)
             new_width = math.min(new_width, max_width)
 
@@ -185,7 +189,7 @@ function M.input_at_cursor(opts)
                 end
             end
 
-            -- ---- HEIGHT (WRAP-AWARE) ----
+            -- Height (wrap-aware)
             if vim.api.nvim_win_is_valid(win) and vim.wo[win].wrap then
                 local display_width = math.max(1, current_width - 2) -- borders
                 local needed_rows = math.ceil(vim.fn.strdisplaywidth(line) / display_width)
@@ -197,7 +201,7 @@ function M.input_at_cursor(opts)
                 end
             end
 
-            -- ---- COMPLETION ----
+            -- Completion
             if opts.completions and #opts.completions > 0 then
                 local col = vim.fn.col(".")
                 local base = line:sub(1, col - 1)
@@ -207,9 +211,9 @@ function M.input_at_cursor(opts)
                 end
             end
         end
-
     })
 
+    -- ---------------- Close logic ----------------
     local closed = false
     ---@param value string|nil
     local function close(value)
@@ -225,7 +229,7 @@ function M.input_at_cursor(opts)
         vim.schedule(function() opts.on_confirm(value) end)
     end
 
-    -- Keybindings
+    -- ---------------- Keymaps ----------------
     local kopts = { buffer = buf, nowait = true }
     vim.keymap.set({ "i", "n" }, "<CR>", function() close(vim.api.nvim_get_current_line()) end, kopts)
     vim.keymap.set("i", "<C-c>", function() close(nil) end, kopts)
@@ -239,6 +243,122 @@ function M.input_at_cursor(opts)
     vim.api.nvim_create_autocmd("WinLeave", {
         once = true,
         callback = function() close(nil) end,
+    })
+end
+
+---@param opts loop.floatwin.InputOpts
+function M.input_multiline(opts)
+    local prev_win = vim.api.nvim_get_current_win()
+    local buf = vim.api.nvim_create_buf(false, true)
+
+    -- Buffer setup
+    local buf_opts = {
+        buftype = "nofile",
+        bufhidden = "wipe",
+        swapfile = false,
+        undolevels = -1,
+    }
+    for k, v in pairs(buf_opts) do vim.bo[buf][k] = v end
+
+    local initial_text = opts.default_text or ""
+    local initial_lines = vim.split(initial_text, "\n", { plain = true })
+    if #initial_lines == 0 then initial_lines = { "" } end
+
+    local title = opts.title and (" %s [Ctrl-S to confirm, Ctrl-C to cancel] "):format(opts.title) or nil
+    local width = math.floor(vim.o.columns * 0.8)
+    local height = math.floor(vim.o.lines * 0.8)
+
+    -- ---------------- Window ----------------
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "win",
+        row = opts.row_offset or 1,
+        col = opts.col_offset or 0,
+        width = width,
+        height = height,
+        style = "minimal",
+        border = "rounded",
+        title = title,
+    })
+
+    vim.wo[win].wrap = true
+    vim.wo[win].linebreak = true
+    vim.wo[win].scrolloff = 0
+    vim.wo[win].winhighlight =
+    "Normal:Normal,NormalNC:Normal,EndOfBuffer:Normal,FloatBorder:Normal"
+
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, initial_lines)
+    vim.api.nvim_win_set_cursor(win, { #initial_lines, #(initial_lines[#initial_lines] or "") })
+
+    vim.schedule(function()
+        if vim.api.nvim_get_current_win() == win then
+            vim.cmd("startinsert!")
+        end
+    end)
+
+    -- ---------------- Close logic ----------------
+    local closed = false
+    local function confirm_discard()
+        local answer = vim.fn.confirm("Discard changes?", "&Yes\n&No", 2)
+        return answer == 1
+    end
+
+    local function close(value)
+        if closed then return end
+        closed = true
+
+        vim.cmd("stopinsert")
+        if vim.api.nvim_win_is_valid(win) then
+            vim.api.nvim_win_close(win, true)
+        end
+        if vim.api.nvim_win_is_valid(prev_win) then
+            vim.api.nvim_set_current_win(prev_win)
+        end
+
+        vim.schedule(function() opts.on_confirm(value) end)
+    end
+
+    local function try_close()
+        local current_lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+        if table.concat(current_lines, "\n") ~= initial_text then
+            if confirm_discard() then
+                close(nil)
+            else
+                vim.schedule(function()
+                    vim.api.nvim_set_current_win(win)
+                    vim.cmd("startinsert!")
+                end)
+            end
+        else
+            close(nil)
+        end
+    end
+
+    -- ---------------- Keymaps ----------------
+    local kopts = { buffer = buf, nowait = true }
+
+    -- Enter = newline
+    vim.keymap.set("i", "<CR>", "<CR>", kopts)
+
+    -- Confirm = Ctrl-S
+    vim.keymap.set({ "i", "n" }, "<C-s>", function()
+        close(table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n"))
+    end, kopts)
+
+    -- Cancel = Ctrl-C
+    vim.keymap.set("i", "<C-c>", try_close, kopts)
+    vim.keymap.set("n", "<C-c>", try_close, kopts)
+
+    -- Esc just leaves insert mode
+    vim.keymap.set("i", "<Esc>", "<Esc>", kopts)
+
+    -- Window leave = try close with confirmation
+    vim.api.nvim_create_autocmd("WinLeave", {
+        once = true,
+        callback = function()
+            if not closed then
+                try_close()
+            end
+        end,
     })
 end
 
