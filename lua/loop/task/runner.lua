@@ -132,7 +132,7 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
     ---@type loop.TaskContext
     local task_ctx = {
         ws_dir = ws_dir,
-        variables = vars or {}
+        variables = vars or vim.empty_dict()
     }
 
     -- Resolve macros only on the tasks that will be used

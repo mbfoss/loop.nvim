@@ -20,6 +20,46 @@ local _current_win = nil
 ---@field completions? string[]
 ---@field on_confirm fun(value: string|nil)
 
+---@class loop.floatwin.CenteredWinOpts
+---@field width number
+---@field height number
+---@field border string?
+---@field title string?
+---@return number winid
+
+---@param buf number
+---@param opts loop.floatwin.CenteredWinOpts
+function M.open_centered_window(buf, opts)
+    opts = opts or {}
+
+    -- Validate required options
+    if not opts.width or not opts.height then
+        error("width and height are required")
+    end
+
+    -- Editor size
+    local editor_width = vim.o.columns
+    local editor_height = vim.o.lines - vim.o.cmdheight -- subtract command line
+
+    -- Calculate centered position
+    local row = math.floor((editor_height - opts.height) / 2)
+    local col = math.floor((editor_width - opts.width) / 2)
+
+    -- Open floating window
+    local win = vim.api.nvim_open_win(buf, true, {
+        relative = "editor",
+        row = row,
+        col = col,
+        width = opts.width,
+        height = opts.height,
+        style = "minimal",
+        border = opts.border or "rounded",
+        title = opts.title or "",
+        title_pos = "center", -- optional: title in center
+    })
+    return win
+end
+
 ---@param text string
 ---@param opts loop.floatwin.FloatwinOpts?
 function M.show_floatwin(text, opts)
@@ -256,7 +296,6 @@ function M.input_multiline(opts)
         buftype = "nofile",
         bufhidden = "wipe",
         swapfile = false,
-        undolevels = -1,
     }
     for k, v in pairs(buf_opts) do vim.bo[buf][k] = v end
 
@@ -268,15 +307,9 @@ function M.input_multiline(opts)
     local width = math.floor(vim.o.columns * 0.8)
     local height = math.floor(vim.o.lines * 0.8)
 
-    -- ---------------- Window ----------------
-    local win = vim.api.nvim_open_win(buf, true, {
-        relative = "win",
-        row = opts.row_offset or 1,
-        col = opts.col_offset or 0,
+    local win = M.open_centered_window(buf, {
         width = width,
         height = height,
-        style = "minimal",
-        border = "rounded",
         title = title,
     })
 

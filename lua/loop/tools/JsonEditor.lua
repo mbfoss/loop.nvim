@@ -265,7 +265,7 @@ function JsonEditor:open(winid)
         callback = function()
             with_current_item(function(i) self:_edit_value(i, true) end)
         end
-    })    
+    })
 
     buf:add_keymap("a", {
         desc = "Add property/item",
@@ -435,7 +435,7 @@ function JsonEditor:_edit_value(item, multiline)
         or vim.json.encode(item.data.value)
 
     local opts = {
-        title = "Value",
+        title = ("value of '%s'"):format(tostring(item.data.key or "")),
         default_text = default,
         on_confirm = function(txt)
             if txt == nil then return end
@@ -844,8 +844,6 @@ function JsonEditor:save()
         vim.notify("Save failed: " .. tostring(err), vim.log.levels.ERROR)
     else
         self._is_dirty = false
-        self._undo_stack = {}
-        self._redo_stack = {}
     end
 end
 
