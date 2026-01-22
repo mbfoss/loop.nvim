@@ -46,12 +46,18 @@ local function _validate(schema, data, path)
     if allowed_types and not vim.tbl_isempty(allowed_types) then
         local ok = false
         for _, t in ipairs(allowed_types) do
-            if t == "null" and data == nil then ok = true
-            elseif t == "object" and type(data) == "table" and not vim.islist(data) then ok = true
-            elseif t == "array" and vim.islist(data) then ok = true
-            elseif t == "string" and type(data) == "string" then ok = true
-            elseif t == "number" and type(data) == "number" then ok = true
-            elseif t == "boolean" and type(data) == "boolean" then ok = true
+            if t == "null" and data == nil then
+                ok = true
+            elseif t == "object" and type(data) == "table" and not vim.islist(data) then
+                ok = true
+            elseif t == "array" and vim.islist(data) then
+                ok = true
+            elseif t == "string" and type(data) == "string" then
+                ok = true
+            elseif t == "number" and type(data) == "number" then
+                ok = true
+            elseif t == "boolean" and type(data) == "boolean" then
+                ok = true
             end
             if ok then break end
         end
@@ -164,21 +170,38 @@ local function _validate(schema, data, path)
         add_error(errors, path, ("string does not match pattern %q"):format(schema.pattern))
     end
 
-    -- oneOf
+    -- oneOf (best-match selection)
     if schema.oneOf then
-        local matched = false
-        local details = {}
+        local best_errors = nil
+        local best_count = math.huge
+        local best_option = nil
+
         for i, sub in ipairs(schema.oneOf) do
             local sub_err = _validate(sub, data, path)
             if not sub_err then
-                matched = true
+                -- Perfect match: oneOf succeeds
+                best_errors = nil
+                best_count = 0
+                best_option = nil
                 break
-            else
-                table.insert(details, ("option %d: %s"):format(i, sub_err[1].err_msg))
+            end
+
+            local count = #sub_err
+            if count < best_count then
+                best_count = count
+                best_errors = sub_err
+                best_option = sub.__name
             end
         end
-        if not matched then
-            add_error(errors, path, "no schema in oneOf matched:\n" .. table.concat(details, "\n"))
+
+        if best_errors and best_option then
+            -- Optional but VERY helpful context
+            add_error(
+                best_errors,
+                path,
+                ("closest option: %s"):format(best_option)
+            )
+            vim.list_extend(errors, best_errors)
         end
     end
 

@@ -63,13 +63,17 @@ end
 ---@param path string
 ---@return string[]
 local function split_path(path)
-    if path == "" or path == "/" then return {} end
+    if path == "" or path == "/" then
+        return {}
+    end
+
     local parts = {}
-    for p in path:gmatch("/([^/]+)") do
-        table.insert(parts, vim.fn.fnamemodify(p, ":e") == "" and p or vim.fn.fnamemodify(p, ":r"))
+    for part in path:gmatch("[^/]+") do
+        table.insert(parts, part)
     end
     return parts
 end
+
 
 ---@generic T
 ---@param t T
@@ -83,27 +87,6 @@ local function deep_copy(t)
     return copy
 end
 
----@param schema table|nil
----@param path string
----@return table|nil
-local function resolve_schema(schema, path)
-    if not schema then return nil end
-    if path == "" or path == "/" then return schema end
-
-    local cur = schema
-    for _, key in ipairs(split_path(path)) do
-        if cur.type == "object" and cur.properties and cur.properties[key] then
-            cur = cur.properties[key]
-        elseif cur.type == "array" and cur.items then
-            cur = cur.items
-        elseif cur.additionalProperties then
-            cur = cur.additionalProperties == true and {} or cur.additionalProperties
-        else
-            return nil
-        end
-    end
-    return cur
-end
 
 ---@param value any
 ---@param schema table|nil
@@ -120,6 +103,51 @@ function _resolve_oneof_schema(value, schema)
     end
     return schema
 end
+
+---@param schema table|nil
+---@param value any
+---@param path string
+---@return table|nil
+local function _resolve_schema(schema, value, path)
+    if not schema then return nil end
+    if path == "" or path == "/" then
+        return _resolve_oneof_schema(value, schema)
+    end
+
+    local cur_schema = schema
+    local cur_value  = value
+
+    for _, key in ipairs(split_path(path)) do
+        -- Resolve oneOf at current level using the ACTUAL value
+        cur_schema = _resolve_oneof_schema(cur_value, cur_schema) or cur_schema
+
+        if cur_schema.type == "object"
+            and cur_schema.properties
+            and cur_schema.properties[key]
+        then
+            cur_schema = cur_schema.properties[key]
+            cur_value  = type(cur_value) == "table" and cur_value[key] or nil
+        elseif cur_schema.type == "array"
+            and cur_schema.items
+        then
+            cur_schema = cur_schema.items
+            local idx = tonumber(key)
+            cur_value = (idx and type(cur_value) == "table") and cur_value[idx] or nil
+        elseif cur_schema.additionalProperties then
+            cur_schema =
+                cur_schema.additionalProperties == true
+                and {}
+                or cur_schema.additionalProperties
+            cur_value = type(cur_value) == "table" and cur_value[key] or nil
+        else
+            return nil
+        end
+    end
+
+    -- Final oneOf resolution
+    return _resolve_oneof_schema(cur_value, cur_schema) or cur_schema
+end
+
 
 ---@param keys string[]
 ---@param schema table|nil
@@ -503,8 +531,8 @@ end
 function JsonEditor:_add_new_default(item)
     local path   = item.data.path
     local vt     = item.data.value_type
-    local schema = resolve_schema(self._schema, path) or {}
-
+    local schema = _resolve_schema(self._schema, self._data, path) or {}
+    
     if vt == "array" then
         self:_add_array_item(item, schema)
     elseif vt == "object" then
