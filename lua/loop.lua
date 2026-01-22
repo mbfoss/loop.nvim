@@ -1,6 +1,5 @@
 -- lua/loop/init.lua
 local strtools = require('loop.tools.strtools')
-local extdata = require('loop.extdata')
 
 local M = {}
 

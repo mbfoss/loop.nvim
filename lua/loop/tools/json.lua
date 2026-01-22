@@ -1,5 +1,7 @@
 local M = {}
 
+local strtools = require('loop.tools.strtools')
+
 -- Neovim's JSON encoder (perfect escaping)
 local function encode_one(v)
     return vim.json.encode(v)
@@ -44,39 +46,12 @@ end
 
 ---@param keys string[]
 ---@param schema table|nil        -- schema node for this table
----@return string[]           -- ordered keys or nil if no ordering defined
 local function _order_keys(keys, schema)
-    if type(schema) ~= "table" then
-        return keys
+     vim.fn.sort(keys) -- required even with strtools.order_strings()
+    local order = type(schema) == "table" and schema.__order or nil
+    if order then
+        strtools.order_strings(keys, order)
     end
-
-    local order = schema.__order
-    if type(order) ~= "table" then
-        return keys
-    end
-
-    -- Return a shallow copy to avoid mutation
-    local ordered = {}
-    for i = 1, #order do
-        ordered[i] = order[i]
-    end
-
-    local index = 1
-    local priorities = {}
-    for _, v in ipairs(ordered) do
-        priorities[v] = index
-        index = index + 1
-    end
-
-    for _, v in ipairs(keys) do
-        if not priorities[v] then
-            priorities[v] = index
-            index = index + 1
-        end
-    end
-    
-    table.sort(keys, function(a, b) return priorities[a] < priorities[b] end)
-    return keys
 end
 
 ---@param value string
@@ -108,7 +83,7 @@ local function _serialize(value, level, path, schema)
             for k in pairs(value) do
                 table.insert(keys, k)
             end
-            keys = _order_keys(keys, schema)
+            _order_keys(keys, schema)
             if #keys == 0 then return "{}" end
             local parts = { "{" }
             for _, k in ipairs(keys) do

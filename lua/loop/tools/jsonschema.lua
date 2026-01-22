@@ -119,7 +119,7 @@ local function _validate(schema, data, path)
 
         for _, key in ipairs(required) do
             if data[key] == nil then
-                add_error(errors, join_path(path, key), "required property missing")
+                add_error(errors, path, "required property missing: " .. tostring(key))
             end
         end
 
@@ -174,7 +174,7 @@ local function _validate(schema, data, path)
     if schema.oneOf then
         local best_errors = nil
         local best_count = math.huge
-        local best_option = nil
+        --local best_option = nil
 
         for i, sub in ipairs(schema.oneOf) do
             local sub_err = _validate(sub, data, path)
@@ -182,7 +182,7 @@ local function _validate(schema, data, path)
                 -- Perfect match: oneOf succeeds
                 best_errors = nil
                 best_count = 0
-                best_option = nil
+                --best_option = nil
                 break
             end
 
@@ -190,17 +190,11 @@ local function _validate(schema, data, path)
             if count < best_count then
                 best_count = count
                 best_errors = sub_err
-                best_option = sub.__name
+                --best_option = sub.__name
             end
         end
 
-        if best_errors and best_option then
-            -- Optional but VERY helpful context
-            add_error(
-                best_errors,
-                path,
-                ("closest option: %s"):format(best_option)
-            )
+        if best_errors then
             vim.list_extend(errors, best_errors)
         end
     end

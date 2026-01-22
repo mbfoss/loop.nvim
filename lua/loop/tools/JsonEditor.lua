@@ -6,6 +6,7 @@ local selector     = require("loop.tools.selector")
 local validator    = require("loop.tools.jsonschema")
 local json_util    = require("loop.tools.json")
 local file_util    = require("loop.tools.file")
+local strtools     = require("loop.tools.strtools")
 
 ---@alias JsonPrimitive string|number|boolean|nil
 ---@alias JsonValue JsonPrimitive|table
@@ -19,6 +20,7 @@ local file_util    = require("loop.tools.file")
 ---@field exclude_null_from_property_type? boolean
 
 ---@class loop.JsonEditor
+---@field new fun(self:loop.JsonEditor,opts:loop.JsonEditorOpts)
 ---@field _opts loop.JsonEditorOpts
 ---@field _filepath string
 ---@field _data table
@@ -36,9 +38,7 @@ local JsonEditor   = class()
 
 ---@param t any
 ---@return boolean
-local function is_array(t)
-    return type(t) == "table" and vim.islist(t)
-end
+local function is_array(t) return vim.islist(t) end
 
 ---@param v any
 ---@return string
@@ -74,20 +74,6 @@ local function split_path(path)
     return parts
 end
 
-
----@generic T
----@param t T
----@return T
-local function deep_copy(t)
-    if type(t) ~= "table" then return t end
-    local copy = {}
-    for k, v in pairs(t) do
-        copy[k] = deep_copy(v)
-    end
-    return copy
-end
-
-
 ---@param value any
 ---@param schema table|nil
 ---@return table|nil
@@ -104,81 +90,22 @@ function _resolve_oneof_schema(value, schema)
     return schema
 end
 
----@param schema table|nil
----@param value any
----@param path string
----@return table|nil
-local function _resolve_schema(schema, value, path)
-    if not schema then return nil end
-    if path == "" or path == "/" then
-        return _resolve_oneof_schema(value, schema)
-    end
-
-    local cur_schema = schema
-    local cur_value  = value
-
-    for _, key in ipairs(split_path(path)) do
-        -- Resolve oneOf at current level using the ACTUAL value
-        cur_schema = _resolve_oneof_schema(cur_value, cur_schema) or cur_schema
-
-        if cur_schema.type == "object"
-            and cur_schema.properties
-            and cur_schema.properties[key]
-        then
-            cur_schema = cur_schema.properties[key]
-            cur_value  = type(cur_value) == "table" and cur_value[key] or nil
-        elseif cur_schema.type == "array"
-            and cur_schema.items
-        then
-            cur_schema = cur_schema.items
-            local idx = tonumber(key)
-            cur_value = (idx and type(cur_value) == "table") and cur_value[idx] or nil
-        elseif cur_schema.additionalProperties then
-            cur_schema =
-                cur_schema.additionalProperties == true
-                and {}
-                or cur_schema.additionalProperties
-            cur_value = type(cur_value) == "table" and cur_value[key] or nil
-        else
-            return nil
+function _merge_additional_properties(dest, src)
+    if dest then
+        if dest.additionalProperties == nil and type(src.additionalProperties) == "boolean" then
+            dest.additionalProperties = src.additionalProperties
         end
     end
-
-    -- Final oneOf resolution
-    return _resolve_oneof_schema(cur_value, cur_schema) or cur_schema
 end
-
 
 ---@param keys string[]
 ---@param schema table|nil
 local function _order_keys(keys, schema)
+    vim.fn.sort(keys) -- required even with strtools.order_strings()
     local order = type(schema) == "table" and schema.__order or nil
-    if not order then
-        vim.fn.sort(keys)
-        return
+    if order then
+        strtools.order_strings(keys, order)
     end
-
-    local ordered = {}
-    for i = 1, #order do
-        ordered[i] = order[i]
-    end
-
-    local priorities = {}
-    for i, v in ipairs(ordered) do
-        priorities[v] = i
-    end
-
-    local index = #ordered + 1
-    for _, v in ipairs(keys) do
-        if not priorities[v] then
-            priorities[v] = index
-            index = index + 1
-        end
-    end
-
-    table.sort(keys, function(a, b)
-        return priorities[a] < priorities[b]
-    end)
 end
 
 ---@param input string
@@ -262,7 +189,7 @@ local function _formatter(_, data)
     ---@type loop.comp.ItemTree.VirtText[]
     local virt_text = {}
     if err_msg then
-        table.insert(virt_text, { text = "  " .. err_msg, highlight = "DiagnosticWarn" })
+        table.insert(virt_text, { text = "● " .. err_msg, highlight = "DiagnosticError" })
     else
         table.insert(virt_text, { text = vt, highlight = "Comment" })
     end
@@ -293,7 +220,7 @@ function JsonEditor:open(winid)
     ---@type loop.comp.ItemTree
     ---@diagnostic disable-next-line: undefined-field
     self._itemtree = ItemTreeComp:new({
-        formatter       = _formatter,
+        formatter       =  _formatter,
         render_delay_ms = 40,
     })
 
@@ -405,14 +332,14 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
     ---@type loop.comp.ItemTree.Item[]
     local items = {}
 
-    parent_schema = _resolve_oneof_schema(tbl, parent_schema)
-
     if is_array(tbl) then
         for i, v in ipairs(tbl) do
             local str_i = tostring(i)
             local p = join_path(path, str_i)
             local id = parent_id and (parent_id .. "/" .. str_i) or str_i
             local item_schema = parent_schema and parent_schema.items or nil
+            item_schema = _resolve_oneof_schema(v, item_schema) or item_schema
+            _merge_additional_properties(item_schema, parent_schema)
             local e = errors[p]
             ---@type loop.comp.ItemTree.Item
             local item = {
@@ -443,11 +370,8 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
             if parent_schema then
                 if parent_schema.properties and parent_schema.properties[k] then
                     prop_schema = parent_schema.properties[k]
-                end
-                if prop_schema then
-                    if prop_schema.additionalProperties == nil then
-                        prop_schema.additionalProperties = parent_schema.additionalProperties
-                    end
+                    prop_schema = _resolve_oneof_schema(v, prop_schema) or prop_schema
+                    _merge_additional_properties(prop_schema, parent_schema)
                 end
             end
             ---@type loop.comp.ItemTree.Item
@@ -531,8 +455,8 @@ end
 function JsonEditor:_add_new_default(item)
     local path   = item.data.path
     local vt     = item.data.value_type
-    local schema = _resolve_schema(self._schema, self._data, path) or {}
-    
+    local schema = item.data.schema
+
     if vt == "array" then
         self:_add_array_item(item, schema)
     elseif vt == "object" then
@@ -650,110 +574,141 @@ function JsonEditor:_create_and_add_array_item(item, type_choice, schema)
 end
 
 function JsonEditor:_add_object_property(item, schema)
-    local suggested_keys = {}
-    local key_schemas = {}
+    schema = schema or {}
     local obj = item.data.value
 
-    if schema.oneOf then
-        -- Find which oneOf subschemas validate the current data
-        local valid_schemas = {}
-        for i, subschema in ipairs(schema.oneOf) do
-            local errs = validator.validate(subschema, item.data.value)
-            if not errs or #errs == 0 then
-                table.insert(valid_schemas, { schema = subschema, index = i })
-            end
-        end
+    --------------------------------------------------------------------------
+    -- Step 1: collect candidate schemas for missing keys
+    --------------------------------------------------------------------------
+    local key_candidates = {} ---@type table<string, table[]>
+    local suggested_keys = {}
 
-        -- Only collect properties from validating schemas
-        for _, schema_info in ipairs(valid_schemas) do
-            local subschema = schema_info.schema
-            if subschema.properties then
-                for k in pairs(subschema.properties) do
-                    if obj[k] == nil and not key_schemas[k] then
-                        key_schemas[k] = {}
-                        table.insert(suggested_keys, k)
-                    end
-                    if obj[k] == nil then
-                        table.insert(key_schemas[k],
-                            { schema = subschema.properties[k], parent = subschema, index = schema_info.index })
+    local function add_candidate(key, prop_schema, parent)
+        if obj[key] ~= nil then return end
+        if not key_candidates[key] then
+            key_candidates[key] = {}
+            table.insert(suggested_keys, key)
+        end
+        table.insert(key_candidates[key], {
+            schema = prop_schema or {},
+            parent = parent,
+        })
+    end
+
+    -- properties / oneOf
+    if schema.oneOf then
+        for _, subschema in ipairs(schema.oneOf) do
+            local errs = validator.validate(subschema, obj)
+            if not errs or #errs == 0 then
+                if subschema.properties then
+                    for k, ps in pairs(subschema.properties) do
+                        add_candidate(k, ps, subschema)
                     end
                 end
             end
         end
     elseif schema.properties then
-        for k in pairs(schema.properties) do
-            if obj[k] == nil then
-                table.insert(suggested_keys, k)
-                key_schemas[k] = { { schema = schema.properties[k], parent = schema, index = 1 } }
-            end
+        for k, ps in pairs(schema.properties) do
+            add_candidate(k, ps, schema)
         end
     end
 
     table.sort(suggested_keys)
 
+    --------------------------------------------------------------------------
+    -- Step 2: prompt for key
+    --------------------------------------------------------------------------
     floatwin.input_at_cursor({
         title = "New property name",
         completions = suggested_keys,
         on_confirm = function(key)
             if not key or key == "" then return end
-            if item.data.value[key] ~= nil then
+            if obj[key] ~= nil then
                 vim.notify("Key already exists", vim.log.levels.WARN)
                 return
             end
-            local matched_schemas = key_schemas[key]
-            if matched_schemas and #matched_schemas > 1 then
+
+            ------------------------------------------------------------------
+            -- Step 3: resolve schema for this key
+            ------------------------------------------------------------------
+            local schemas = key_candidates[key]
+
+            local function with_schema(prop_schema)
+                self:_choose_type_and_add_property(item, key, prop_schema)
+            end
+
+            -- multiple matching schemas → ask user
+            if schemas and #schemas > 1 then
                 local choices = {}
-                for _, schema_info in ipairs(matched_schemas) do
-                    local name = schema_info.parent.__name or "<no name>"
+                for _, info in ipairs(schemas) do
                     table.insert(choices, {
-                        label = name,
-                        data = schema_info.schema
+                        label = info.parent.__name or "<schema>",
+                        data  = info.schema,
                     })
                 end
-                selector.select("Select schema for '" .. key .. "'", choices, nil, function(choice)
-                    if choice then
-                        self:_create_and_add_object_property(item, key, nil, choice)
+                selector.select(
+                    "Select schema for '" .. key .. "'",
+                    choices,
+                    nil,
+                    function(choice)
+                        if choice then with_schema(choice) end
                     end
-                end)
+                )
                 return
             end
 
-            local prop_schema = (matched_schemas and matched_schemas[1] and matched_schemas[1].schema) or {}
-            local allowed_types = self:_get_allowed_types(prop_schema)
-
-            if #allowed_types == 0 then
-                allowed_types = { "string", "number", "boolean", "null", "object", "array" }
+            -- single schema
+            if schemas and schemas[1] then
+                with_schema(schemas[1].schema)
+                return
             end
 
-            -- Filter out null if option is enabled (default: true)
-            local exclude_null = self._opts.exclude_null_from_property_type ~= false
-            if exclude_null then
-                local filtered = {}
-                for _, t in ipairs(allowed_types) do
-                    if t ~= "null" then
-                        table.insert(filtered, t)
-                    end
-                end
-                if #filtered > 0 then
-                    allowed_types = filtered
-                end
-            end
-
-            if #allowed_types == 1 then
-                self:_create_and_add_object_property(item, key, allowed_types[1], prop_schema)
-            else
-                local choices = {}
-                for _, t in ipairs(allowed_types) do
-                    table.insert(choices, { label = t, data = t })
-                end
-                selector.select("Select property type", choices, nil, function(choice)
-                    if choice then
-                        self:_create_and_add_object_property(item, key, choice, prop_schema)
-                    end
-                end)
-            end
+            local ap = schema.additionalProperties
+            with_schema(type(ap) == "table" and ap or {})
         end,
     })
+end
+
+function JsonEditor:_choose_type_and_add_property(item, key, prop_schema)
+    local allowed = self:_get_allowed_types(prop_schema)
+
+    if #allowed == 0 then
+        allowed = { "string", "number", "boolean", "null", "object", "array" }
+    end
+
+    -- apply option once, centrally
+    if self._opts.exclude_null_from_property_type ~= false then
+        local filtered = {}
+        for _, t in ipairs(allowed) do
+            if t ~= "null" then
+                table.insert(filtered, t)
+            end
+        end
+        if #filtered > 0 then
+            allowed = filtered
+        end
+    end
+
+    if #allowed == 1 then
+        self:_create_and_add_object_property(item, key, allowed[1], prop_schema)
+        return
+    end
+
+    local choices = {}
+    for _, t in ipairs(allowed) do
+        table.insert(choices, { label = t, data = t })
+    end
+
+    selector.select(
+        "Select property type",
+        choices,
+        nil,
+        function(choice)
+            if choice then
+                self:_create_and_add_object_property(item, key, choice, prop_schema)
+            end
+        end
+    )
 end
 
 function JsonEditor:_create_and_add_object_property(item, key, type_choice, schema)
@@ -850,7 +805,7 @@ function JsonEditor:_create_default_value(type_choice, schema)
 end
 
 function JsonEditor:_push_undo()
-    table.insert(self._undo_stack, deep_copy(self._data))
+    table.insert(self._undo_stack, vim.fn.deepcopy(self._data))
     self._redo_stack = {}
     self._is_dirty = true
 end
@@ -861,7 +816,7 @@ function JsonEditor:undo()
         return
     end
 
-    table.insert(self._redo_stack, deep_copy(self._data))
+    table.insert(self._redo_stack, vim.fn.deepcopy(self._data))
     self._data = table.remove(self._undo_stack)
 
     local ok, err = json_util.save_to_file(self._filepath, self._data)
@@ -879,7 +834,7 @@ function JsonEditor:redo()
         return
     end
 
-    table.insert(self._undo_stack, deep_copy(self._data))
+    table.insert(self._undo_stack, vim.fn.deepcopy(self._data))
     self._data = table.remove(self._redo_stack)
 
     local ok, err = json_util.save_to_file(self._filepath, self._data)

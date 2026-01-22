@@ -261,4 +261,38 @@ function M.format_grid(items, width)
 	return table.concat(lines, "\r\n")
 end
 
+
+---@param strs string[]
+---@param partial_order string[]|nil        -- schema node for this table
+---@return string[]           -- ordered keys or nil if no ordering defined
+function M.order_strings(strs, partial_order)
+    assert(type(strs) == "table")
+    assert(type(partial_order) == "table")
+
+    local order = partial_order
+
+    -- Return a shallow copy to avoid mutation
+    local ordered = {}
+    for i = 1, #order do
+        ordered[i] = order[i]
+    end
+
+    local index = 1
+    local priorities = {}
+    for _, v in ipairs(ordered) do
+        priorities[v] = index
+        index = index + 1
+    end
+
+    for _, v in ipairs(strs) do
+        if not priorities[v] then
+            priorities[v] = index
+            index = index + 1
+        end
+    end
+    
+    table.sort(strs, function(a, b) return priorities[a] < priorities[b] end)
+    return strs
+end
+
 return M
