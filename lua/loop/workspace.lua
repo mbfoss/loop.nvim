@@ -122,7 +122,7 @@ local function _configure_workspace(ws_dir)
         filepath = filepath,
         schema = schema,
         on_data_open = function(data)
-            if not data or not data.variables or not data["$schema"] then
+            if not data or not data.workspace or not data["$schema"] then
                 local schema_filepath = vim.fs.joinpath(config_dir, 'wsschema.json')
                 if not filetools.file_exists(schema_filepath) then
                     jsontools.save_to_file(schema_filepath, schema)
