@@ -34,7 +34,7 @@ local function _build_taskfile_schema()
                     required = vim.deepcopy(base_items.required),
                     __order = base_items.__order or {},
                 }
-                oneOfItem.__name = provider_schema.__name
+                oneOfItem.__name = type
                 if provider_schema.__order then vim.list_extend(oneOfItem.__order, provider_schema.__order) end
                 oneOfItem.properties.type = { const = type }
                 oneOfItem.additionalProperties = provider_schema.additionalProperties or false

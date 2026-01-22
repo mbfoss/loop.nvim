@@ -1,47 +1,47 @@
--- ──────────────────────────────────────────────────────────────────────────────
---  Improvements summary (2025–2026 style)
--- ──────────────────────────────────────────────────────────────────────────────
--- • Better value input & smart coercion / parsing
--- • Support adding to arrays
--- • Rename key support
--- • Better schema awareness (const, enum, additionalProperties, required)
--- • Preserve fold state better
--- • More undo-friendly operations
--- • Basic array item insert / append
--- • Visual feedback when buffer is invalid JSON
-
 local class        = require("loop.tools.class")
 local ItemTreeComp = require("loop.comp.ItemTree")
-local CompBuffer   = require('loop.buf.CompBuffer')
+local CompBuffer   = require("loop.buf.CompBuffer")
 local floatwin     = require("loop.tools.floatwin")
 local selector     = require("loop.tools.selector")
 local validator    = require("loop.tools.jsonschema")
 local json_util    = require("loop.tools.json")
 local file_util    = require("loop.tools.file")
 
+---@alias JsonPrimitive string|number|boolean|nil
+---@alias JsonValue JsonPrimitive|table
+
 ---@class loop.JsonEditorOpts
----@field name? string -- Buffer display name (default: "JSON Editor")
----@field filepath string -- Absolute or relative path to JSON file
----@field schema? table -- JSON Schema (draft-agnostic, validator-compatible)
----@field on_data_open? fun(data:table):any -- Called after JSON is loaded, before render
----@field on_node_added? fun(path:string,allback:fun(to_add:any|nil)) -- Custom add hook (object or array)
----@field exclude_null_from_property_type? boolean --- When true (default), filters "null" from selectable property types
+---@field name? string
+---@field filepath string
+---@field schema? table
+---@field on_data_open? fun(data:table):any
+---@field on_node_added? fun(path:string,callback:fun(to_add:any|nil))
+---@field exclude_null_from_property_type? boolean
 
 ---@class loop.JsonEditor
----@field new fun(self: loop.JsonEditor, opts:loop.JsonEditorOpts): loop.JsonEditor
----@field inint fun(self: loop.JsonEditor)
+---@field _opts loop.JsonEditorOpts
 ---@field _filepath string
 ---@field _data table
 ---@field _schema table|nil
 ---@field _fold_cache table<string, boolean>
----@field _undo_stack table
----@field _redo_stack table
+---@field _undo_stack table[]
+---@field _redo_stack table[]
+---@field _validation_errors loop.json.ValidationError[]
 ---@field _is_dirty boolean
 ---@field _on_node_added fun(path:string,callback:fun(nodes:any))|nil
+---@field _itemtree loop.comp.ItemTree
+---@field _buf_ctrl any
+---@field _is_open boolean
 local JsonEditor   = class()
 
-local function is_array(t) return type(t) == "table" and vim.islist(t) end
+---@param t any
+---@return boolean
+local function is_array(t)
+    return type(t) == "table" and vim.islist(t)
+end
 
+---@param v any
+---@return string
 local function value_type(v)
     local ty = type(v)
     if ty == "nil" then return "null" end
@@ -52,11 +52,16 @@ local function value_type(v)
     return "unknown"
 end
 
+---@param base string
+---@param key string
+---@return string
 local function join_path(base, key)
     if base == "" then return "/" .. key end
     return base .. "/" .. key
 end
 
+---@param path string
+---@return string[]
 local function split_path(path)
     if path == "" or path == "/" then return {} end
     local parts = {}
@@ -66,6 +71,9 @@ local function split_path(path)
     return parts
 end
 
+---@generic T
+---@param t T
+---@return T
 local function deep_copy(t)
     if type(t) ~= "table" then return t end
     local copy = {}
@@ -75,6 +83,9 @@ local function deep_copy(t)
     return copy
 end
 
+---@param schema table|nil
+---@param path string
+---@return table|nil
 local function resolve_schema(schema, path)
     if not schema then return nil end
     if path == "" or path == "/" then return schema end
@@ -94,6 +105,9 @@ local function resolve_schema(schema, path)
     return cur
 end
 
+---@param value any
+---@param schema table|nil
+---@return table|nil
 function _resolve_oneof_schema(value, schema)
     if schema and schema.oneOf then
         for _, subschema in ipairs(schema.oneOf) do
@@ -108,7 +122,7 @@ function _resolve_oneof_schema(value, schema)
 end
 
 ---@param keys string[]
----@param schema table|nil        -- schema node for this table
+---@param schema table|nil
 local function _order_keys(keys, schema)
     local order = type(schema) == "table" and schema.__order or nil
     if not order then
@@ -116,19 +130,17 @@ local function _order_keys(keys, schema)
         return
     end
 
-    -- Return a shallow copy to avoid mutation
     local ordered = {}
     for i = 1, #order do
         ordered[i] = order[i]
     end
 
-    local index = 1
     local priorities = {}
-    for _, v in ipairs(ordered) do
-        priorities[v] = index
-        index = index + 1
+    for i, v in ipairs(ordered) do
+        priorities[v] = i
     end
 
+    local index = #ordered + 1
     for _, v in ipairs(keys) do
         if not priorities[v] then
             priorities[v] = index
@@ -136,9 +148,14 @@ local function _order_keys(keys, schema)
         end
     end
 
-    table.sort(keys, function(a, b) return priorities[a] < priorities[b] end)
+    table.sort(keys, function(a, b)
+        return priorities[a] < priorities[b]
+    end)
 end
 
+---@param input string
+---@param schema table|nil
+---@return any
 local function smart_coerce(input, schema)
     if not schema or not schema.type then return input end
 
@@ -162,7 +179,7 @@ local function smart_coerce(input, schema)
 
     if vim.tbl_contains(want, "number") then
         local n = tonumber(input)
-        if n then return n end
+        if n then return n else return vim.NIL end
     end
 
     if vim.tbl_contains(want, "string") then
@@ -175,12 +192,19 @@ local function smart_coerce(input, schema)
     return input
 end
 
-local function formatter(_, data, hls)
+---@param _ any
+---@param data table
+---@return string,loop.Highlight[]?,loop.comp.ItemTree.VirtText[]?
+local function _formatter(_, data)
+    ---@type loop.Highlight[]
+    local hls = {}
+
     if not data then return "" end
 
-    local key   = tostring(data.key or "")
-    local vt    = data.value_type
-    local value = data.value
+    local key     = tostring(data.key or "")
+    local vt      = data.value_type
+    local value   = data.value
+    local err_msg = data.err_msg
 
     table.insert(hls, { group = "@property", start_col = 0, end_col = #key })
     local line = key
@@ -207,9 +231,17 @@ local function formatter(_, data, hls)
         table.insert(hls, { group = "ErrorMsg", start_col = 0, end_col = #line })
     end
 
-    return line
+    ---@type loop.comp.ItemTree.VirtText[]
+    local virt_text = {}
+    if err_msg then
+        table.insert(virt_text, { text = "  " .. err_msg, highlight = "DiagnosticWarn" })
+    else
+        table.insert(virt_text, { text = vt, highlight = "Comment" })
+    end
+    return line, hls, virt_text
 end
 
+---@param opts loop.JsonEditorOpts
 function JsonEditor:init(opts)
     self._opts              = opts or {}
     self._undo_stack        = {}
@@ -233,7 +265,7 @@ function JsonEditor:open(winid)
     ---@type loop.comp.ItemTree
     ---@diagnostic disable-next-line: undefined-field
     self._itemtree = ItemTreeComp:new({
-        formatter       = formatter,
+        formatter       = _formatter,
         render_delay_ms = 40,
     })
 
@@ -316,25 +348,31 @@ function JsonEditor:_reload_data_and_tree()
     end
 
     self._data = data
-    self:_validate_data()
     self:_reload_tree()
 end
 
-function JsonEditor:_validate_data()
+function JsonEditor:_reload_tree()
     self._validation_errors = {}
+    ---@type table<string, string>
+    local errors = {}
     if self._schema then
-        local errs = validator.validate(self._schema, self._data)
-        if errs and #errs > 0 then
-            self._validation_errors = errs
+        local validation_errors = validator.validate2(self._schema, self._data)
+        if validation_errors then
+            self._validation_errors = validation_errors
+            for _, e in ipairs(validation_errors) do
+                errors['/' .. e.path] = e.err_msg:gsub("\n", " ")
+            end
         end
     end
+    self:_upsert_tree_items(self._data, "", nil, self._schema, errors)
 end
 
-function JsonEditor:_reload_tree()
-    self:_upsert_tree_items(self._data, "", nil, self._schema)
-end
-
-function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
+---@param tbl table
+---@param path string
+---@param parent_id string?
+---@param parent_schema table?
+---@param errors {string:string}
+function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, errors)
     assert(type(tbl) == "table")
     ---@type loop.comp.ItemTree.Item[]
     local items = {}
@@ -345,8 +383,9 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
         for i, v in ipairs(tbl) do
             local str_i = tostring(i)
             local p = join_path(path, str_i)
-            local id = parent_id and (parent_id .. "::" .. str_i) or str_i
+            local id = parent_id and (parent_id .. "/" .. str_i) or str_i
             local item_schema = parent_schema and parent_schema.items or nil
+            local e = errors[p]
             ---@type loop.comp.ItemTree.Item
             local item = {
                 id = id,
@@ -355,6 +394,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
                     key = "[" .. str_i .. "]",
                     path = p,
                     value = v,
+                    err_msg = e,
                     value_type = value_type(v),
                     schema = item_schema,
                 },
@@ -369,9 +409,9 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
 
             local v = tbl[k]
             local p = join_path(path, k)
-            local id = parent_id and (parent_id .. "::" .. k) or k
-
+            local id = parent_id and (parent_id .. "/" .. k) or k
             local prop_schema = nil
+            local e = errors[p]
             if parent_schema then
                 if parent_schema.properties and parent_schema.properties[k] then
                     prop_schema = parent_schema.properties[k]
@@ -391,6 +431,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
                     key = k,
                     path = p,
                     value = v,
+                    err_msg = e,
                     value_type = value_type(v),
                     schema = prop_schema,
                 },
@@ -404,7 +445,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema)
     for _, item in ipairs(items) do
         if type(item.data.value) == "table" then
             local data = item.data
-            self:_upsert_tree_items(data.value, data.path, item.id, data.schema)
+            self:_upsert_tree_items(data.value, data.path, item.id, data.schema, errors)
         end
     end
 end
@@ -414,11 +455,6 @@ function JsonEditor:_edit_value(item, multiline)
     local schema = item.data.schema or {}
 
     if not item.data.value or type(item.data.value) == "table" then return end
-
-    if schema.const ~= nil then
-        vim.notify("Value is const = " .. vim.inspect(schema.const), vim.log.levels.WARN)
-        return
-    end
 
     if schema.enum then
         local choices = {}
@@ -524,7 +560,7 @@ function JsonEditor:_delete(item)
     end
 
     if vim.islist(parent) then
-        table.remove(parent, key)
+        table.remove(parent, tonumber(key))
     else
         parent[key] = nil
     end
@@ -536,7 +572,6 @@ function JsonEditor:_delete(item)
         return
     end
 
-    self:_validate_data()
     vim.schedule(function() self:_reload_data_and_tree() end)
 end
 
@@ -807,7 +842,6 @@ function JsonEditor:undo()
         return
     end
 
-    self:_validate_data()
     vim.schedule(function() self:_reload_data_and_tree() end)
 end
 
@@ -826,7 +860,6 @@ function JsonEditor:redo()
         return
     end
 
-    self:_validate_data()
     vim.schedule(function() self:_reload_data_and_tree() end)
 end
 
@@ -855,7 +888,7 @@ function JsonEditor:_show_errors()
 
     local error_text = "=== Validation Errors ===\n\n"
     for i, err in ipairs(self._validation_errors) do
-        error_text = error_text .. string.format("%d. %s\n", i, err)
+        error_text = error_text .. string.format("%d. at '%s': %s\n", i, err.path, err.err_msg)
     end
 
     floatwin.show_floatwin(error_text, { title = "Errors" })
@@ -917,7 +950,6 @@ function JsonEditor:_set_value(path, new_value)
         return
     end
 
-    self:_validate_data()
     vim.schedule(function() self:_reload_data_and_tree() end)
 end
 

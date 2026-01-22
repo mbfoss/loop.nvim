@@ -33,9 +33,7 @@ function M.get_composite_task_provider()
     ---@type loop.TaskTypeProvider
     return {
         get_task_schema = function()
-            return {
-                __name = "Composite",
-            }
+            return {}
         end,
         start_one_task = function(task, page_manager, on_exit)
             -- composite task does nothing by itself

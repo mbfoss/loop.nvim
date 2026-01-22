@@ -177,7 +177,7 @@ local function _load_workspace(dir)
 
     local ws_config, config_errors = _load_workspace_config(config_dir)
     if not ws_config then
-        logs.log(config_errors or "", vim.log.levels.ERROR)
+        logs.log(config_errors or "unknown error", vim.log.levels.ERROR)
         return false, "Failed to load workspace configuration (:Loop logs for details)"
     end
 

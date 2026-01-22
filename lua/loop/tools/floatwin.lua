@@ -212,12 +212,11 @@ function M.input_at_cursor(opts)
         M._complete_buf = buf
     end
 
-    -- AUTO-RESIZE LOGIC & COMPLETION TRIGGER
+    -- AUTO-RESIZE LOGIC
     vim.api.nvim_create_autocmd({ "TextChangedI", "TextChanged" }, {
         buffer = buf,
         callback = function()
             local line = vim.api.nvim_get_current_line()
-
             -- Width
             local new_width = math.max(min_width, vim.fn.strdisplaywidth(line) + 2)
             new_width = math.min(new_width, max_width)
@@ -240,9 +239,16 @@ function M.input_at_cursor(opts)
                     vim.api.nvim_win_set_config(win, { height = current_height })
                 end
             end
+        end
+    })
 
+    -- COMPLETION TRIGGER
+    vim.api.nvim_create_autocmd("TextChangedI", {
+        buffer = buf,
+        callback = function()
             -- Completion
             if opts.completions and #opts.completions > 0 then
+                local line = vim.api.nvim_get_current_line()
                 local col = vim.fn.col(".")
                 local base = line:sub(1, col - 1)
                 local matches = M._complete(1, base)
@@ -251,7 +257,7 @@ function M.input_at_cursor(opts)
                 end
             end
         end
-    })
+    })    
 
     -- ---------------- Close logic ----------------
     local closed = false

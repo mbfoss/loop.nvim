@@ -23,8 +23,17 @@ local Trackers = require("loop.tools.Trackers")
 ---@field on_open? fun(id:any,data:any)
 ---@field on_toggle? fun(id:any,data:any,expanded:boolean)
 
+---@class loop.comp.ItemTree.VirtText
+---@field text string
+---@field highlight string
+
+---@alias loop.comp.ItemTree.FormatterFn fun(
+---id:any,
+---data:any)
+---:string,out_highlights:loop.Highlight[]?,loop.comp.ItemTree.VirtText?
+
 ---@class loop.comp.ItemTree.InitArgs
----@field formatter fun(id:any,data:any,out_highlights:loop.Highlight[]):string
+---@field formatter loop.comp.ItemTree.FormatterFn
 ---@field expand_char string?
 ---@field collapse_char string?
 ---@field enable_loading_indictaor boolean?
@@ -106,6 +115,7 @@ end
 function ItemTree:init(args)
     assert(args.formatter, "formatter is required")
 
+    ---@type loop.comp.ItemTree.FormatterFn
     self._formatter = args.formatter
     self._trackers = Trackers:new()
 
@@ -285,7 +295,7 @@ function ItemTree:_on_render_request(buf)
     self._no_delay_next_render = false
 
     local buffer_lines = {}
-    local extmarks = {}
+    local extmarks_data = {}
     local new_flat_nodes = {}
 
     for _, flatnode in ipairs(flat) do
@@ -310,8 +320,15 @@ function ItemTree:_on_render_request(buf)
             prefix = prefix .. string.rep(" ", vim.fn.strdisplaywidth(self._expand_char)) .. " "
         end
 
-        local raw_hls = {}
-        local raw_text = (item_id and self._formatter(item_id, item.userdata, raw_hls) or "")
+        local raw_text, raw_hls, virt_text
+        if item_id then
+            raw_text, raw_hls, virt_text = self._formatter(item_id, item.userdata)
+        else
+            raw_text = ""
+        end
+
+        assert(type(raw_text) == "string")
+        raw_hls = raw_hls or {}
 
         local node_lines, mappings, all_node_hls = self:_process_node_lines(
             flatnode, prefix, raw_text, raw_hls
@@ -325,11 +342,24 @@ function ItemTree:_on_render_request(buf)
             local hls_for_this_line = all_node_hls[i]
 
             for _, hl in ipairs(hls_for_this_line) do
-                table.insert(extmarks, {
+                table.insert(extmarks_data, {
                     row = current_row,
-                    col_start = hl.start_col,
-                    col_end = hl.end_col,
-                    group = hl.group,
+                    start_col = hl.start_col,
+                    mark = {
+                        end_col = hl.end_col,
+                        hl_group = hl.group,
+                    }
+                })
+            end
+            if virt_text then
+                local mark_vt = {}
+                for _, t in ipairs(virt_text) do
+                    table.insert(mark_vt, { t.text, t.highlight })
+                end
+                table.insert(extmarks_data, {
+                    row = current_row,
+                    start_col = 0,
+                    mark = { virt_text = mark_vt },
                 })
             end
         end
@@ -342,11 +372,8 @@ function ItemTree:_on_render_request(buf)
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, buffer_lines)
     vim.bo[buf].modifiable = false
 
-    for _, mark in ipairs(extmarks) do
-        vim.api.nvim_buf_set_extmark(buf, _ns_id, mark.row, mark.col_start, {
-            end_col = mark.col_end,
-            hl_group = mark.group,
-        })
+    for _, data in ipairs(extmarks_data) do
+        vim.api.nvim_buf_set_extmark(buf, _ns_id, data.row, data.start_col, data.mark)
     end
 
     return true

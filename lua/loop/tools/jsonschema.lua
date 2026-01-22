@@ -1,4 +1,3 @@
--- loop/tools/validator.lua
 local M = {}
 
 -- Helper: join JSON-pointer path
@@ -9,11 +8,14 @@ local function join_path(base, key)
     return base .. "/" .. key
 end
 
----@param  errors string[]
+---@param errors loop.json.ValidationError[]
 ---@param path string
 ---@param msg string
 local function add_error(errors, path, msg)
-    table.insert(errors, path .. ": " .. msg)
+    table.insert(errors, {
+        path = path,
+        err_msg = msg,
+    })
 end
 
 -- Helper: check enum
@@ -26,40 +28,34 @@ local function check_enum(enum_tbl, value)
     return false
 end
 
+---@class loop.json.ValidationError
+---@field path string
+---@field err_msg string
+
 -- Core recursive validator
 ---@param schema table
 ---@param data any
 ---@param path string
----@return string[]?
-local function validate(schema, data, path)
-    ---@type string[]
+---@return loop.json.ValidationError[]?
+local function _validate(schema, data, path)
+    ---@type loop.json.ValidationError[]
     local errors = {}
 
-    -- Type check — supports type as string or array (e.g. ["string", "null"])
+    -- Type check
     local allowed_types = type(schema.type) == "table" and schema.type or { schema.type }
     if allowed_types and not vim.tbl_isempty(allowed_types) then
         local ok = false
         for _, t in ipairs(allowed_types) do
-            if t == "null" and data == nil then
-                ok = true
-                break
-            elseif t == "object" and type(data) == "table" and not vim.islist(data) then
-                ok = true
-                break
-            elseif t == "array" and vim.islist(data) then
-                ok = true
-                break
-            elseif t == "string" and type(data) == "string" then
-                ok = true
-                break
-            elseif t == "number" and type(data) == "number" then
-                ok = true
-                break
-            elseif t == "boolean" and type(data) == "boolean" then
-                ok = true
-                break
+            if t == "null" and data == nil then ok = true
+            elseif t == "object" and type(data) == "table" and not vim.islist(data) then ok = true
+            elseif t == "array" and vim.islist(data) then ok = true
+            elseif t == "string" and type(data) == "string" then ok = true
+            elseif t == "number" and type(data) == "number" then ok = true
+            elseif t == "boolean" and type(data) == "boolean" then ok = true
             end
+            if ok then break end
         end
+
         if not ok then
             local expected = table.concat(allowed_types, " or ")
             ---@type string
@@ -74,42 +70,40 @@ local function validate(schema, data, path)
         end
     end
 
-    -- enum check
-    if schema.enum then
-        if not check_enum(schema.enum, data) then
-            add_error(errors, path, "value not in enum: " .. table.concat(schema.enum, ", "))
-            return errors
-        end
+    -- enum
+    if schema.enum and not check_enum(schema.enum, data) then
+        add_error(errors, path, "value not in enum: " .. table.concat(schema.enum, ", "))
+        return errors
     end
 
-    --  const check
+    -- const
     if schema.const ~= nil then
         local function deep_equal(a, b)
             if a == b then return true end
             if type(a) ~= type(b) then return false end
             if type(a) ~= "table" then return false end
-
-            for k, v in pairs(a) do
-                if not deep_equal(v, b[k]) then return false end
-            end
-            for k, v in pairs(b) do
-                if not deep_equal(v, a[k]) then return false end
-            end
+            for k, v in pairs(a) do if not deep_equal(v, b[k]) then return false end end
+            for k, v in pairs(b) do if not deep_equal(v, a[k]) then return false end end
             return true
         end
 
         if not deep_equal(data, schema.const) then
-            local expected = vim.inspect(schema.const)
-            local got = vim.inspect(data)
-            add_error(errors, path, ("value must be exactly %s, got %s"):format(expected, got))
+            add_error(
+                errors,
+                path,
+                ("value must be exactly %s, got %s"):format(
+                    vim.inspect(schema.const),
+                    vim.inspect(data)
+                )
+            )
             return errors
         end
     end
 
-    -- 4. Object handling
+    -- object
     if schema.type == "object" or (type(schema.type) == "table" and vim.tbl_contains(schema.type, "object")) then
         if type(data) ~= "table" or vim.islist(data) then
-            add_error(errors, path, "expected object, got " .. type(data))
+            add_error(errors, path, "expected object")
             return errors
         end
 
@@ -117,55 +111,41 @@ local function validate(schema, data, path)
         local required = schema.required or {}
         local pattern_props = schema.patternProperties or {}
 
-        -- Required fields
         for _, key in ipairs(required) do
             if data[key] == nil then
                 add_error(errors, join_path(path, key), "required property missing")
             end
         end
 
-        -- Validate known properties
         for key, subschema in pairs(props) do
             if data[key] ~= nil then
-                local sub_err = validate(subschema, data[key], join_path(path, key))
-                if sub_err then
-                    vim.list_extend(errors, sub_err)
-                end
+                local sub_err = _validate(subschema, data[key], join_path(path, key))
+                if sub_err then vim.list_extend(errors, sub_err) end
             end
         end
 
-        -- Handle additionalProperties + patternProperties
         local addl = schema.additionalProperties
-
         for key, value in pairs(data) do
-            local handled = false
-            -- Exact properties
-            if props[key] then
-                handled = true
-            end
-            -- Pattern properties
+            local handled = props[key] ~= nil
             for pattern, subschema in pairs(pattern_props) do
                 if type(key) == "string" and key:match(pattern) then
                     handled = true
-                    local sub_err = validate(subschema, value, join_path(path, key))
-                    if sub_err then
-                        vim.list_extend(errors, sub_err)
-                    end
+                    local sub_err = _validate(subschema, value, join_path(path, key))
+                    if sub_err then vim.list_extend(errors, sub_err) end
                 end
             end
-            -- Additional properties
             if not handled then
                 if addl == false then
                     add_error(errors, join_path(path, key), "invalid property name")
                 elseif type(addl) == "table" then
-                    local sub_err = validate(addl, value, join_path(path, key))
+                    local sub_err = _validate(addl, value, join_path(path, key))
                     if sub_err then vim.list_extend(errors, sub_err) end
                 end
             end
         end
     end
 
-    -- . Array handling
+    -- array
     if schema.type == "array" or (type(schema.type) == "table" and vim.tbl_contains(schema.type, "array")) then
         if not vim.islist(data) then
             add_error(errors, path, "expected array")
@@ -173,60 +153,56 @@ local function validate(schema, data, path)
         end
         if schema.items then
             for i, value in ipairs(data) do
-                local sub_err = validate(schema.items, value, path .. "/" .. i)
-                if sub_err then
-                    vim.list_extend(errors, sub_err)
-                end
+                local sub_err = _validate(schema.items, value, path .. "/" .. i)
+                if sub_err then vim.list_extend(errors, sub_err) end
             end
         end
     end
 
-    -- String pattern
-    if (schema.type == "string" or (type(schema.type) == "table" and vim.tbl_contains(schema.type, "string"))) then
-        if schema.pattern and type(data) == "string" then
-            if not data:match(schema.pattern) then
-                add_error(errors, path, ("string does not match pattern %q"):format(schema.pattern))
-            end
-        end
+    -- string pattern
+    if schema.pattern and type(data) == "string" and not data:match(schema.pattern) then
+        add_error(errors, path, ("string does not match pattern %q"):format(schema.pattern))
     end
 
-    -- oneOf — first match wins
+    -- oneOf
     if schema.oneOf then
         local matched = false
         local details = {}
         for i, sub in ipairs(schema.oneOf) do
-            local sub_err = validate(sub, data, path)
-            if not sub_err or #sub_err == 0 then
+            local sub_err = _validate(sub, data, path)
+            if not sub_err then
                 matched = true
                 break
             else
-                local sub_name = sub.__name or ""
-                table.insert(details, ("option %d (%s): %s"):format(i, sub_name, table.concat(sub_err, "; ")))
+                table.insert(details, ("option %d: %s"):format(i, sub_err[1].err_msg))
             end
         end
         if not matched then
-            add_error(errors, path, "no schema in oneOf matched. Details:\n" .. table.concat(details, "\n"))
+            add_error(errors, path, "no schema in oneOf matched:\n" .. table.concat(details, "\n"))
         end
     end
 
-    -- Success: no errors
-    if #errors == 0 then
-        return nil
-    end
-    return errors
+    return #errors > 0 and errors or nil
 end
 
--- Public entry point
 ---@param schema table
 ---@param data any
 ---@return string[]?
 function M.validate(schema, data)
-    local errors = validate(schema, data, "")
-    if not errors then
-        return nil -- success
+    local errors = _validate(schema, data, "")
+    if not errors then return nil end
+    local ret = {}
+    for _, e in ipairs(errors) do
+        table.insert(ret, e.path .. ": " .. e.err_msg)
     end
+    return ret
+end
 
-    return errors
+---@param schema table
+---@param data any
+---@return loop.json.ValidationError[]?
+function M.validate2(schema, data)
+    return _validate(schema, data, "")
 end
 
 return M
