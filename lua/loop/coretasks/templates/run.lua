@@ -1,5 +1,3 @@
-local field_order = { "name", "type", "command", "cwd", "env", "save_buffers", "depends_on" }
-
 ---@type loop.taskTemplate[]
 return {
 	--- empty generic task
@@ -7,7 +5,7 @@ return {
 		name = "Run task",
 		task = {
 			name = "Run",
-			type = "command",
+			type = "process",
 			command = "",
 			cwd = "${wsdir}",
 			save_buffers = false,
@@ -20,7 +18,7 @@ return {
 		name = "C++: Run Current Binary",
 		task = {
 			name = "Run Binary",
-			type = "command",
+			type = "process",
 			command = "${fileroot}.out",
 			cwd = "${filedir}",
 			env = nil,
@@ -36,7 +34,7 @@ return {
 		name = "Python: Run Current File",
 		task = {
 			name = "Python Run",
-			type = "command",
+			type = "process",
 			command = "python3 ${file}",
 			cwd = "${filedir}",
 			env = nil,
@@ -48,7 +46,7 @@ return {
 		name = "Python: HTTP Server",
 		task = {
 			name = "Static Server",
-			type = "command",
+			type = "process",
 			command = "python3 -m http.server 8000",
 			cwd = "${wsdir}",
 			env = { PORT = "8000" },
@@ -64,7 +62,7 @@ return {
 		name = "Rust: Cargo Run",
 		task = {
 			name = "Cargo Run",
-			type = "command",
+			type = "process",
 			command = "cargo run",
 			cwd = "${wsdir}",
 			env = nil,
@@ -76,7 +74,7 @@ return {
 		name = "Rust: Cargo Run (Release)",
 		task = {
 			name = "Cargo Run",
-			type = "command",
+			type = "process",
 			command = "cargo run --release",
 			cwd = "${wsdir}",
 			env = nil,
@@ -88,7 +86,7 @@ return {
 		name = "Go: Run Current File",
 		task = {
 			name = "Go Run",
-			type = "command",
+			type = "process",
 			command = "go run ${file}",
 			cwd = "${filedir}",
 			env = nil,
@@ -104,7 +102,7 @@ return {
 		name = "Node: Run Current File",
 		task = {
 			name = "Node Run",
-			type = "command",
+			type = "process",
 			command = "node ${file}",
 			cwd = "${filedir}",
 			env = nil,
@@ -116,7 +114,7 @@ return {
 		name = "Web: Dev Server (NPM)",
 		task = {
 			name = "NPM Dev",
-			type = "command",
+			type = "process",
 			command = "npm run dev",
 			cwd = "${wsdir}",
 			env = nil,
@@ -128,7 +126,7 @@ return {
 		name = "Web: Watch Mode",
 		task = {
 			name = "NPM Watch",
-			type = "command",
+			type = "process",
 			command = "npm run watch",
 			cwd = "${wsdir}",
 			env = nil,

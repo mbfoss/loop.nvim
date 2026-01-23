@@ -66,7 +66,7 @@ Example build task:
 ```json
 {
   "name": "Build",
-  "type": "command",
+  "type": "process",
   "command": "make",
   "cwd": "${wsdir}"
 }

@@ -156,7 +156,7 @@ Example build task:
 ```json
 {
   "name": "Build",
-  "type": "run",
+  "type": "process",
   "command": "make",
   "cwd": "${wsdir}",
   "quickfix_matcher": "gcc",
@@ -258,7 +258,7 @@ Build current file:
 ```json
 {
   "name": "Compile Current File",
-  "type": "command",
+  "type": "process",
   "command": "gcc ${file} -o ${fileroot}.out",
   "cwd": "${wsdir}"
 }
@@ -268,7 +268,7 @@ Run with prompted port:
 ```json
 {
   "name": "Run with Port",
-  "type": "command",
+  "type": "process",
   "command": "python server.py --port ${prompt:Enter port,8000}",
   "cwd": "${wsdir}"
 }
@@ -288,7 +288,7 @@ Using workspace variables:
 ```json
 {
   "name": "Custom Output",
-  "type": "command",
+  "type": "process",
   "command": "gcc ${file} -o ${var:OUTPUT_DIR}/${fileroot}.out",
   "cwd": "${wsdir}"
 }

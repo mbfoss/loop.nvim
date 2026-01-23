@@ -1,4 +1,4 @@
-local command_task = require('loop.coretasks.command')
+local process_task = require('loop.coretasks.process')
 
 local M = {}
 
@@ -45,14 +45,14 @@ function M.get_composite_task_provider()
     }
 end
 
-function M.get_command_task_provider()
+function M.get_process_task_provider()
     ---@type loop.TaskTypeProvider
     return {
         get_task_schema = function()
-            local schema = require('loop.coretasks.schema.command')
+            local schema = require('loop.coretasks.processschema')
             return schema
         end,
-        start_one_task = command_task.start_task
+        start_one_task = process_task.start_task
     }
 end
 

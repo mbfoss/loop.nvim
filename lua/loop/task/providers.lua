@@ -13,10 +13,10 @@ local M = {}
 
 function M.reset()
     _task_type_providers = {
-        command   = coreproviders.get_command_task_provider(),
+        process   = coreproviders.get_process_task_provider(),
         composite = coreproviders.get_composite_task_provider(),
     }
-    _task_types = { "command", "composite" }
+    _task_types = { "process", "composite" }
     _template_providers = {
         { category = "Composite", provider = coreproviders.get_composite_templates_provider() },
         { category = "Build",     provider = coreproviders.get_build_templates_provider() },

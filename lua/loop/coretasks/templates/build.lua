@@ -5,7 +5,7 @@ return {
 		name = "Build task",
 		task = {
 			name = "Build",
-			type = "command",
+			type = "process",
 			command = "",
 			cwd = "${wsdir}",
 			quickfix_matcher = "",
@@ -19,7 +19,7 @@ return {
 		name = "C++: Build Project (Make)",
 		task = {
 			name = "Make",
-			type = "command",
+			type = "process",
 			command = "make",
 			cwd = "${wsdir}",
 			quickfix_matcher = "gcc",
@@ -30,7 +30,7 @@ return {
 		name = "C++: Build Single File (G++)",
 		task = {
 			name = "Compile file",
-			type = "command",
+			type = "process",
 			command = "g++ -g -Wall -Wextra ${file} -o ${fileroot}.out",
 			cwd = "${filedir}",
 			quickfix_matcher = "gcc",
@@ -45,7 +45,7 @@ return {
 		name = "Rust: Cargo Build",
 		task = {
 			name = "Build",
-			type = "command",
+			type = "process",
 			command = "cargo build --message-format=short",
 			cwd = "${wsdir}",
 			quickfix_matcher = "cargo",
@@ -56,7 +56,7 @@ return {
 		name = "Rust: Cargo Build (Release)",
 		task = {
 			name = "Build (Release)",
-			type = "command",
+			type = "process",
 			command = "cargo build --release --message-format=short",
 			cwd = "${wsdir}",
 			quickfix_matcher = "cargo",
@@ -67,7 +67,7 @@ return {
 		name = "Rust: Cargo Check",
 		task = {
 			name = "Check",
-			type = "command",
+			type = "process",
 			command = "cargo check --message-format=short",
 			cwd = "${wsdir}",
 			quickfix_matcher = "cargo",
@@ -82,7 +82,7 @@ return {
 		name = "Go: Build Project",
 		task = {
 			name = "Build",
-			type = "command",
+			type = "process",
 			command = "go build ./...",
 			cwd = "${wsdir}",
 			quickfix_matcher = "go",
@@ -93,7 +93,7 @@ return {
 		name = "Go: Build Current File",
 		task = {
 			name = "Build File",
-			type = "command",
+			type = "process",
 			command = "go build ${file}",
 			cwd = "${filedir}",
 			quickfix_matcher = "go",
@@ -108,7 +108,7 @@ return {
 		name = "Lua: Lint Current File",
 		task = {
 			name = "Luacheck",
-			type = "command",
+			type = "process",
 			command = "luacheck ${file} --formatter plain --codes",
 			cwd = "${filedir}",
 			quickfix_matcher = "linter",
@@ -119,7 +119,7 @@ return {
 		name = "TS: Type Check Project",
 		task = {
 			name = "Check",
-			type = "command",
+			type = "process",
 			command = "tsc --noEmit --pretty false",
 			cwd = "${wsdir}",
 			quickfix_matcher = "tsc",
@@ -130,7 +130,7 @@ return {
 		name = "Python: Lint Current File",
 		task = {
 			name = "Pylint",
-			type = "command",
+			type = "process",
 			command = "pylint --output-format=parseable ${file}",
 			cwd = "${filedir}",
 			quickfix_matcher = "linter",

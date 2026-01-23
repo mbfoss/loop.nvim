@@ -213,8 +213,6 @@ function TaskScheduler:_start_current_plan()
     local plan = self._pending_plan
     if not plan then return end
     self._pending_plan = nil
-    -- ask providers to cleaup
-    taskmgr.on_tasks_cleanup()
     -- drop old pages
     for _, pm in ipairs(self._page_managers) do
         pm.delete_all_groups(true)
