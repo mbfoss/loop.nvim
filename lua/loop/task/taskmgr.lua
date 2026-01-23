@@ -84,7 +84,7 @@ local function _task_preview(task)
 end
 
 ---@param content string
----@param tasktype_to_schema table<string,Object>
+---@param tasktype_to_schema table<string,table>
 ---@return loop.Task[]|nil
 ---@return string[]|nil
 local function _load_tasks_from_str(content, tasktype_to_schema)
@@ -126,7 +126,7 @@ local function _load_tasks_from_str(content, tasktype_to_schema)
 end
 
 ---@param filepath string
----@param tasktype_to_schema table<string,Object>
+---@param tasktype_to_schema table<string,table>
 ---@return loop.Task[]|nil
 ---@return string[]|nil
 local function _load_tasks_file(filepath, tasktype_to_schema)

@@ -12,12 +12,12 @@ local strtools = require("loop.tools.strtools")
 ---@alias JsonValue JsonPrimitive|table<string,JsonValue>|JsonValue[]
 
 ---@class loop.JsonEditorOpts
----@field name? string
----@field filepath string
----@field schema? table
----@field on_data_open? fun(data:table):table?
----@field on_node_added? fun(path:string, callback:fun(to_add:any|nil))
----@field null_support? boolean
+---@field name string?
+---@field filepath string?
+---@field schema table?
+---@field on_data_open fun(data:table):table?
+---@field on_node_added fun(path:string, callback:fun(to_add:any|nil))?
+---@field null_support boolean?
 
 ---@class loop.JsonEditor
 ---@field new fun(self:loop.JsonEditor,opts:loop.JsonEditorOpts)
@@ -201,7 +201,7 @@ function JsonEditor:open(winid)
         render_delay_ms = 40,
     })
 
-    self:_reload_data_and_tree()
+    self:_reload_data()
 
     self._itemtree:add_tracker({
         on_toggle = function(_, data, expanded)
@@ -232,10 +232,10 @@ function JsonEditor:open(winid)
         callback = function() with_current_item(function(i) self:_add_new(i) end) end,
     })
 
-    buf:add_keymap("o", {
-        desc = "Append item (Add the parent node)",
+    buf:add_keymap("i", {
+        desc = "insert item (Add the parent node)",
         callback = function() with_current_item(function(i) self:_add_new(i, true) end) end,
-    })    
+    })
 
     buf:add_keymap("d", {
         desc = "Delete",
@@ -244,10 +244,7 @@ function JsonEditor:open(winid)
 
     buf:add_keymap("K", {
         desc = "Show schema/help for current node (K)",
-        callback = function()
-            local item = self._itemtree:get_cur_item(self._buf_ctrl)
-            self:_show_node_schema_help(item)
-        end,
+        callback = function() with_current_item(function(i) self:_show_node_help(i) end) end,
     })
 
     buf:add_keymap("s", { desc = "Save (s)", callback = function() self:save() end })
@@ -270,9 +267,10 @@ function JsonEditor:_show_help()
         "  j/k      Move up/down",
         "",
         "Editing:",
-        "  a        Add property/item",
-        "  o        Add property/item to the parent node",
+        "  a        Add element to object or array",
+        "  i        Insert node",
         "  c        Change value",
+        "  C        Change value (multiline)",
         "  d        Delete",
 
         "",
@@ -282,6 +280,7 @@ function JsonEditor:_show_help()
         "  C-r      Redo",
         "",
         "Other:",
+        "  K        Show node help (hover window)",
         "  !        Show validation errors",
         "  g?       Show this help",
     }
@@ -290,7 +289,7 @@ function JsonEditor:_show_help()
 end
 
 ---@param item loop.comp.ItemTree.Item?
-function JsonEditor:_show_node_schema_help(item)
+function JsonEditor:_show_node_help(item)
     if not item or not item.data then
         vim.notify("No node selected", vim.log.levels.WARN)
         return
@@ -349,7 +348,7 @@ function JsonEditor:_show_node_schema_help(item)
     floatwin.show_tooltip(table.concat(lines, "\n"))
 end
 
-function JsonEditor:_reload_data_and_tree()
+function JsonEditor:_reload_data()
     local ok, data = json_util.load_from_file(self._filepath)
     if not ok then
         if file_util.file_exists(self._filepath) then
@@ -359,7 +358,6 @@ function JsonEditor:_reload_data_and_tree()
             data = {}
         end
     end
-
     if self._opts.on_data_open then
         local ret = self._opts.on_data_open(data)
         if ret ~= nil then data = ret end
@@ -371,10 +369,8 @@ end
 
 function JsonEditor:_reload_tree()
     self._validation_errors = {}
-
     ---@type table<string, string>
     local errors = {}
-
     if self._schema then
         local validation_errors = validator.validate2(self._schema, self._data)
         if validation_errors and #validation_errors > 0 then
@@ -384,7 +380,6 @@ function JsonEditor:_reload_tree()
             end
         end
     end
-
     self:_upsert_tree_items(self._data, "", nil, self._schema, errors)
 end
 
@@ -537,7 +532,7 @@ end
 ---@param sibling boolean?
 function JsonEditor:_add_new(item, sibling)
     if sibling then
-        local parts = validator.split_path(item.data.path) 
+        local parts = validator.split_path(item.data.path)
         if #parts < 2 then return end
         table.remove(parts, #parts)
         local parent_path = validator.join_path_parts(parts)
@@ -655,15 +650,10 @@ function JsonEditor:_delete(item)
         end
     end
 
-    local ok, err = json_util.save_to_file(self._filepath, self._data)
-    if not ok then
-        vim.notify("Failed to save: " .. tostring(err), vim.log.levels.ERROR)
-        self:_pop_undo()
-        return
-    end
+    self:save()
 
     vim.schedule(function()
-        self:_reload_data_and_tree()
+        self:_reload_data()
     end)
 end
 
@@ -969,15 +959,9 @@ function JsonEditor:undo()
 
     table.insert(self._redo_stack, vim.fn.deepcopy(self._data))
     self._data = self:_pop_undo() or self._data
-
-    local ok, err = json_util.save_to_file(self._filepath, self._data)
-    if not ok then
-        vim.notify("Failed to save: " .. tostring(err), vim.log.levels.ERROR)
-        return
-    end
-
+    self:save()
     vim.schedule(function()
-        self:_reload_data_and_tree()
+        self:_reload_data()
     end)
 end
 
@@ -986,30 +970,15 @@ function JsonEditor:redo()
         vim.notify("Nothing to redo", vim.log.levels.INFO)
         return
     end
-
     table.insert(self._undo_stack, vim.fn.deepcopy(self._data))
     self._data = table.remove(self._redo_stack)
-
-    local ok, err = json_util.save_to_file(self._filepath, self._data)
-    if not ok then
-        vim.notify("Failed to save: " .. tostring(err), vim.log.levels.ERROR)
-        return
-    end
-
+    self:save()
     vim.schedule(function()
-        self:_reload_data_and_tree()
+        self:_reload_data()
     end)
 end
 
 function JsonEditor:save()
-    if self._schema then
-        local errs = validator.validate(self._schema, self._data)
-        if errs and #errs > 0 then
-            vim.notify("Validation failed. Fix errors before saving.", vim.log.levels.WARN)
-            return
-        end
-    end
-
     local ok, err = json_util.save_to_file(self._filepath, self._data)
     if not ok then
         vim.notify("Save failed: " .. tostring(err), vim.log.levels.ERROR)
@@ -1062,15 +1031,10 @@ function JsonEditor:_set_value(path, new_value)
     self:_push_undo()
     parent[key] = new_value
 
-    local ok, err = json_util.save_to_file(self._filepath, self._data)
-    if not ok then
-        vim.notify("Failed to save: " .. tostring(err), vim.log.levels.ERROR)
-        self:_pop_undo()
-        return
-    end
+    self:save()
 
     vim.schedule(function()
-        self:_reload_data_and_tree()
+        self:_reload_data()
     end)
 end
 
