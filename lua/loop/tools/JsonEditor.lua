@@ -17,7 +17,7 @@ local strtools     = require("loop.tools.strtools")
 ---@field schema? table
 ---@field on_data_open? fun(data:table):any
 ---@field on_node_added? fun(path:string,callback:fun(to_add:any|nil))
----@field exclude_null_from_property_type? boolean
+---@field null_support? boolean
 
 ---@class loop.JsonEditor
 ---@field new fun(self:loop.JsonEditor,opts:loop.JsonEditorOpts)
@@ -36,19 +36,15 @@ local strtools     = require("loop.tools.strtools")
 ---@field _is_open boolean
 local JsonEditor   = class()
 
----@param t any
----@return boolean
-local function is_array(t) return vim.islist(t) end
-
 ---@param v any
 ---@return string
 local function value_type(v)
     local ty = type(v)
-    if ty == "nil" then return "null" end
-    if ty == "table" then return is_array(v) and "array" or "object" end
+    if ty == "table" then return vim.islist(v) and "array" or "object" end
     if ty == "boolean" then return "boolean" end
     if ty == "number" then return "number" end
     if ty == "string" then return "string" end
+    if v == vim.NIL then return "null" end
     return "unknown"
 end
 
@@ -109,41 +105,27 @@ local function _order_keys(keys, schema)
 end
 
 ---@param input string
----@param schema table|nil
+---@param wanted_type string
 ---@return any
-local function smart_coerce(input, schema)
-    if not schema or not schema.type then return input end
-
-    local want = type(schema.type) == "table" and schema.type or { schema.type }
-    input = vim.trim(input)
-
-    if vim.tbl_contains(want, "null") and (input == "" or input:lower() == "null") then
+local function _smart_coerce(input, wanted_type)
+    assert(type(input) == "string")
+    assert(type(wanted_type) == "string")
+    if wanted_type == "null" and (input == "" or input:lower() == "null") then
         return vim.NIL
     end
-
-    if vim.tbl_contains(want, "boolean") then
+    if wanted_type == "boolean" then
         local l = input:lower()
         if l == "true" or l == "yes" or l == "1" then return true end
         if l == "false" or l == "no" or l == "0" then return false end
     end
-
-    if vim.tbl_contains(want, "integer") then
+    if wanted_type == "integer" then
         local n = tonumber(input)
         if n and n == math.floor(n) then return n end
     end
-
-    if vim.tbl_contains(want, "number") then
+    if wanted_type == "number" then
         local n = tonumber(input)
-        if n then return n else return vim.NIL end
+        if n then return n else return nil end
     end
-
-    if vim.tbl_contains(want, "string") then
-        return input
-    end
-
-    local ok, val = pcall(vim.json.decode, input)
-    if ok then return val end
-
     return input
 end
 
@@ -153,6 +135,8 @@ end
 local function _formatter(_, data)
     ---@type loop.Highlight[]
     local hls = {}
+    ---@type loop.comp.ItemTree.VirtText[]
+    local virt_text = {}
 
     if not data then return "" end
 
@@ -161,37 +145,31 @@ local function _formatter(_, data)
     local value   = data.value
     local err_msg = data.err_msg
 
-    table.insert(hls, { group = "@property", start_col = 0, end_col = #key })
+    table.insert(hls, { group = "Label", start_col = 0, end_col = #key })
     local line = key
-
     if vt == "object" or vt == "array" then
         local count = type(value) == "table" and #value or 0
         local bracket = vt == "object" and "{…}" or ("[…] (" .. count .. ")")
-        line = line .. ": " .. bracket
-    elseif vt == "string" then
-        table.insert(hls, { group = "@string", start_col = #line + 2 })
-        line = line .. ": " .. value
-    elseif vt == "null" then
-        table.insert(hls, { group = "@constant", start_col = #line + 2 })
-        line = line .. ": null"
-    elseif vt == "boolean" then
-        table.insert(hls, { group = "@boolean", start_col = #line + 2 })
-        line = line .. ": " .. tostring(value)
+        table.insert(virt_text, { text = bracket, highlight = "Comment" })
     else
-        table.insert(hls, { group = "@number", start_col = #line + 2 })
-        line = line .. ": " .. tostring(value)
+        table.insert(hls, { group = "Comment", start_col = #line, end_col = #line + 2 })
+        line = line .. ": "
+        if vt == "string" then
+            table.insert(hls, { group = "@string", start_col = #line })
+            line = line .. value
+        elseif vt == "null" then
+            table.insert(hls, { group = "@constant", start_col = #line })
+            line = line .. "null"
+        elseif vt == "boolean" then
+            table.insert(hls, { group = "@boolean", start_col = #line })
+            line = line .. tostring(value)
+        else
+            table.insert(hls, { group = "@number", start_col = #line })
+            line = line .. tostring(value)
+        end
     end
-
-    if data.has_error then
-        table.insert(hls, { group = "ErrorMsg", start_col = 0, end_col = #line })
-    end
-
-    ---@type loop.comp.ItemTree.VirtText[]
-    local virt_text = {}
     if err_msg then
         table.insert(virt_text, { text = "● " .. err_msg, highlight = "DiagnosticError" })
-    else
-        table.insert(virt_text, { text = vt, highlight = "Comment" })
     end
     return line, hls, virt_text
 end
@@ -220,7 +198,7 @@ function JsonEditor:open(winid)
     ---@type loop.comp.ItemTree
     ---@diagnostic disable-next-line: undefined-field
     self._itemtree = ItemTreeComp:new({
-        formatter       =  _formatter,
+        formatter       = _formatter,
         render_delay_ms = 40,
     })
 
@@ -332,7 +310,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
     ---@type loop.comp.ItemTree.Item[]
     local items = {}
 
-    if is_array(tbl) then
+    if vim.islist(tbl) then
         for i, v in ipairs(tbl) do
             local str_i = tostring(i)
             local p = join_path(path, str_i)
@@ -423,12 +401,14 @@ function JsonEditor:_edit_value(item, multiline)
         or vim.json.encode(item.data.value)
 
     local opts = {
-        title = ("value of '%s'"):format(tostring(item.data.key or "")),
+        title = ("%s (%s)"):format(item.data.key or "", item.data.value_type),
         default_text = default,
         on_confirm = function(txt)
             if txt == nil then return end
-            local coerced = smart_coerce(txt, schema)
-            self:_set_value(path, coerced)
+            local coerced = _smart_coerce(txt, item.data.value_type)
+            if coerced then
+                self:_set_value(path, coerced)
+            end
         end,
     }
     if multiline then
@@ -498,60 +478,103 @@ function JsonEditor:_add_new_from_object(item, to_add)
 end
 
 function JsonEditor:_delete(item)
-    if item.data.path == "" then
-        vim.notify("Cannot delete root", vim.log.levels.WARN)
+    if not item or not item.data or item.data.path == "" then
+        vim.notify("Cannot delete root node", vim.log.levels.WARN)
         return
     end
-
     self:_push_undo()
-
-    local parent, key = self:_get_parent_and_key(item.data.path)
-    if not parent or key == nil then
-        table.remove(self._undo_stack)
+    local parts = split_path(item.data.path)
+    if #parts == 0 then
+        self:_pop_undo()
         return
     end
+    -- Build path stack: {root, obj1, obj2, ..., target_parent, target}
+    local stack = { self._data }
+    local current = self._data
+    for i = 1, #parts do
+        local key = parts[i]
+        local next_val = current[tonumber(key) or key]
+        if next_val == nil then
+            vim.notify("Path no longer exists – data may be inconsistent", vim.log.levels.ERROR)
+            self:_pop_undo()
+            return
+        end
+        current = next_val
+        table.insert(stack, current)
+    end
 
+    local parent = stack[#stack - 1]
+    local key    = parts[#parts]
+    local numkey = tonumber(key)
+
+    -- Actually delete
     if vim.islist(parent) then
-        table.remove(parent, tonumber(key))
+        if numkey and numkey >= 1 and numkey <= #parent then
+            table.remove(parent, numkey)
+        else
+            vim.notify("Invalid array index: " .. tostring(key), vim.log.levels.ERROR)
+            self:_pop_undo()
+            return
+        end
     else
         parent[key] = nil
+        if next(parent) == nil then
+            if #stack > 2 then
+                local parentkey = parts[#parts - 1]
+                local gparent = stack[#stack - 2]
+                gparent[parentkey] = vim.empty_dict()
+            else
+                self._data = vim.empty_dict()
+            end
+        end
     end
 
+    -- Save
     local ok, err = json_util.save_to_file(self._filepath, self._data)
     if not ok then
         vim.notify("Failed to save: " .. tostring(err), vim.log.levels.ERROR)
-        table.remove(self._undo_stack)
+        self:_pop_undo()
         return
     end
 
-    vim.schedule(function() self:_reload_data_and_tree() end)
+    -- Reload UI
+    vim.schedule(function()
+        self:_reload_data_and_tree()
+    end)
 end
 
 function JsonEditor:_add_array_item(item, schema)
-    local item_schema = schema.items or {}
-    local allowed_types = self:_get_allowed_types(item_schema)
+    local item_schema = schema and schema.items or {}
+    local allowed = self:_get_allowed_types(item_schema)
 
-    if #allowed_types == 0 then
-        allowed_types = { "string", "number", "boolean", "null", "object", "array" }
+    if #allowed == 0 then
+        allowed = { "string", "number", "boolean", "object", "array" }
+        if self._opts.null_support == true then
+            table.insert(allowed, "null")
+        end
+    else
+        if self._opts.null_support ~= true then
+            allowed = vim.tbl_filter(function(v) return v ~= "null" end, allowed)
+        end
     end
 
-    if #allowed_types == 1 then
-        self:_create_and_add_array_item(item, allowed_types[1], item_schema)
+    if #allowed == 1 then
+        self:_create_and_add_array_item(item, allowed[1])
     else
         local choices = {}
-        for _, t in ipairs(allowed_types) do
+        for _, t in ipairs(allowed) do
             table.insert(choices, { label = t, data = t })
         end
         selector.select("Select item type", choices, nil, function(choice)
             if choice then
-                self:_create_and_add_array_item(item, choice, item_schema)
+                self:_create_and_add_array_item(item, choice)
             end
         end)
     end
 end
 
-function JsonEditor:_create_and_add_array_item(item, type_choice, schema)
-    local default_val = self:_create_default_value(type_choice, schema)
+function JsonEditor:_create_and_add_array_item(item, type_choice)
+    local default_val = self:_create_default_value(type_choice)
 
     if type_choice == "string" or type_choice == "number" or type_choice == "boolean" then
         floatwin.input_at_cursor({
@@ -560,7 +583,7 @@ function JsonEditor:_create_and_add_array_item(item, type_choice, schema)
                 if txt == nil then return end
                 self:_push_undo()
                 local arr = item.data.value
-                local newval = smart_coerce(txt, schema)
+                local newval = _smart_coerce(txt, type_choice)
                 table.insert(arr, newval)
                 self:_set_value(item.data.path, arr)
             end,
@@ -673,19 +696,13 @@ function JsonEditor:_choose_type_and_add_property(item, key, prop_schema)
     local allowed = self:_get_allowed_types(prop_schema)
 
     if #allowed == 0 then
-        allowed = { "string", "number", "boolean", "null", "object", "array" }
-    end
-
-    -- apply option once, centrally
-    if self._opts.exclude_null_from_property_type ~= false then
-        local filtered = {}
-        for _, t in ipairs(allowed) do
-            if t ~= "null" then
-                table.insert(filtered, t)
-            end
+        allowed = { "string", "number", "boolean", "object", "array" }
+        if self._opts.null_support == true then
+            table.insert(allowed, "null")
         end
-        if #filtered > 0 then
-            allowed = filtered
+    else
+        if self._opts.null_support ~= true then
+            allowed = vim.tbl_filter(function(v) return v ~= "null" end, allowed)
         end
     end
 
@@ -712,7 +729,7 @@ function JsonEditor:_choose_type_and_add_property(item, key, prop_schema)
 end
 
 function JsonEditor:_create_and_add_object_property(item, key, type_choice, schema)
-    local default_val = self:_create_default_value(type_choice, schema)
+    local default_val = self:_create_default_value(type_choice)
 
     if type_choice == "string" or type_choice == "number" or type_choice == "boolean" then
         floatwin.input_at_cursor({
@@ -721,7 +738,7 @@ function JsonEditor:_create_and_add_object_property(item, key, type_choice, sche
                 if txt == nil then return end
                 self:_push_undo()
                 local obj = item.data.value
-                local newval = smart_coerce(txt, schema)
+                local newval = _smart_coerce(txt, type_choice)
                 obj[key] = newval
                 self:_set_value(item.data.path, obj)
             end,
@@ -787,7 +804,7 @@ function JsonEditor:_get_allowed_types(schema)
     return {}
 end
 
-function JsonEditor:_create_default_value(type_choice, schema)
+function JsonEditor:_create_default_value(type_choice)
     if type_choice == "null" then
         return vim.NIL
     elseif type_choice == "boolean" then
@@ -810,6 +827,10 @@ function JsonEditor:_push_undo()
     self._is_dirty = true
 end
 
+function JsonEditor:_pop_undo()
+    return table.remove(self._undo_stack)
+end
+
 function JsonEditor:undo()
     if #self._undo_stack == 0 then
         vim.notify("Nothing to undo", vim.log.levels.INFO)
@@ -817,7 +838,7 @@ function JsonEditor:undo()
     end
 
     table.insert(self._redo_stack, vim.fn.deepcopy(self._data))
-    self._data = table.remove(self._undo_stack)
+    self._data = self:_pop_undo()
 
     local ok, err = json_util.save_to_file(self._filepath, self._data)
     if not ok then
@@ -929,7 +950,7 @@ function JsonEditor:_set_value(path, new_value)
     local ok, err = json_util.save_to_file(self._filepath, self._data)
     if not ok then
         vim.notify("Failed to save: " .. tostring(err), vim.log.levels.ERROR)
-        table.remove(self._undo_stack)
+        self:_pop_undo()
         return
     end
 

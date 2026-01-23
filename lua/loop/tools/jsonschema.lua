@@ -97,7 +97,7 @@ local function _validate(schema, data, path)
             add_error(
                 errors,
                 path,
-                ("value must be exactly %s, got %s"):format(
+                ("expecting %s, got %s"):format(
                     vim.inspect(schema.const),
                     vim.inspect(data)
                 )
@@ -117,10 +117,16 @@ local function _validate(schema, data, path)
         local required = schema.required or {}
         local pattern_props = schema.patternProperties or {}
 
+        local missing
         for _, key in ipairs(required) do
             if data[key] == nil then
-                add_error(errors, path, "required property missing: " .. tostring(key))
+                missing = missing or {}
+                table.insert(missing, key)
             end
+        end
+        if missing then
+            add_error(errors, path,
+                ("required propert%s missing: %s"):format(#missing == 1 and "y" or "ies", table.concat(missing, ', ')))
         end
 
         for key, subschema in pairs(props) do

@@ -63,7 +63,7 @@ local function _serialize(value, level, path, schema)
     local next_indent = _indent:rep(level + 1)
     local t           = type(value)
 
-    if t == "nil" or t == "number" or t == "boolean" or t == "string" then
+    if t == "nil" or t == "number" or t == "boolean" or t == "string" or value == vim.NIL then
         return encode_one(value)
     elseif t == "table" then
         if vim.islist(value) then
