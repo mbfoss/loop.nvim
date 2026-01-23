@@ -24,6 +24,20 @@ function M.join_path(base, key)
     return base .. "/" .. escaped
 end
 
+-- Build a JSON Pointer (defined in RFC 6901)
+---@param parts string[]
+---@return string -- JSON Pointer (RFC 6901)
+function M.join_path_parts(parts)
+    local arr = {}
+    for _, seg in ipairs(parts) do
+        if seg ~= nil and seg ~= "" then
+            table.insert(arr, _escape_ptr(seg))
+        end
+    end
+    return "/" .. table.concat(arr, "/")
+end
+
+
 ---@param path string -- -- JSON Pointer (defined in RFC 6901)
 ---@return string[]
 function M.split_path(path)

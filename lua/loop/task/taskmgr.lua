@@ -215,36 +215,52 @@ function M.configure_tasks(config_dir)
             end
         end,
         on_node_added = function(path, continue)
-            if not path:match("^/tasks$") then
-                continue(nil)
-                return
-            end
-            local category_choices = {}
-            for _, elem in ipairs(providers.get_task_template_providers()) do
-                ---@type loop.SelectorItem
-                local item = {
-                    label = elem.category,
-                    data = elem.provider,
-                }
-                table.insert(category_choices, item)
-            end
-            selector.select("Task category", category_choices, nil, function(provider)
-                if provider then
-                    local templates = provider.get_task_templates()
+            if path:match("^/tasks$") then
+                local category_choices = {}
+                for _, elem in ipairs(providers.get_task_template_providers()) do
+                    ---@type loop.SelectorItem
+                    local item = {
+                        label = elem.category,
+                        data = elem.provider,
+                    }
+                    table.insert(category_choices, item)
+                end
+                selector.select("Task category", category_choices, nil, function(provider)
+                    if provider then
+                        local templates = provider.get_task_templates()
+                        local choices = {}
+                        for _, template in pairs(templates) do
+                            ---@type loop.SelectorItem
+                            local item = {
+                                label = template.name,
+                                data = template.task,
+                            }
+                            table.insert(choices, item)
+                        end
+                        selector.select("Select template", choices, _task_preview, function(task)
+                            if task then continue(task) end
+                        end)
+                    end
+                end)
+            elseif path:match("^/tasks/[0-9]*/depends_on$") then
+                local tasks = _load_tasks(config_dir)
+                if not tasks then
+                    vim.notify("Failed to load tasks")
+                    continue(nil)
+                else
                     local choices = {}
-                    for _, template in pairs(templates) do
+                    for _, task in pairs(tasks) do
                         ---@type loop.SelectorItem
-                        local item = {
-                            label = template.name,
-                            data = template.task,
-                        }
+                        local item = {label = task.name, data = task.name}
                         table.insert(choices, item)
                     end
-                    selector.select("Select template", choices, _task_preview, function(task)
-                        if task then continue(task) end
+                    selector.select("Select dependency", choices, nil, function(name)
+                        if name then continue(name) end
                     end)
                 end
-            end)
+            else
+                continue(nil)
+            end
         end
     })
 

@@ -186,6 +186,7 @@ function ItemTree:get_cur_item(comp)
     return { id = id, data = nodedata.userdata }
 end
 
+---@return loop.comp.ItemTree.Item?
 function ItemTree:get_item(id)
     local itemdata = self:_get_item(id)
     if not itemdata then return nil end

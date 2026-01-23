@@ -121,66 +121,6 @@ local function _smart_coerce(input, wanted_type)
     return input
 end
 
----@param item loop.comp.ItemTree.Item?
-function JsonEditor:_show_node_schema_help(item)
-    if not item or not item.data then
-        vim.notify("No node selected", vim.log.levels.WARN)
-        return
-    end
-    local data = item.data
-    local schema = data.unresolved_schema
-    local lines = {}
-    if schema then
-        local function add_field(label, value)
-            if value == nil then return end
-            if type(value) == "table" then
-                value = vim.inspect(value):gsub("\n", " ")
-            end
-            table.insert(lines, ("  %-14s %s"):format(label .. ":", tostring(value)))
-        end
-
-        if type(schema.description) then
-            table.insert(lines, schema.description)
-        end
-
-        if schema.enum then
-            local enum_str = table.concat(vim.tbl_map(vim.inspect, schema.enum), ", ")
-            add_field("enum", enum_str)
-        end
-
-        if schema.items and not vim.islist(schema.items) then
-            local item_types = self:_get_allowed_types(schema.items)
-            add_field("items type", table.concat(item_types, " | "))
-        end
-
-        local req = schema.required or {}
-        if #req > 0 then
-            add_field("required properties", table.concat(req, ", "))
-        end
-
-        if schema.default ~= nil then
-            add_field("default", vim.inspect(schema.default))
-        end
-
-        if schema.format then
-            add_field("format", schema.format)
-        end
-
-        if schema.pattern then
-            add_field("pattern", schema.pattern)
-        end
-
-        if schema.minimum or schema.maximum then
-            add_field("range", (schema.minimum or "-∞") .. " ≤ x ≤ " .. (schema.maximum or "∞"))
-        end
-    end
-    if #lines == 0 then
-        table.insert(lines, "(no information available)")
-    end
-
-    floatwin.show_tooltip(table.concat(lines, "\n"))
-end
-
 ---@param _ any
 ---@param data table
 ---@return string
@@ -292,6 +232,11 @@ function JsonEditor:open(winid)
         callback = function() with_current_item(function(i) self:_add_new(i) end) end,
     })
 
+    buf:add_keymap("o", {
+        desc = "Append item (Add the parent node)",
+        callback = function() with_current_item(function(i) self:_add_new(i, true) end) end,
+    })    
+
     buf:add_keymap("d", {
         desc = "Delete",
         callback = function() with_current_item(function(i) self:_delete(i) end) end,
@@ -316,6 +261,92 @@ function JsonEditor:open(winid)
 
     local bufid = buf:get_or_create_buf()
     vim.api.nvim_win_set_buf(winid, bufid)
+end
+
+function JsonEditor:_show_help()
+    local help_text = {
+        "Navigation:",
+        "  <CR>     Toggle expand/collapse",
+        "  j/k      Move up/down",
+        "",
+        "Editing:",
+        "  a        Add property/item",
+        "  o        Add property/item to the parent node",
+        "  c        Change value",
+        "  d        Delete",
+
+        "",
+        "File:",
+        "  s        Save",
+        "  u        Undo",
+        "  C-r      Redo",
+        "",
+        "Other:",
+        "  !        Show validation errors",
+        "  g?       Show this help",
+    }
+
+    floatwin.show_floatwin(table.concat(help_text, "\n"), { title = "Help" })
+end
+
+---@param item loop.comp.ItemTree.Item?
+function JsonEditor:_show_node_schema_help(item)
+    if not item or not item.data then
+        vim.notify("No node selected", vim.log.levels.WARN)
+        return
+    end
+    local data = item.data
+    local schema = data.unresolved_schema
+    local lines = {}
+    if schema then
+        local function add_field(label, value)
+            if value == nil then return end
+            if type(value) == "table" then
+                value = vim.inspect(value):gsub("\n", " ")
+            end
+            table.insert(lines, ("  %-14s %s"):format(label .. ":", tostring(value)))
+        end
+
+        if type(schema.description) then
+            table.insert(lines, schema.description)
+        end
+
+        if schema.enum then
+            local enum_str = table.concat(vim.tbl_map(vim.inspect, schema.enum), ", ")
+            add_field("enum", enum_str)
+        end
+
+        if schema.items and not vim.islist(schema.items) then
+            local item_types = self:_get_allowed_types(schema.items)
+            add_field("items type", table.concat(item_types, " | "))
+        end
+
+        local req = schema.required or {}
+        if #req > 0 then
+            add_field("required properties", table.concat(req, ", "))
+        end
+
+        if schema.default ~= nil then
+            add_field("default", vim.inspect(schema.default))
+        end
+
+        if schema.format then
+            add_field("format", schema.format)
+        end
+
+        if schema.pattern then
+            add_field("pattern", schema.pattern)
+        end
+
+        if schema.minimum or schema.maximum then
+            add_field("range", (schema.minimum or "-∞") .. " ≤ x ≤ " .. (schema.maximum or "∞"))
+        end
+    end
+    if #lines == 0 then
+        table.insert(lines, "(no information available)")
+    end
+
+    floatwin.show_tooltip(table.concat(lines, "\n"))
 end
 
 function JsonEditor:_reload_data_and_tree()
@@ -503,7 +534,17 @@ function JsonEditor:_edit_value(item, multiline)
 end
 
 ---@param item loop.comp.ItemTree.Item
-function JsonEditor:_add_new(item)
+---@param sibling boolean?
+function JsonEditor:_add_new(item, sibling)
+    if sibling then
+        local parts = validator.split_path(item.data.path) 
+        if #parts < 2 then return end
+        table.remove(parts, #parts)
+        local parent_path = validator.join_path_parts(parts)
+        local par_item = self._itemtree:get_item(parent_path)
+        if not par_item then return end
+        item = par_item
+    end
     if self._on_node_added then
         self._on_node_added(item.data.path, function(to_add)
             if to_add ~= nil then
@@ -927,7 +968,7 @@ function JsonEditor:undo()
     end
 
     table.insert(self._redo_stack, vim.fn.deepcopy(self._data))
-    self._data = self:_pop_undo()
+    self._data = self:_pop_undo() or self._data
 
     local ok, err = json_util.save_to_file(self._filepath, self._data)
     if not ok then
