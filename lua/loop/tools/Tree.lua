@@ -558,6 +558,30 @@ function Tree:upsert_items(parent_id, items)
 	end
 end
 
+--- Is this node a root node? (has no parent)
+---@return boolean
+function Tree:is_root(id)
+    local node = self._nodes[id]
+    return node and node.parent_id == nil
+end
+
+--- Get root nodes (same as get_children(nil) but maybe clearer name in some contexts)
+function Tree:get_roots()
+    return self:get_children(nil)
+end
+
+--- Get the parent ID of a node (or nil if it's a root node)
+---@param id any
+---@return any|nil parent_id
+function Tree:get_parent_id(id)
+    assert(id ~= nil, "id is required")
+    local node = self._nodes[id]
+    if not node then
+        return nil   -- or error("node does not exist") — your choice
+    end
+    return node.parent_id
+end
+
 ---@param id any
 ---@return any -- node data or nil
 function Tree:get_item(id)

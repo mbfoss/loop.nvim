@@ -1002,35 +1002,25 @@ function JsonEditor:_show_errors()
     floatwin.show_floatwin(table.concat(lines), { title = "Errors" })
 end
 
----@param path string
----@return table|nil parent
----@return string|number|nil key
-function JsonEditor:_get_parent_and_key(path)
-    local parts = validator.split_path(path) ---@type string[]
-    if #parts < 1 then return nil, nil end
-
-    local cur = self._data ---@type table
-    for i = 1, #parts - 1 do
-        local idx = tonumber(parts[i])
-        cur = cur[idx or parts[i]]
-        if cur == nil then return nil, nil end
-    end
-
-    local last = parts[#parts]
-    local numkey = tonumber(last)
-    return cur, numkey or last
-end
 
 ---@param path string
 ---@param new_value any
 function JsonEditor:_set_value(path, new_value)
-    local parent, key = self:_get_parent_and_key(path)
-    if not parent or key == nil then
-        return
-    end
+    local parts = validator.split_path(path) ---@type string[]
+    if #parts < 1 then return end
+
+    local parent_id = self._itemtree:get_parent_id(path)
+    if not parent_id then return end
+    ---@type loop.comp.ItemTree.Item?
+    local par_item = self._itemtree:get_item(parent_id)
+    if not par_item then return end
+
+    local last = parts[#parts]
+    local numkey = tonumber(last)
+    local key = numkey or last
 
     self:_push_undo()
-    parent[key] = new_value
+    par_item.data.value[key] = new_value
 
     self:save()
     vim.schedule(function()

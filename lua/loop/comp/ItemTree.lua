@@ -185,6 +185,24 @@ function ItemTree:get_cur_item(comp)
     return { id = id, data = nodedata.userdata }
 end
 
+--- Is this node a root node? (has no parent)
+---@return boolean
+function ItemTree:is_root(id)
+    return self._tree:is_root(id)
+end
+
+--- Get root nodes (same as get_children(nil) but maybe clearer name in some contexts)
+function ItemTree:get_roots()
+    return self._tree:get_roots()
+end
+
+--- Get the parent ID of a node (or nil if it's a root node)
+---@param id any
+---@return any|nil parent_id
+function ItemTree:get_parent_id(id)
+    return self._tree:get_parent_id(id)
+end
+
 ---@return loop.comp.ItemTree.Item?
 function ItemTree:get_item(id)
     local itemdata = self:_get_item(id)
