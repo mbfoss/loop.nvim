@@ -48,28 +48,6 @@ local function value_type(v)
     return "unknown"
 end
 
----@param base string
----@param key string
----@return string
-local function join_path(base, key)
-    if base == "" then return "/" .. key end
-    return base .. "/" .. key
-end
-
----@param path string
----@return string[]
-local function split_path(path)
-    if path == "" or path == "/" then
-        return {}
-    end
-
-    local parts = {}
-    for part in path:gmatch("[^/]+") do
-        table.insert(parts, part)
-    end
-    return parts
-end
-
 ---@param value any
 ---@param schema table|nil
 ---@return table|nil
@@ -293,7 +271,7 @@ function JsonEditor:_reload_tree()
         if validation_errors then
             self._validation_errors = validation_errors
             for _, e in ipairs(validation_errors) do
-                errors['/' .. e.path] = e.err_msg:gsub("\n", " ")
+                errors[e.path] = e.err_msg:gsub("\n", " ")
             end
         end
     end
@@ -313,8 +291,8 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
     if vim.islist(tbl) then
         for i, v in ipairs(tbl) do
             local str_i = tostring(i)
-            local p = join_path(path, str_i)
-            local id = parent_id and (parent_id .. "/" .. str_i) or str_i
+            local p = validator.join_path(path, str_i)
+            local id = p
             local item_schema = parent_schema and parent_schema.items or nil
             item_schema = _resolve_oneof_schema(v, item_schema) or item_schema
             _merge_additional_properties(item_schema, parent_schema)
@@ -341,8 +319,8 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
             if k == "$schema" then goto continue end
 
             local v = tbl[k]
-            local p = join_path(path, k)
-            local id = parent_id and (parent_id .. "/" .. k) or k
+            local p = validator.join_path(path, k)
+            local id = p
             local prop_schema = nil
             local e = errors[p]
             if parent_schema then
@@ -483,7 +461,7 @@ function JsonEditor:_delete(item)
         return
     end
     self:_push_undo()
-    local parts = split_path(item.data.path)
+    local parts = validator.split_path(item.data.path)
     if #parts == 0 then
         self:_pop_undo()
         return
@@ -922,7 +900,7 @@ function JsonEditor:_show_help()
 end
 
 function JsonEditor:_get_parent_and_key(path)
-    local parts = split_path(path)
+    local parts = validator.split_path(path)
     if #parts < 1 then return nil, nil end
 
     local cur = self._data

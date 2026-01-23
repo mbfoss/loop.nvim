@@ -1,15 +1,46 @@
 local M = {}
 
--- Helper: join JSON-pointer path
-local function join_path(base, key)
-    if base == "/" or base == "" then
-        return base .. key
-    end
-    return base .. "/" .. key
+local function _escape_ptr(token)
+    return (tostring(token)
+        :gsub("~", "~0")
+        :gsub("/", "~1"))
 end
 
+local function _unescape_ptr(token)
+    return (token
+        :gsub("~1", "/")
+        :gsub("~0", "~"))
+end
+
+-- Build a JSON Pointer (defined in RFC 6901)
+---@param base string
+---@param key string
+---@return string -- JSON Pointer (defined in RFC 6901)
+function M.join_path(base, key)
+    local escaped = _escape_ptr(key)
+    if base == "" or base == "/" then
+        return "/" .. escaped
+    end
+    return base .. "/" .. escaped
+end
+
+---@param path string -- -- JSON Pointer (defined in RFC 6901)
+---@return string[]
+function M.split_path(path)
+    if path == "" or path == "/" then
+        return {}
+    end
+
+    local parts = {}
+    for part in path:gmatch("[^/]+") do
+        table.insert(parts, _unescape_ptr(part))
+    end
+    return parts
+end
+
+
 ---@param errors loop.json.ValidationError[]
----@param path string
+---@param path string -- path is a JSON Pointer (defined in RFC 6901)
 ---@param msg string
 local function add_error(errors, path, msg)
     table.insert(errors, {
@@ -131,7 +162,7 @@ local function _validate(schema, data, path)
 
         for key, subschema in pairs(props) do
             if data[key] ~= nil then
-                local sub_err = _validate(subschema, data[key], join_path(path, key))
+                local sub_err = _validate(subschema, data[key], M.join_path(path, key))
                 if sub_err then vim.list_extend(errors, sub_err) end
             end
         end
@@ -142,15 +173,15 @@ local function _validate(schema, data, path)
             for pattern, subschema in pairs(pattern_props) do
                 if type(key) == "string" and key:match(pattern) then
                     handled = true
-                    local sub_err = _validate(subschema, value, join_path(path, key))
+                    local sub_err = _validate(subschema, value, M.join_path(path, key))
                     if sub_err then vim.list_extend(errors, sub_err) end
                 end
             end
             if not handled then
                 if addl == false then
-                    add_error(errors, join_path(path, key), "invalid property name")
+                    add_error(errors, M.join_path(path, key), "invalid property name")
                 elseif type(addl) == "table" then
-                    local sub_err = _validate(addl, value, join_path(path, key))
+                    local sub_err = _validate(addl, value, M.join_path(path, key))
                     if sub_err then vim.list_extend(errors, sub_err) end
                 end
             end
