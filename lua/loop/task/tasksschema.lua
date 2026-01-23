@@ -1,50 +1,70 @@
 local base_schema = {
     ["$schema"] = "http://json-schema.org/draft-07/schema#",
     title = "Loop Task Configuration",
-    description = "Configuration file for loop.nvim tasks",
     type = "object",
     additionalProperties = false,
     required = { "tasks" },
 
     properties = {
-        ["$schema"] = { type = "string" },
-
+        ["$schema"] = {
+            type = "string",
+        },
         tasks = {
-            additionalProperties = false,
             type = "array",
-            -- Providers will be used to populate this
-            --items = {
-            --    oneOf = { ... },
-            --},
+            description = "List of task definitions",
+            additionalProperties = false,
+            items = {
+                description = "Single task definition entry",
+                -- Providers will populate this with concrete task schemas
+                oneOf = vim.empty_dict(),
+            },
         },
     },
 }
 
 local base_items = {
     type = "object",
+    description = "Task properties",
     additionalProperties = false,
     required = { "name", "type" },
-    __order = {"name", "type", "depends_on", "depends_order", "save_buffers"},
+    __order = { "name", "type", "depends_on", "depends_order", "save_buffers" },
+
     properties = {
         name = {
             type = "string",
             minLength = 1,
-            description = "Non-empty unique task name"
+            description = "Unique, non-empty name for the task"
         },
-        type = { type = "string" }, -- no enum here anymore — dynamic!
+
+        type = {
+            type = "string",
+            description = "Task type"
+        },
+
         depends_on = {
             type = { "array", "null" },
-            items = { type = "string", minLength = 1 }
+            description = "List of task names that must complete before this task runs",
+            items = {
+                type = "string",
+                minLength = 1,
+                description = "Referenced task name"
+            }
         },
+
         depends_order = {
             type = "string",
+            description = "Execution order for dependencies",
             enum = { "sequence", "parallel" }
         },
+
         save_buffers = {
             type = { "boolean", "null" },
-            description = "If true, ensures workspace buffers are saved before this task starts"
+            description = "If true, saves all modified workspace buffers before executing this task"
         },
     },
 }
 
-return { base_schema = base_schema, base_items = base_items }
+return {
+    base_schema = base_schema,
+    base_items = base_items,
+}

@@ -39,7 +39,7 @@ local JsonEditor = class()
 ---Determine displayed type name for tree rendering
 ---@param v any
 ---@return string
-local function value_type(v)
+local function _value_type(v)
     local ty = type(v)
     if ty == "table" then
         return vim.islist(v) and "array" or "object"
@@ -119,6 +119,66 @@ local function _smart_coerce(input, wanted_type)
 
     -- fallback: string
     return input
+end
+
+---@param item loop.comp.ItemTree.Item?
+function JsonEditor:_show_node_schema_help(item)
+    if not item or not item.data then
+        vim.notify("No node selected", vim.log.levels.WARN)
+        return
+    end
+    local data = item.data
+    local schema = data.unresolved_schema
+    local lines = {}
+    if schema then
+        local function add_field(label, value)
+            if value == nil then return end
+            if type(value) == "table" then
+                value = vim.inspect(value):gsub("\n", " ")
+            end
+            table.insert(lines, ("  %-14s %s"):format(label .. ":", tostring(value)))
+        end
+
+        if type(schema.description) then
+            table.insert(lines, schema.description)
+        end
+
+        if schema.enum then
+            local enum_str = table.concat(vim.tbl_map(vim.inspect, schema.enum), ", ")
+            add_field("enum", enum_str)
+        end
+
+        if schema.items and not vim.islist(schema.items) then
+            local item_types = self:_get_allowed_types(schema.items)
+            add_field("items type", table.concat(item_types, " | "))
+        end
+
+        local req = schema.required or {}
+        if #req > 0 then
+            add_field("required properties", table.concat(req, ", "))
+        end
+
+        if schema.default ~= nil then
+            add_field("default", vim.inspect(schema.default))
+        end
+
+        if schema.format then
+            add_field("format", schema.format)
+        end
+
+        if schema.pattern then
+            add_field("pattern", schema.pattern)
+        end
+
+        if schema.minimum or schema.maximum then
+            add_field("range", (schema.minimum or "-∞") .. " ≤ x ≤ " .. (schema.maximum or "∞"))
+        end
+    end
+    if #lines == 0 then
+        table.insert(lines, "(no information available)")
+    end
+
+    floatwin.show_tooltip(table.concat(lines, "\n"))
 end
 
 ---@param _ any
@@ -237,6 +297,14 @@ function JsonEditor:open(winid)
         callback = function() with_current_item(function(i) self:_delete(i) end) end,
     })
 
+    buf:add_keymap("K", {
+        desc = "Show schema/help for current node (K)",
+        callback = function()
+            local item = self._itemtree:get_cur_item(self._buf_ctrl)
+            self:_show_node_schema_help(item)
+        end,
+    })
+
     buf:add_keymap("s", { desc = "Save (s)", callback = function() self:save() end })
     buf:add_keymap("u", { desc = "Undo (u)", callback = function() self:undo() end })
     buf:add_keymap("<C-r>", { desc = "Redo (C-r)", callback = function() self:redo() end })
@@ -305,8 +373,10 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
             local str_i = tostring(i)
             local p = validator.join_path(path, str_i)
             local item_schema = parent_schema and parent_schema.items or nil
-            item_schema = _resolve_oneof_schema(v, item_schema) or item_schema
             _merge_additional_properties(item_schema, parent_schema)
+
+            local unresolved_schema = item_schema
+            local resolved_schema = _resolve_oneof_schema(v, item_schema) or item_schema
 
             local e = errors[p]
 
@@ -315,12 +385,13 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
                 id = p,
                 expanded = self._fold_cache[p] ~= false,
                 data = {
-                    key        = "[" .. str_i .. "]",
-                    path       = p,
-                    value      = v,
-                    err_msg    = e,
-                    value_type = value_type(v),
-                    schema     = item_schema,
+                    key               = "[" .. str_i .. "]",
+                    path              = p,
+                    value             = v,
+                    err_msg           = e,
+                    value_type        = _value_type(v),
+                    unresolved_schema = unresolved_schema,
+                    schema            = resolved_schema,
                 },
             }
             table.insert(items, item)
@@ -334,12 +405,13 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
 
             local v = tbl[k]
             local p = validator.join_path(path, k)
-            local prop_schema = nil
 
+            local prop_schema, unresolved_schema, resolved_schema
             if parent_schema and parent_schema.properties and parent_schema.properties[k] then
                 prop_schema = parent_schema.properties[k]
-                prop_schema = _resolve_oneof_schema(v, prop_schema) or prop_schema
                 _merge_additional_properties(prop_schema, parent_schema)
+                unresolved_schema = prop_schema
+                resolved_schema = _resolve_oneof_schema(v, prop_schema) or prop_schema
             end
 
             local e = errors[p]
@@ -350,12 +422,13 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
                 parent_id = parent_id,
                 expanded = self._fold_cache[p] ~= false,
                 data = {
-                    key        = k,
-                    path       = p,
-                    value      = v,
-                    err_msg    = e,
-                    value_type = value_type(v),
-                    schema     = prop_schema,
+                    key               = k,
+                    path              = p,
+                    value             = v,
+                    err_msg           = e,
+                    value_type        = _value_type(v),
+                    unresolved_schema = unresolved_schema,
+                    schema            = resolved_schema,
                 },
             }
             table.insert(items, item)
@@ -775,14 +848,14 @@ function JsonEditor:_get_allowed_types(schema)
     if not schema then return {} end
 
     if schema.const ~= nil then
-        return { value_type(schema.const) }
+        return { _value_type(schema.const) }
     end
 
     if schema.enum then
         ---@type table<string, boolean>
         local types_set = {}
         for _, v in ipairs(schema.enum) do
-            types_set[value_type(v)] = true
+            types_set[_value_type(v)] = true
         end
         local types = {}
         for t in pairs(types_set) do
@@ -803,7 +876,7 @@ function JsonEditor:_get_allowed_types(schema)
                     types_set[t] = true
                 end
             elseif subschema.const ~= nil then
-                types_set[value_type(subschema.const)] = true
+                types_set[_value_type(subschema.const)] = true
             end
         end
         local types = {}
@@ -916,31 +989,6 @@ function JsonEditor:_show_errors()
     end
 
     floatwin.show_floatwin(table.concat(lines), { title = "Errors" })
-end
-
-function JsonEditor:_show_help()
-    local help_text = {
-        "Navigation:",
-        " <CR>   Toggle expand/collapse",
-        " j/k     Move up/down",
-        "",
-        "Editing:",
-        " a       Add property/item",
-        " c       Change value",
-        " C       Change value (multiline)",
-        " d       Delete",
-        "",
-        "File:",
-        " s       Save",
-        " u       Undo",
-        " <C-r>   Redo",
-        "",
-        "Other:",
-        " ge      Show validation errors (!)",
-        " g?      Show this help",
-    }
-
-    floatwin.show_floatwin(table.concat(help_text, "\n"), { title = "Help" })
 end
 
 ---@param path string

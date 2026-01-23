@@ -17,8 +17,6 @@ local function _build_taskfile_schema()
     local base_items = schema_data.base_items
 
     local schema = vim.deepcopy(base_schema)
-    schema.properties.tasks.items = {}
-    schema.properties.tasks.items.oneOf = {}
     local oneOf = schema.properties.tasks.items.oneOf
 
     local task_types = providers.task_types()
@@ -36,7 +34,7 @@ local function _build_taskfile_schema()
                 }
                 oneOfItem.__name = type
                 if provider_schema.__order then vim.list_extend(oneOfItem.__order, provider_schema.__order) end
-                oneOfItem.properties.type = { const = type }
+                oneOfItem.properties.type = { const = type, description = base_items.properties.type.description }
                 oneOfItem.additionalProperties = provider_schema.additionalProperties or false
                 for _, req in ipairs(provider_schema.required or {}) do
                     table.insert(oneOfItem.required, req)

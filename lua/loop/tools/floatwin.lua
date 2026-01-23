@@ -6,6 +6,13 @@ local M = {}
 local debug_win_augroup = vim.api.nvim_create_augroup("LoopPluginModalWin", { clear = true })
 local _current_win = nil
 
+
+---@class loop.floatwin.CenteredWinOpts
+---@field width number
+---@field height number
+---@field border string?
+---@field title string?
+
 ---@class loop.floatwin.FloatwinOpts
 ---@field title? string
 ---@field at_cursor? boolean
@@ -19,13 +26,6 @@ local _current_win = nil
 ---@field col_offset? number
 ---@field completions? string[]
 ---@field on_confirm fun(value: string|nil)
-
----@class loop.floatwin.CenteredWinOpts
----@field width number
----@field height number
----@field border string?
----@field title string?
----@return number winid
 
 ---@param buf number
 ---@param opts loop.floatwin.CenteredWinOpts
@@ -61,8 +61,42 @@ function M.open_centered_window(buf, opts)
 end
 
 ---@param text string
+function M.show_tooltip(text)
+    local lines              = vim.split(text, "\n", { plain = true, trimempty = true })
+    -- This mimics what LSP hover does
+    local bufnr, winnr       = vim.lsp.util.open_floating_preview(
+        lines,
+        "markdown", -- or "plaintext"
+        {
+            focusable  = false,
+            border     = "rounded",
+            max_width  = 80,
+            max_height = 15,
+            -- You can add more: title = "Tooltip", ...
+        }
+    )
+    -- Optional: make it feel more like real hover
+    vim.bo[bufnr].modifiable = false
+    vim.bo[bufnr].buftype    = "nofile"
+    vim.wo[winnr].wrap       = true
+
+    -- Auto-close on cursor move (very common pattern)
+    local aug                = vim.api.nvim_create_augroup("MyHoverClose", { clear = true })
+    vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+        group    = aug,
+        once     = true,
+        callback = function()
+            if vim.api.nvim_win_is_valid(winnr) then
+                vim.api.nvim_win_close(winnr, true)
+            end
+        end,
+    })
+end
+
+---@param text string
 ---@param opts loop.floatwin.FloatwinOpts?
 function M.show_floatwin(text, opts)
+    opts = opts or {}
     if _current_win and vim.api.nvim_win_is_valid(_current_win) then
         vim.api.nvim_win_close(_current_win, true)
     end
@@ -96,7 +130,7 @@ function M.show_floatwin(text, opts)
         win_opts.title = " " .. tostring(opts.title) .. " "
     end
 
-    if opts and opts.at_cursor then
+    if opts.at_cursor then
         -- Cursor Relative Layout
         win_opts.relative = "cursor"
         win_opts.row = 1 -- One line below cursor
@@ -114,7 +148,7 @@ function M.show_floatwin(text, opts)
 
     vim.bo[buf].modifiable = false
     vim.bo[buf].bufhidden = "wipe"
-    vim.bo[buf].filetype = "loopdebug-value"
+    --vim.bo[buf].filetype = "loopdebug-value"
 
     -- 5. Open Window
     local win = vim.api.nvim_open_win(buf, true, win_opts)
@@ -122,7 +156,7 @@ function M.show_floatwin(text, opts)
 
     -- 6. Window-local options
     vim.wo[win].wrap = false
-    vim.wo[win].sidescrolloff = 5
+    vim.wo[win].winfixbuf = true
 
     -- 7. Modal Logic
     local function close_modal()
@@ -143,7 +177,7 @@ function M.show_floatwin(text, opts)
         once = true,
     })
 
-    if opts and opts.move_to_bot then
+    if opts.move_to_bot then
         vim.api.nvim_win_call(win, function()
             local b = vim.api.nvim_win_get_buf(0)
             local l = vim.api.nvim_buf_line_count(b)
@@ -193,6 +227,7 @@ function M.input_at_cursor(opts)
     })
 
     vim.wo[win].wrap = true
+    vim.wo[win].winfixbuf = true
     vim.wo[win].winhighlight = "Normal:Normal,NormalNC:Normal,EndOfBuffer:Normal,FloatBorder:Normal"
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { initial_text })
     vim.api.nvim_win_set_cursor(win, { 1, #initial_text })
@@ -257,7 +292,7 @@ function M.input_at_cursor(opts)
                 end
             end
         end
-    })    
+    })
 
     -- ---------------- Close logic ----------------
     local closed = false
