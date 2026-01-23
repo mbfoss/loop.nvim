@@ -34,7 +34,7 @@ end
 
 --==============================================================
 -- Internal Helpers
---====================================================∆==========
+--===============================================================
 
 ---Link a node as the last child of a parent.
 ---@private
@@ -71,6 +71,103 @@ end
 ---Unlink a node from its parent’s child list (root or not).
 ---@private
 ---@param id any
+---Link a node immediately before or after a reference sibling.
+---@private
+---@param id any
+---@param reference_id any
+---@param before boolean true to insert before, false to insert after
+function Tree:_link_sibling(id, reference_id, before)
+	local ref_node = self._nodes[reference_id]
+	assert(ref_node, "reference_id does not exist")
+	
+	local parent_id = ref_node.parent_id
+
+	local node = self._nodes[id]
+	assert(node, "node must exist before linking")
+
+	if before then
+		-- Inserting before reference
+		if parent_id == nil then
+			-- Root level
+			if reference_id == self._root_first then
+				-- Inserting before first root node
+				node.prev_sibling = nil
+				node.next_sibling = reference_id
+				ref_node.prev_sibling = id
+				self._root_first = id
+			else
+				-- Inserting in the middle
+				local prev_ref = ref_node.prev_sibling
+				node.prev_sibling = prev_ref
+				node.next_sibling = reference_id
+				ref_node.prev_sibling = id
+				if prev_ref then
+					self._nodes[prev_ref].next_sibling = id
+				end
+			end
+		else
+			-- Child level
+			local parent = self._nodes[parent_id]
+			if reference_id == parent.first_child then
+				-- Inserting before first child
+				node.prev_sibling = nil
+				node.next_sibling = reference_id
+				ref_node.prev_sibling = id
+				parent.first_child = id
+			else
+				-- Inserting in the middle
+				local prev_ref = ref_node.prev_sibling
+				node.prev_sibling = prev_ref
+				node.next_sibling = reference_id
+				ref_node.prev_sibling = id
+				if prev_ref then
+					self._nodes[prev_ref].next_sibling = id
+				end
+			end
+		end
+	else
+		-- Inserting after reference
+		if parent_id == nil then
+			-- Root level
+			if reference_id == self._root_last then
+				-- Inserting after last root node
+				node.prev_sibling = reference_id
+				node.next_sibling = nil
+				ref_node.next_sibling = id
+				self._root_last = id
+			else
+				-- Inserting in the middle
+				local next_ref = ref_node.next_sibling
+				node.prev_sibling = reference_id
+				node.next_sibling = next_ref
+				ref_node.next_sibling = id
+				if next_ref then
+					self._nodes[next_ref].prev_sibling = id
+				end
+			end
+		else
+			-- Child level
+			local parent = self._nodes[parent_id]
+			if reference_id == parent.last_child then
+				-- Inserting after last child
+				node.prev_sibling = reference_id
+				node.next_sibling = nil
+				ref_node.next_sibling = id
+				parent.last_child = id
+			else
+				-- Inserting in the middle
+				local next_ref = ref_node.next_sibling
+				node.prev_sibling = reference_id
+				node.next_sibling = next_ref
+				ref_node.next_sibling = id
+				if next_ref then
+					self._nodes[next_ref].prev_sibling = id
+				end
+			end
+		end
+	end
+end
+
 function Tree:_unlink(id)
 	local node = self._nodes[id]
 	if not node then return end
@@ -213,7 +310,7 @@ end
 ---Update the children of a parent node, merging with existing nodes.
 ---
 ---Existing children are updated in place if present.
----New children are added, and missing children are removed unless `loading` is true.
+---New children are added, and missing children are removed.
 ---@param parent_id any|nil
 ---@param items loop.tools.Tree.Item[]
 ---@param merge_data_fn fun(old:any,new:any):any
@@ -301,7 +398,7 @@ function Tree:upsert_item(parent_id, id, data)
 		if node.parent_id ~= parent_id then
 			-- CYCLE DETECTION:
 			-- If we are moving A under C, ensure C is not already a child of A.
-			if parent_id ~= nil and self:_is_descendant(id, parent_id) then
+			if parent_id ~= nil and self:_is_ancestor(id, parent_id) then
 				error("cycle detected: cannot move a node under its own descendant")
 			end
 
@@ -331,9 +428,86 @@ function Tree:upsert_item(parent_id, id, data)
 	end
 end
 
+---Insert or update a node before or after a reference sibling.
+---
+---If the node exists:
+---  - update its data
+---  - reparent if parent_id changed
+---  - move to position before or after sibling_id
+---
+---If new:
+---  - create the node
+---  - link it to parent before or after sibling_id
+---
 ---@generic T
----@param parent_id any|nil
----@param items loop.tools.Tree.Item[]
+---@param id any
+---@param data T
+---@param sibling_id any
+---@param before boolean true to insert before sibling, false to insert after
+function Tree:insert_sibling(id, data, sibling_id, before)
+	assert(id ~= nil, "id is required")
+	assert(sibling_id ~= nil, "sibling_id is required")
+	
+	local ref_node = self._nodes[sibling_id]
+	assert(ref_node, "sibling_id does not exist")
+	
+	local parent_id = ref_node.parent_id
+
+	local node = self._nodes[id]
+	if node then
+		-- Update data
+		node.data = data
+
+		-- Reparent if needed
+		if node.parent_id ~= parent_id then
+			-- CYCLE DETECTION:
+			-- If we are moving A under C, ensure C is not already a child of A.
+			if parent_id ~= nil and self:_is_ancestor(id, parent_id) then
+				error("cycle detected: cannot move a node under its own descendant")
+			end
+
+			-- 1. Unlink from old parent (does not delete children)
+			self:_unlink(id)
+
+			-- 2. Update parent reference
+			node.parent_id = parent_id
+
+			-- 3. Relink under new parent at correct position
+			self:_link_sibling(id, sibling_id, before)
+		else
+			-- Same parent, but may need to reposition
+			-- Only reposition if not already in the correct position
+			local needs_reposition = false
+			if before then
+				needs_reposition = node.next_sibling ~= sibling_id
+			else
+				needs_reposition = node.prev_sibling ~= sibling_id
+			end
+			
+			if needs_reposition then
+				-- Unlink from current position
+				self:_unlink(id)
+				-- Relink at correct position
+				self:_link_sibling(id, sibling_id, before)
+			end
+		end
+	else
+		-- Create new node
+		node = {
+			parent_id    = parent_id,
+			data         = data,
+			first_child  = nil,
+			last_child   = nil,
+			next_sibling = nil,
+			prev_sibling = nil,
+		}
+		self._nodes[id] = node
+
+		-- Link under parent or root at correct position
+		self:_link_sibling(id, sibling_id, before)
+	end
+end
+
 function Tree:upsert_items(parent_id, items)
 	assert(type(items) == "table", "items must be a table")
 	assert(parent_id == nil or self._nodes[parent_id], "parent does not exist")
@@ -349,6 +523,12 @@ function Tree:upsert_items(parent_id, items)
 
 			-- Reparent if needed
 			if node.parent_id ~= parent_id then
+				-- CYCLE DETECTION:
+				-- If we are moving A under C, ensure C is not already a child of A.
+				if parent_id ~= nil and self:_is_ancestor(id, parent_id) then
+					error("cycle detected: cannot move a node under its own descendant")
+				end				
+				
 				-- Remove from old parent (keeps subtree intact)
 				self:_unlink(id)
 
@@ -531,8 +711,6 @@ function Tree:flatten(filter)
 
 		-- Backtrack: remove from current path
 		table.remove(path)
-		-- Note: we don't remove from 'visited' here because we allow re-visiting from other roots
-		-- But since this is a tree (forest), each node should appear only once anyway
 
 		::continue::
 	end
@@ -553,7 +731,7 @@ end
 
 ---Check if potential_ancestor_id is a descendant of id (to prevent cycles)
 ---@private
-function Tree:_is_descendant(id, potential_ancestor_id)
+function Tree:_is_ancestor(id, potential_ancestor_id)
 	local current_id = potential_ancestor_id
 	while current_id do
 		if current_id == id then return true end

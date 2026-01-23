@@ -651,7 +651,6 @@ function JsonEditor:_delete(item)
     end
 
     self:save()
-
     vim.schedule(function()
         self:_reload_data()
     end)
@@ -959,6 +958,7 @@ function JsonEditor:undo()
 
     table.insert(self._redo_stack, vim.fn.deepcopy(self._data))
     self._data = self:_pop_undo() or self._data
+
     self:save()
     vim.schedule(function()
         self:_reload_data()
@@ -972,6 +972,7 @@ function JsonEditor:redo()
     end
     table.insert(self._undo_stack, vim.fn.deepcopy(self._data))
     self._data = table.remove(self._redo_stack)
+    
     self:save()
     vim.schedule(function()
         self:_reload_data()
@@ -1032,7 +1033,6 @@ function JsonEditor:_set_value(path, new_value)
     parent[key] = new_value
 
     self:save()
-
     vim.schedule(function()
         self:_reload_data()
     end)
