@@ -5,7 +5,6 @@ local Trackers = require("loop.tools.Trackers")
 ---@class loop.comp.ItemTree.Item
 ---@field id any
 ---@field data any
----@field parent_id any
 ---@field children_callback nil|fun(cb:fun(items:loop.comp.ItemTree.Item[]))
 ---@field expanded boolean|nil
 
@@ -198,9 +197,11 @@ function ItemTree:clear_items()
     self:_request_render()
 end
 
-function ItemTree:upsert_items(items)
+---@param parent_id any
+---@param items loop.comp.ItemTree.Item[]
+function ItemTree:upsert_items(parent_id, items)
     for _, item in ipairs(items) do
-        self._tree:upsert_item(item.parent_id, item.id, _item_to_itemdata(item))
+        self._tree:upsert_item(parent_id, item.id, _item_to_itemdata(item))
     end
     self:_request_render()
 end
@@ -222,7 +223,9 @@ function ItemTree:update_children(parent_id, children)
     self:_request_render()
 end
 
-function ItemTree:upsert_item(item)
+---@param parent_id any
+---@param item loop.comp.ItemTree.Item
+function ItemTree:upsert_item(parent_id, item)
     local new_data = _item_to_itemdata(item)
 
     local existing = self._tree:get_item(item.id)
@@ -232,7 +235,7 @@ function ItemTree:upsert_item(item)
         existing.reload_children = true
         existing.load_sequence = existing.load_sequence + 1
     else
-        self._tree:upsert_item(item.parent_id or nil, item.id, new_data)
+        self._tree:upsert_item(parent_id, item.id, new_data)
     end
 
     self:_request_render()

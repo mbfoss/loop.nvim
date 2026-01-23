@@ -508,6 +508,8 @@ function Tree:insert_sibling(id, data, sibling_id, before)
 	end
 end
 
+---@param parent_id any
+---@param items loop.tools.Tree.Item[]
 function Tree:upsert_items(parent_id, items)
 	assert(type(items) == "table", "items must be a table")
 	assert(parent_id == nil or self._nodes[parent_id], "parent does not exist")
