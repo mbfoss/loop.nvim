@@ -68,9 +68,6 @@ function Tree:_link_child(parent_id, id)
 	end
 end
 
----Unlink a node from its parent’s child list (root or not).
----@private
----@param id any
 ---Link a node immediately before or after a reference sibling.
 ---@private
 ---@param id any

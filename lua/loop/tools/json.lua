@@ -48,7 +48,7 @@ end
 ---@param schema table|nil        -- schema node for this table
 local function _order_keys(keys, schema)
      vim.fn.sort(keys) -- required even with strtools.order_strings()
-    local order = type(schema) == "table" and schema.__order or nil
+    local order = type(schema) == "table" and schema["x-order"] or nil
     if order then
         strtools.order_strings(keys, order)
     end

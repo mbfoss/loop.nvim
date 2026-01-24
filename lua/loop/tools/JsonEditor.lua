@@ -15,12 +15,10 @@ local strtools = require("loop.tools.strtools")
 ---@field name string?
 ---@field filepath string?
 ---@field schema table?
----@field on_data_open fun(data:table):table?
----@field on_node_added fun(path:string, callback:fun(to_add:any|nil))?
 ---@field null_support boolean?
 
 ---@class loop.JsonEditor
----@field new fun(self:loop.JsonEditor,opts:loop.JsonEditorOpts)
+---@field new fun(self:loop.JsonEditor,opts:loop.JsonEditorOpts):loop.JsonEditor
 ---@field _opts loop.JsonEditorOpts
 ---@field _filepath string
 ---@field _data table
@@ -30,7 +28,8 @@ local strtools = require("loop.tools.strtools")
 ---@field _redo_stack table[]
 ---@field _validation_errors loop.json.ValidationError[]
 ---@field _is_dirty boolean
----@field _on_node_added fun(path:string, callback:fun(nodes:any))|nil
+---@field _post_read_handler fun(data:table):table?
+---@field _on_add_node fun(path:string, callback:fun(to_add:any|nil))?
 ---@field _itemtree loop.comp.ItemTree
 ---@field _buf_ctrl any
 ---@field _is_open boolean
@@ -83,7 +82,7 @@ end
 ---@param schema table|nil
 local function _order_keys(keys, schema)
     vim.fn.sort(keys) -- initial alphabetic sort
-    local order = type(schema) == "table" and schema.__order or nil
+    local order = type(schema) == "table" and schema["x-order"] or nil
     if order then
         strtools.order_strings(keys, order)
     end
@@ -182,9 +181,18 @@ function JsonEditor:init(opts)
     self._validation_errors = {} ---@type loop.json.ValidationError[]
     self._filepath = opts.filepath
     self._schema = opts.schema
-    self._on_node_added = opts.on_node_added
     self._fold_cache = {} ---@type table<string, boolean>
     self._is_open = false
+end
+
+---@param handler fun(data:table):table?
+function JsonEditor:set_post_read_handler(handler)
+    self._post_read_handler = handler
+end
+
+---@param handler fun(path:string, continue:fun(to_add:any|nil))?
+function JsonEditor:set_add_node_handler(handler)
+    self._on_add_node = handler
 end
 
 ---@param winid integer
@@ -358,8 +366,8 @@ function JsonEditor:_reload_data()
             data = {}
         end
     end
-    if self._opts.on_data_open then
-        local ret = self._opts.on_data_open(data)
+    if self._post_read_handler then
+        local ret = self._post_read_handler(data)
         if ret ~= nil then data = ret end
     end
 
@@ -473,6 +481,14 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
     end
 end
 
+---@param path string
+---@return any
+function JsonEditor:value_at(path)
+    local item = self._itemtree:get_item(path)
+    if not item then return nil end
+    return item.data.value
+end
+
 ---@param item loop.comp.ItemTree.Item
 ---@param multiline? boolean
 function JsonEditor:_edit_value(item, multiline)
@@ -485,15 +501,15 @@ function JsonEditor:_edit_value(item, multiline)
     end
 
     -- Enum case → show selector
-    if schema.enum then
+    if schema.enum or item.data.value_type == "boolean" then
+        local values = schema.enum or { true, false }
         ---@type {label: string, data: any}[]
         local choices = {}
-        for _, v in ipairs(schema.enum) do
+        for _, v in ipairs(values) do
             table.insert(choices, { label = vim.inspect(v), data = v })
         end
-
         selector.select("Select value", choices, nil, function(data)
-            if data then
+            if data ~= nil then
                 self:_set_value(path, data)
             end
         end)
@@ -540,8 +556,8 @@ function JsonEditor:_add_new(item, sibling)
         if not par_item then return end
         item = par_item
     end
-    if self._on_node_added then
-        self._on_node_added(item.data.path, function(to_add)
+    if self._on_add_node then
+        self._on_add_node(item.data.path, function(to_add)
             if to_add ~= nil then
                 self:_add_new_from_object(item, to_add)
             else
@@ -662,16 +678,6 @@ function JsonEditor:_add_array_item(item, schema)
     local item_schema = schema and schema.items or {} ---@type table
 
     local allowed = self:_get_allowed_types(item_schema) ---@type string[]
-    if #allowed == 0 then
-        allowed = { "string", "number", "boolean", "object", "array" }
-        if self._opts.null_support == true then
-            table.insert(allowed, "null")
-        end
-    else
-        if self._opts.null_support ~= true then
-            allowed = vim.tbl_filter(function(v) return v ~= "null" end, allowed)
-        end
-    end
 
     if #allowed == 1 then
         self:_create_and_add_array_item(item, allowed[1])
@@ -874,7 +880,7 @@ end
 
 ---@param schema table|nil
 ---@return string[]
-function JsonEditor:_get_allowed_types(schema)
+function JsonEditor:_get_schema_allowed_types(schema)
     if not schema then return {} end
 
     if schema.const ~= nil then
@@ -927,6 +933,23 @@ function JsonEditor:_get_allowed_types(schema)
     return {}
 end
 
+---@param schema table|nil
+---@return string[]
+function JsonEditor:_get_allowed_types(schema)
+    local allowed = self:_get_schema_allowed_types(schema)
+    if #allowed == 0 then
+        allowed = { "string", "number", "boolean", "object", "array" }
+        if self._opts.null_support == true then
+            table.insert(allowed, "null")
+        end
+    else
+        if self._opts.null_support ~= true then
+            allowed = vim.tbl_filter(function(v) return v ~= "null" end, allowed)
+        end
+    end
+    return allowed
+end
+
 ---@param type_choice string
 ---@return any
 function JsonEditor:_create_default_value(type_choice)
@@ -972,7 +995,7 @@ function JsonEditor:redo()
     end
     table.insert(self._undo_stack, vim.fn.deepcopy(self._data))
     self._data = table.remove(self._redo_stack)
-    
+
     self:save()
     vim.schedule(function()
         self:_reload_data()
@@ -1001,7 +1024,6 @@ function JsonEditor:_show_errors()
 
     floatwin.show_floatwin(table.concat(lines), { title = "Errors" })
 end
-
 
 ---@param path string
 ---@param new_value any

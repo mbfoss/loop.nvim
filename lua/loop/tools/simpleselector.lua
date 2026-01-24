@@ -300,7 +300,7 @@ function M.select(prompt, items, formatter, callback)
     local opts = { buffer = pbuf, nowait = true, silent = true }
 
     vim.keymap.set("i", "<CR>", function()
-        close(filtered[cur] and filtered[cur].data or nil)
+        close(filtered[cur] and filtered[cur].data)
     end, opts)
 
     vim.keymap.set("i", "<Esc>", function() close(nil) end, opts)

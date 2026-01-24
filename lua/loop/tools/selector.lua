@@ -19,7 +19,7 @@ function M.select(prompt, items, previewer, callback)
             return item.label
         end,
     }, function(choice)
-        if choice then
+        if choice ~= nil then -- false is a valid choice
             callback(choice.data)
         end
     end)

@@ -2,11 +2,12 @@ local schema = {
     __name = "Command",
     description = "Executes a shell command as a task",
     required = { "command" },
-    __order = { "command", "cwd", "env", "quickfix_matcher" },
+    ["x-order"] = { "command", "cwd", "env", "quickfix_matcher" },
 
     properties = {
         command = {
-            description = "Command to execute. Can be a single string, a list of arguments, or null to disable execution.",
+            description =
+            "Command to execute. Can be a single string, a list of arguments, or null to disable execution.",
             oneOf = {
                 {
                     type = "string",

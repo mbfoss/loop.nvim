@@ -30,10 +30,10 @@ local function _build_taskfile_schema()
                     type = "object",
                     properties = vim.tbl_extend("error", base_items.properties, provider_schema.properties or {}),
                     required = vim.deepcopy(base_items.required),
-                    __order = base_items.__order or {},
+                    ["x-order"] = base_items["x-order"] or {},
                 }
                 oneOfItem.__name = type
-                if provider_schema.__order then vim.list_extend(oneOfItem.__order, provider_schema.__order) end
+                if provider_schema["x-order"] then vim.list_extend(oneOfItem["x-order"], provider_schema["x-order"]) end
                 oneOfItem.properties.type = { const = type, description = base_items.properties.type.description }
                 oneOfItem.additionalProperties = provider_schema.additionalProperties or false
                 for _, req in ipairs(provider_schema.required or {}) do
@@ -61,7 +61,7 @@ local function _get_single_task_schema(task_type)
 
     local provider_schema = provider.get_task_schema()
     if provider_schema then
-        if provider_schema.__order then vim.list_extend(schema.__order, provider_schema.__order) end
+        if provider_schema["x-order"] then vim.list_extend(schema["x-order"], provider_schema["x-order"]) end
         schema.properties = vim.tbl_extend("error", schema.properties, provider_schema.properties or {})
         schema.additionalProperties = provider_schema.additionalProperties or false
         for _, req in ipairs(provider_schema.required or {}) do
@@ -202,67 +202,78 @@ function M.configure_tasks(config_dir)
         name = "Tasks editor",
         filepath = filepath,
         schema = tasks_file_schema,
-        on_data_open = function(data)
-            if not data or not data.tasks or not data["$schema"] then
-                local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
-                if not filetools.file_exists(schema_filepath) then
-                    jsontools.save_to_file(schema_filepath, tasks_file_schema)
-                end
-                data = {}
-                data["$schema"] = './tasksschema.json'
-                data["tasks"] = {}
-                return data
+    })
+
+    editor:set_post_read_handler(function(data)
+        if not data or not data.tasks or not data["$schema"] then
+            local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
+            if not filetools.file_exists(schema_filepath) then
+                jsontools.save_to_file(schema_filepath, tasks_file_schema)
             end
-        end,
-        on_node_added = function(path, continue)
-            if path:match("^/tasks$") then
-                local category_choices = {}
-                for _, elem in ipairs(providers.get_task_template_providers()) do
-                    ---@type loop.SelectorItem
-                    local item = {
-                        label = elem.category,
-                        data = elem.provider,
-                    }
-                    table.insert(category_choices, item)
-                end
-                selector.select("Task category", category_choices, nil, function(provider)
-                    if provider then
-                        local templates = provider.get_task_templates()
-                        local choices = {}
-                        for _, template in pairs(templates) do
-                            ---@type loop.SelectorItem
-                            local item = {
-                                label = template.name,
-                                data = template.task,
-                            }
-                            table.insert(choices, item)
-                        end
-                        selector.select("Select template", choices, _task_preview, function(task)
-                            if task then continue(task) end
-                        end)
-                    end
-                end)
-            elseif path:match("^/tasks/[0-9]*/depends_on$") then
-                local tasks = _load_tasks(config_dir)
-                if not tasks then
-                    vim.notify("Failed to load tasks")
-                    continue(nil)
-                else
+            data = {}
+            data["$schema"] = './tasksschema.json'
+            data["tasks"] = {}
+            return data
+        end
+    end)
+
+    editor:set_add_node_handler(function(path, continue)
+        if path:match("^/tasks$") then
+            local category_choices = {}
+            for _, elem in ipairs(providers.get_task_template_providers()) do
+                ---@type loop.SelectorItem
+                local item = {
+                    label = elem.category,
+                    data = elem.provider,
+                }
+                table.insert(category_choices, item)
+            end
+            selector.select("Task category", category_choices, nil, function(provider)
+                if provider then
+                    local templates = provider.get_task_templates()
                     local choices = {}
-                    for _, task in pairs(tasks) do
+                    for _, template in pairs(templates) do
                         ---@type loop.SelectorItem
-                        local item = {label = task.name, data = task.name}
+                        local item = {
+                            label = template.name,
+                            data = template.task,
+                        }
                         table.insert(choices, item)
                     end
+                    selector.select("Select template", choices, _task_preview, function(task)
+                        if task then continue(task) end
+                    end)
+                end
+            end)
+        elseif path:match("^/tasks/[0-9]*/depends_on$") then
+            local task_path = path:match("^(/tasks/[0-9]*/)")
+            local cur_name_path = task_path .. "name"
+            local cur_name = editor:value_at(cur_name_path)
+            local tasks = _load_tasks(config_dir)
+            if not tasks then
+                vim.notify("Failed to load tasks")
+                continue(nil)
+            else
+                local choices = {}
+                for _, task in pairs(tasks) do
+                    if cur_name ~= task.name then
+                        ---@type loop.SelectorItem
+                        local item = { label = task.name, data = task.name }
+                        table.insert(choices, item)
+                    end
+                end
+                if #choices == 0 then
+                    continue(nil)
+                else
                     selector.select("Select dependency", choices, nil, function(name)
                         if name then continue(name) end
                     end)
                 end
-            else
-                continue(nil)
             end
+        else
+            continue(nil)
         end
-    })
+    end)
 
     editor:open(uitools.get_regular_window())
 end

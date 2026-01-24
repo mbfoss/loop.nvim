@@ -27,7 +27,7 @@ local base_items = {
     description = "Task properties",
     additionalProperties = false,
     required = { "name", "type" },
-    __order = { "name", "type", "depends_on", "depends_order", "save_buffers" },
+    ["x-order"] = { "name", "type", "depends_on", "depends_order", "save_buffers" },
 
     properties = {
         name = {
