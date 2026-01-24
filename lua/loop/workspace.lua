@@ -7,14 +7,14 @@ local window = require("loop.ui.window")
 local wsinfo = require("loop.wsinfo")
 local runner = require("loop.task.runner")
 local uitools = require('loop.tools.uitools')
-local jsontools = require('loop.tools.json')
-local jsonschema = require('loop.tools.jsonschema')
+local jsoncodec = require('loop.json.codec')
+local jsonvalidator = require('loop.json.validator')
 local filetools = require('loop.tools.file')
 local wssaveutil = require('loop.ws.saveutil')
 local floatwin = require('loop.tools.floatwin')
 local selector = require('loop.tools.selector')
 local extdata = require("loop.extdata")
-local JsonEditor = require('loop.tools.JsonEditor')
+local JsonEditor = require('loop.json.JsonEditor')
 
 local _init_done = false
 local _init_err_msg = "init() not called"
@@ -35,7 +35,7 @@ end
 local function _load_recent_workspaces()
     local f = _get_recent_file()
     if not filetools.file_exists(f) then return {} end
-    local ok, data_or_err = jsontools.load_from_file(f)
+    local ok, data_or_err = jsoncodec.load_from_file(f)
     if not ok or type(data_or_err) ~= "table" then return {} end
     return data_or_err
 end
@@ -45,7 +45,7 @@ local function _save_recent_workspaces(list)
     -- ensure parent dir exists
     local dir = vim.fn.fnamemodify(f, ":h")
     vim.fn.mkdir(dir, "p")
-    jsontools.save_to_file(f, list)
+    jsoncodec.save_to_file(f, list)
 end
 
 local function _add_recent_workspace(dir)
@@ -121,42 +121,43 @@ local function _configure_workspace(ws_dir)
         name = "Workspace configuration",
         filepath = filepath,
         schema = schema,
-        on_data_open = function(data)
+    })
+
+    editor:set_post_read_handler(function (data)
             if not data or not data.workspace or not data["$schema"] then
                 local schema_filepath = vim.fs.joinpath(config_dir, 'wsschema.json')
                 if not filetools.file_exists(schema_filepath) then
-                    jsontools.save_to_file(schema_filepath, schema)
+                    jsoncodec.save_to_file(schema_filepath, schema)
                 end
                 data = {}
                 data["$schema"] = './wsschema.json'
                 data["workspace"] = vim.fn.deepcopy(require('loop.ws.template'))
                 data["workspace"].name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
                 return data
-            end
-        end,
-    })
+            end        
+    end)
 
     editor:open(uitools.get_regular_window())
     editor:save()
 end
 
 ---@param config_dir string
----@return loop.WorkspaceConfig?,string[]?
+---@return loop.WorkspaceConfig?,string?
 local function _load_workspace_config(config_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     if not filetools.file_exists(config_file) then
-        return nil, { "workspace.json not found" }
+        return nil, "workspace.json not found"
     end
-    local loaded, data_or_err = jsontools.load_from_file(config_file)
+    local loaded, data_or_err = jsoncodec.load_from_file(config_file)
     if not loaded then
         ---@cast data_or_err string
-        return nil, { data_or_err }
+        return nil, data_or_err
     end
     local config = data_or_err
     local schema = require('loop.ws.schema')
-    local errors = jsonschema.validate(schema, config)
+    local errors = jsonvalidator.validate(schema, config)
     if errors then
-        return nil, errors
+        return nil, jsonvalidator.errors_to_string(errors)
     end
     return config.workspace
 end
@@ -229,7 +230,7 @@ local function _show_workspace_info_floatwin()
     local schema = require('loop.ws.schema')
     ---@diagnostic disable-next-line: inject-field
     local str = ("Name: %s\nDirectory: %s\nFiles:\n%s"):format(info.name, info.ws_dir,
-        jsontools.to_string(save_config, schema))
+        jsoncodec.to_string(save_config, schema))
     floatwin.show_floatwin(str, { title = "Workspace" })
 end
 

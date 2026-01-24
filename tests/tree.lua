@@ -1,3 +1,4 @@
+---@diagnostic disable: undefined-global, undefined-field
 require("plenary.busted")
 local Tree = require("loop.tools.Tree")
 

@@ -1,11 +1,11 @@
 local M = {}
 
-local JsonEditor = require('loop.tools.JsonEditor')
+local JsonEditor = require('loop.json.JsonEditor')
 local floatwin = require('loop.tools.floatwin')
-local jsontools = require('loop.tools.json')
+local jsoncodec = require('loop.json.codec')
 local filetools = require('loop.tools.file')
 local uitools = require('loop.tools.uitools')
-local jsonschema = require('loop.tools.jsonschema')
+local jsonvalidator = require('loop.json.validator')
 
 ---@param config_dir string
 ---@return table<string, string>|nil
@@ -23,7 +23,7 @@ function M.load_variables(config_dir)
         return nil, { contents_or_err }
     end
 
-    local decoded, data_or_err = jsontools.from_string(contents_or_err)
+    local decoded, data_or_err = jsoncodec.from_string(contents_or_err)
     if not decoded or type(data_or_err) ~= 'table' then
         return nil, { data_or_err or "Parsing error" }
     end
@@ -31,9 +31,9 @@ function M.load_variables(config_dir)
     local data = data_or_err
     do
         local schema = require("loop.task.variablesschema")
-        local errors = jsonschema.validate(schema, data)
+        local errors = jsonvalidator.validate(schema, data)
         if errors and #errors > 0 then
-            return nil, errors
+            return nil, jsonvalidator.errors_to_string_arr(errors)
         end
         if not data or not data.variables then
             return nil, { "Parsing error: missing 'variables' field" }
@@ -49,7 +49,7 @@ function M.show_variables(config_dir)
     if var_errors then
         vim.notify("error(s) loading variables.json")
     end
-    local text = jsontools.to_string(vars)
+    local text = jsoncodec.to_string(vars)
     floatwin.show_floatwin(text, {
         title = "Variables"
     })
@@ -64,19 +64,20 @@ function M.configure_variables(config_dir)
         name = "Variables editor",
         filepath = filepath,
         schema = schema,
-        on_data_open = function(data)
-            if not data or not data.variables or not data["$schema"] then
-                local schema_filepath = vim.fs.joinpath(config_dir, 'variablesschema.json')
-                if not filetools.file_exists(schema_filepath) then
-                    jsontools.save_to_file(schema_filepath, schema)
-                end
-                data = {}
-                data["$schema"] = './variablesschema.json'
-                data["variables"] = vim.empty_dict()
-                return data
-            end
-        end,
     })
+
+    editor:set_post_read_handler(function(data)
+        if not data or not data.variables or not data["$schema"] then
+            local schema_filepath = vim.fs.joinpath(config_dir, 'variablesschema.json')
+            if not filetools.file_exists(schema_filepath) then
+                jsoncodec.save_to_file(schema_filepath, schema)
+            end
+            data = {}
+            data["$schema"] = './variablesschema.json'
+            data["variables"] = vim.empty_dict()
+            return data
+        end
+    end)
 
     editor:open(uitools.get_regular_window())
 end

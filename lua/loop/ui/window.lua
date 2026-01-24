@@ -3,7 +3,7 @@ local config = require("loop.config")
 local Page = require('loop.ui.Page')
 local throttle = require('loop.tools.throttle')
 local uitools = require('loop.tools.uitools')
-local jsontools = require('loop.tools.json')
+local jsoncodec = require('loop.json.codec')
 local selector = require("loop.tools.selector")
 local logs = require("loop.logs")
 local BaseBuffer = require('loop.buf.BaseBuffer')
@@ -697,12 +697,12 @@ end
 ---@param config_dir string
 function M.save_settings(config_dir)
     local window_config = { height = _loop_win_height_ratio }
-    jsontools.save_to_file(vim.fs.joinpath(config_dir, "window.json"), window_config)
+    jsoncodec.save_to_file(vim.fs.joinpath(config_dir, "window.json"), window_config)
 end
 
 ---@param config_dir string
 function M.load_settings(config_dir)
-    local loaded, conf = jsontools.load_from_file(vim.fs.joinpath(config_dir, "window.json"))
+    local loaded, conf = jsoncodec.load_from_file(vim.fs.joinpath(config_dir, "window.json"))
     if loaded then
         _loop_win_height_ratio = conf.height
     end

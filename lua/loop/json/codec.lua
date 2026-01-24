@@ -1,7 +1,5 @@
 local M = {}
 
-local strtools = require('loop.tools.strtools')
-
 -- Neovim's JSON encoder (perfect escaping)
 local function encode_one(v)
     return vim.json.encode(v)
@@ -9,13 +7,13 @@ end
 
 local _indent = "  "
 
-local jsonschema = require("loop.tools.jsonschema")
+local jsonschema = require("loop.json.validator")
 
 ---@param schema table|nil
 ---@param key string|number
 ---@param value any
 ---@return table|nil
-local function resolve_subschema(schema, key, value)
+local function _resolve_subschema(schema, key, value)
     if type(schema) ~= "table" then
         return nil
     end
@@ -43,15 +41,36 @@ local function resolve_subschema(schema, key, value)
     return nil
 end
 
-
 ---@param keys string[]
 ---@param schema table|nil        -- schema node for this table
 local function _order_keys(keys, schema)
-     vim.fn.sort(keys) -- required even with strtools.order_strings()
     local order = type(schema) == "table" and schema["x-order"] or nil
-    if order then
-        strtools.order_strings(keys, order)
+    if not order then
+        vim.fn.sort(keys)
+        return
     end
+    local ordered = {}
+    for i = 1, #order do
+        ordered[i] = order[i]
+    end
+
+    local index = 1
+    local priorities = {}
+    for _, v in ipairs(ordered) do
+        priorities[v] = index
+        index = index + 1
+    end
+
+    vim.fn.sort(keys)
+    for _, v in ipairs(keys) do
+        if not priorities[v] then
+            priorities[v] = index
+            index = index + 1
+        end
+    end
+
+    table.sort(keys, function(a, b) return priorities[a] < priorities[b] end)
+    return keys
 end
 
 ---@param value string
@@ -88,7 +107,7 @@ local function _serialize(value, level, path, schema)
             local parts = { "{" }
             for _, k in ipairs(keys) do
                 local key_json = type(k) == "string" and encode_one(k) or ('"' .. tostring(k) .. '"')
-                local subschema = resolve_subschema(schema, k, value[k])
+                local subschema = _resolve_subschema(schema, k, value[k])
                 local val_json = _serialize(value[k], level + 1, path .. k .. '/', subschema)
                 table.insert(parts, "\n" .. next_indent .. key_json .. ": " .. val_json .. ",")
             end

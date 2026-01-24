@@ -1,3 +1,4 @@
+---@diagnostic disable: undefined-global, undefined-field
 require("plenary.busted")
 
 local M = require("loop.tools.resolver")
@@ -96,7 +97,7 @@ describe("loop.tools.resolver (variadic args)", function()
         local ok, res, err = resolve("hello ${unclosed:arg")
 
         assert.is_false(ok)
-        assert.truthy(err:find("Unterminated"))
+        assert.truthy(err and err:find("Unterminated"))
     end)
 
     it("handles deeply nested tables and strings correctly", function()

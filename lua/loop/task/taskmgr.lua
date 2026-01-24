@@ -1,10 +1,10 @@
 local M = {}
 
-local JsonEditor = require('loop.tools.JsonEditor')
+local JsonEditor = require('loop.json.JsonEditor')
 local uitools = require('loop.tools.uitools')
 local strtools = require('loop.tools.strtools')
-local jsontools = require('loop.tools.json')
-local jsonschema = require('loop.tools.jsonschema')
+local jsoncodec = require('loop.json.codec')
+local jsonvalidator = require('loop.json.validator')
 local filetools = require('loop.tools.file')
 local providers = require("loop.task.providers")
 local selector = require("loop.tools.selector")
@@ -78,7 +78,7 @@ local function _task_preview(task)
     local provider = M.get_task_type_provider(task.type)
     if provider then
         local schema = _get_single_task_schema(task.type)
-        return jsontools.to_string(task, schema), "json"
+        return jsoncodec.to_string(task, schema), "json"
     end
     return "", ""
 end
@@ -91,7 +91,7 @@ local function _load_tasks_from_str(content, tasktype_to_schema)
     if content == "" then
         return {}, nil
     end
-    local loaded, data_or_err = jsontools.from_string(content)
+    local loaded, data_or_err = jsoncodec.from_string(content)
     if not loaded or type(data_or_err) ~= 'table' then
         return nil, { data_or_err }
     end
@@ -99,9 +99,11 @@ local function _load_tasks_from_str(content, tasktype_to_schema)
     local data = data_or_err
     do
         local schema = require("loop.task.tasksschema").base_schema
-        local errors = jsonschema.validate(schema, data)
+        local errors = jsonvalidator.validate(schema, data)
         if errors and #errors > 0 then
-            return nil, errors
+            local strs = jsonvalidator.errors_to_string_arr(errors)
+            table.insert(strs, 1, "Failed to load tasks schema")
+            return nil, strs
         end
         if not data or not data.tasks then
             return nil, { "Parsing error" }
@@ -115,10 +117,11 @@ local function _load_tasks_from_str(content, tasktype_to_schema)
         if not schema then
             return nil, { "No schema for task type: " .. task.type }
         end
-        local errors = jsonschema.validate(schema, task)
+        local errors = jsonvalidator.validate(schema, task)
         if errors and #errors > 0 then
-            table.insert(errors, 1, "Failed to load task: " .. task.name)
-            return nil, errors
+            local strs = jsonvalidator.errors_to_string_arr(errors)
+            table.insert(strs, 1, "Failed to load task: " .. task.name)
+            return nil, strs
         end
     end
 
@@ -190,7 +193,7 @@ end
 function M.save_last_task_name(name, config_dir)
     local filepath = vim.fs.joinpath(config_dir, "last.json")
     local data = { task = name }
-    jsontools.save_to_file(filepath, data)
+    jsoncodec.save_to_file(filepath, data)
 end
 
 ---@param config_dir string
@@ -208,7 +211,7 @@ function M.configure_tasks(config_dir)
         if not data or not data.tasks or not data["$schema"] then
             local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
             if not filetools.file_exists(schema_filepath) then
-                jsontools.save_to_file(schema_filepath, tasks_file_schema)
+                jsoncodec.save_to_file(schema_filepath, tasks_file_schema)
             end
             data = {}
             data["$schema"] = './tasksschema.json'
@@ -308,7 +311,7 @@ end
 ---@return string|nil
 local function _load_last_task_name(config_dir)
     local filepath = vim.fs.joinpath(config_dir, "last.json")
-    local ok, payload = jsontools.load_from_file(filepath)
+    local ok, payload = jsoncodec.load_from_file(filepath)
     if not ok then
         return nil
     end

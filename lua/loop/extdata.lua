@@ -4,8 +4,8 @@ local extensions = require('loop.extensions')
 local taskproviders = require('loop.task.providers')
 local filetools = require('loop.tools.file')
 local uitools = require('loop.tools.uitools')
-local jsontools = require('loop.tools.json')
-local jsonschema = require('loop.tools.jsonschema')
+local jsoncodec = require('loop.json.codec')
+local jsonvalidator = require('loop.json.validator')
 
 
 ---@type table<string,table>
@@ -66,11 +66,11 @@ local function _make_config_handler(config_dir, ext_name)
 			end
 			if not filetools.file_exists(filepath) then
 				local schemafilepath = vim.fs.joinpath(config_dir, schema_filename)
-				jsontools.save_to_file(schemafilepath, _fullschema(schema))
+				jsoncodec.save_to_file(schemafilepath, _fullschema(schema))
 				local configdata = {}
 				configdata["$schema"] = './' .. schema_filename
 				configdata["config"] = template
-				jsontools.save_to_file(filepath, configdata)
+				jsoncodec.save_to_file(filepath, configdata)
 			end
 			uitools.smart_open_file(filepath)
 		end,
@@ -83,7 +83,7 @@ local function _make_config_handler(config_dir, ext_name)
 			if not loaded then
 				return nil, contents_or_err
 			end
-			local decoded, data_or_err = jsontools.from_string(contents_or_err)
+			local decoded, data_or_err = jsoncodec.from_string(contents_or_err)
 			if not decoded then
 				return nil, data_or_err
 			end
@@ -94,9 +94,9 @@ local function _make_config_handler(config_dir, ext_name)
 			if not data.config then
 				return nil, "'config' property missing in root object"
 			end
-			local errors = jsonschema.validate(_fullschema(schema), data)
+			local errors = jsonvalidator.validate(_fullschema(schema), data)
 			if errors and #errors > 0 then
-				return nil, table.concat(errors, '\n')
+				return nil, jsonvalidator.errors_to_string(errors)
 			end
 			return data.config
 		end
@@ -124,7 +124,7 @@ local function _load_state(config_dir, ext_name)
 	local data = {}
 	local filepath = vim.fs.joinpath(config_dir, ext_name .. ".state.json")
 	if filetools.file_exists(filepath) then
-		local decoded, data_or_err = jsontools.load_from_file(filepath)
+		local decoded, data_or_err = jsoncodec.load_from_file(filepath)
 		assert(decoded, "failed to load state file for " .. ext_name)
 		_extension_states[ext_name] = data_or_err or {}
 	else
@@ -216,7 +216,7 @@ function M.save(wsinfo)
 			ext.on_state_will_save(ext_data)
 		end
 		local filepath = vim.fs.joinpath(wsinfo.config_dir, name .. ".state.json")
-		jsontools.save_to_file(filepath, state)
+		jsoncodec.save_to_file(filepath, state)
 	end
 end
 

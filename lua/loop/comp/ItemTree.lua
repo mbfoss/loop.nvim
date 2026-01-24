@@ -210,6 +210,15 @@ function ItemTree:get_item(id)
     return { id = id, data = itemdata.userdata }
 end
 
+---@return loop.comp.ItemTree.Item?
+function ItemTree:get_parent_item(id)
+    local par_id = self._tree:get_parent_id(id)
+    if not par_id then return end
+    local itemdata = self:_get_item(par_id)
+    if not itemdata then return end
+    return { id = id, data = itemdata.userdata }
+end
+
 function ItemTree:clear_items()
     self._tree = Tree:new()
     self:_request_render()

@@ -37,7 +37,6 @@ function M.join_path_parts(parts)
     return "/" .. table.concat(arr, "/")
 end
 
-
 ---@param path string -- -- JSON Pointer (defined in RFC 6901)
 ---@return string[]
 function M.split_path(path)
@@ -51,7 +50,6 @@ function M.split_path(path)
     end
     return parts
 end
-
 
 ---@param errors loop.json.ValidationError[]
 ---@param path string -- path is a JSON Pointer (defined in RFC 6901)
@@ -255,10 +253,24 @@ end
 
 ---@param schema table
 ---@param data any
----@return string[]?
+---@return loop.json.ValidationError[]?
 function M.validate(schema, data)
-    local errors = _validate(schema, data, "")
-    if not errors then return nil end
+    return _validate(schema, data, "")
+end
+
+---@param errors loop.json.ValidationError[]
+---@return string
+function M.errors_to_string(errors)
+    local err = {}
+    for _, e in ipairs(errors) do
+        table.insert(err, e.path .. ": " .. e.err_msg)
+    end
+    return table.concat(err, '\n')
+end
+
+---@param errors loop.json.ValidationError[]
+---@return string[]
+function M.errors_to_string_arr(errors)
     local ret = {}
     for _, e in ipairs(errors) do
         table.insert(ret, e.path .. ": " .. e.err_msg)
@@ -266,11 +278,33 @@ function M.validate(schema, data)
     return ret
 end
 
----@param schema table
----@param data any
----@return loop.json.ValidationError[]?
-function M.validate2(schema, data)
-    return _validate(schema, data, "")
+---@param value any
+---@param schema table|nil
+---@return table|nil, boolean  -- resolved_schema, is_valid
+function M.resolve_oneof_schema(value, schema)
+    if not (schema and schema.oneOf) then
+        return schema, true
+    end
+
+    local best_subschema = nil
+    local best_error_count = math.huge
+
+    for _, subschema in ipairs(schema.oneOf) do
+        local errors = M.validate(subschema, value)
+        if not errors then
+            -- Perfect match
+            return subschema, true
+        end
+        assert(#errors > 0)
+        local err_count = #errors
+        if err_count < best_error_count then
+            best_subschema = subschema
+            best_error_count = err_count
+        end
+    end
+
+    -- No perfect match → return best candidate + false
+    return best_subschema, false
 end
 
 return M

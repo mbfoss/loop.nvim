@@ -1,3 +1,4 @@
+---@diagnostic disable: undefined-global, undefined-field
 require("plenary.busted")
 
 describe("loop.tools.strtools.split_shell_args", function()
