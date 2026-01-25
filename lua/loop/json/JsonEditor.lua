@@ -7,6 +7,7 @@ local file_util = require("loop.tools.file")
 local validator = require("loop.json.validator")
 local jsontools = require("loop.json.jsontools")
 local jsoncodec = require("loop.json.codec")
+local tabletools = require("loop.tools.tabletools")
 
 ---@alias JsonPrimitive string|number|boolean|nil
 ---@alias JsonValue JsonPrimitive|table<string,JsonValue>|JsonValue[]
@@ -153,7 +154,7 @@ local function _show_node_help(item)
             add_field("enum", enum_str)
         end
 
-        if schema.items and not vim.islist(schema.items) then
+        if schema.items and not tabletools.is_list(schema.items) then
             local item_types = _get_allowed_types(schema.items)
             add_field("items type", table.concat(item_types, " | "))
         end
@@ -414,6 +415,7 @@ function JsonEditor:_reload_tree()
             end
         end
     end
+    self._itemtree:clear_items()
     self:_upsert_tree_items(self._data, "", nil, self._schema, errors)
 end
 
@@ -428,7 +430,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
     ---@type loop.comp.ItemTree.Item[]
     local items = {}
 
-    if vim.islist(tbl) then
+    if tabletools.is_list(tbl) then
         for i, v in ipairs(tbl) do
             local str_i = tostring(i)
             local p = validator.join_path(path, str_i)
@@ -457,7 +459,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
             table.insert(items, item)
         end
     else
-        local keys = vim.tbl_keys(tbl)
+        local keys = tabletools.tbl_keys(tbl)
 
         for _, k in ipairs(keys) do
             if k == "$schema" then goto continue end
@@ -646,7 +648,7 @@ function JsonEditor:_delete(item)
     self:_push_undo()
 
     -- Perform deletion
-    if vim.islist(parent) then
+    if tabletools.is_list(parent) then
         local idx = tonumber(key)
         assert(type(idx) == "number")
         table.remove(parent, idx)

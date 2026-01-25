@@ -128,7 +128,7 @@ function M.show_logs()
         local log_lines = vim.split(clean_text, '\n', { trimempty = false })
         for j, line in ipairs(log_lines) do
             if j == 1 then
-                table.insert(lines, string.format("%s %s  %s", icon, time_str, line))
+                table.insert(lines, string.format(" %s %s  %s", icon, time_str, line))
             else
                 table.insert(lines, string.format("   %s", line))
             end
