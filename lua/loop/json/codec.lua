@@ -54,18 +54,19 @@ local function _order_keys(keys, schema)
         ordered[i] = order[i]
     end
 
-    local index = 1
+    local index = 0
     local priorities = {}
     for _, v in ipairs(ordered) do
-        priorities[v] = index
         index = index + 1
+        priorities[v] = index
     end
-
-    vim.fn.sort(keys)
-    for _, v in ipairs(keys) do
-        if not priorities[v] then
-            priorities[v] = index
-            index = index + 1
+    if #priorities ~= #keys then
+        vim.fn.sort(keys)
+        for _, v in ipairs(keys) do
+            if not priorities[v] then
+                index = index + 1
+                priorities[v] = index
+            end
         end
     end
 
@@ -127,6 +128,12 @@ end
 ---@return string
 local function json_encode_pretty(obj, schema)
     return _serialize(obj, 0, "/", schema)
+end
+
+---@param keys string[]
+---@param schema table|nil        -- schema node for this table
+function M.order_keys(keys, schema)
+    _order_keys(keys, schema)
 end
 
 ---@param filepath string

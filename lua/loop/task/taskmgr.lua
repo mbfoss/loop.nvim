@@ -201,24 +201,22 @@ function M.configure_tasks(config_dir)
     local tasks_file_schema = _build_taskfile_schema()
     local filepath = vim.fs.joinpath(config_dir, "tasks.json")
 
+    if not filetools.file_exists(filepath) then
+        local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
+        if not filetools.file_exists(schema_filepath) then
+            jsoncodec.save_to_file(schema_filepath, tasks_file_schema)
+        end
+        local data = {}
+        data["$schema"] = './tasksschema.json'
+        data["tasks"] = {}
+        jsoncodec.save_to_file(filepath, data)
+    end
+
     local editor = JsonEditor:new({
         name = "Tasks editor",
         filepath = filepath,
         schema = tasks_file_schema,
     })
-
-    editor:set_post_read_handler(function(data)
-        if not data or not data.tasks or not data["$schema"] then
-            local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
-            if not filetools.file_exists(schema_filepath) then
-                jsoncodec.save_to_file(schema_filepath, tasks_file_schema)
-            end
-            data = {}
-            data["$schema"] = './tasksschema.json'
-            data["tasks"] = {}
-            return data
-        end
-    end)
 
     editor:set_add_node_handler(function(path, continue)
         if path:match("^/tasks$") then
@@ -278,7 +276,7 @@ function M.configure_tasks(config_dir)
         end
     end)
 
-    editor:open(uitools.get_regular_window())
+    editor:open()
 end
 
 ---@class loop.SelectTaskArgs

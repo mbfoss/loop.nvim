@@ -22,11 +22,6 @@ error('Cannot require a meta file')
 
 ---@alias loop.TaskExitHandler fun(success:boolean,reason:string|nil)
 
----@class loop.ExtensionConfig
----@field have_config_file fun():boolean
----@field init_config_file fun(template:table,schema:table)
----@field load_config_file fun(schema:table):table?,string?
-
 ---@class loop.ExtensionState
 ---@field get fun(key:string):any
 ---@field set fun(key:string, value:any)
@@ -36,7 +31,7 @@ error('Cannot require a meta file')
 ---@field ws_name string
 ---@field ws_dir string
 ---@field state loop.ExtensionState
----@field config loop.ExtensionConfig
+---@field get_config_file_path fun(key:string,fileext:string?):string
 ---@field register_task_type fun(task_type:string, provider:loop.TaskTypeProvider)
 ---@field register_task_templates fun(category:string, provider:loop.TaskTemplateProvider)
 ---@field register_user_command fun(lead_cmd:string, provider:loop.UserCommandProvider)

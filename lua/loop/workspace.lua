@@ -117,28 +117,25 @@ local function _configure_workspace(ws_dir)
     local schema = require('loop.ws.schema')
     local filepath = vim.fs.joinpath(config_dir, "workspace.json")
 
+    if not filetools.file_exists(filepath) then
+        local schema_filepath = vim.fs.joinpath(config_dir, 'wsschema.json')
+        if not filetools.file_exists(schema_filepath) then
+            jsoncodec.save_to_file(schema_filepath, schema)
+        end
+        local data = {}
+        data["$schema"] = './wsschema.json'
+        data["workspace"] = vim.fn.deepcopy(require('loop.ws.template'))
+        data["workspace"].name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
+        jsoncodec.save_to_file(filepath, data)
+    end
+
     local editor = JsonEditor:new({
         name = "Workspace configuration",
         filepath = filepath,
         schema = schema,
     })
 
-    editor:set_post_read_handler(function (data)
-            if not data or not data.workspace or not data["$schema"] then
-                local schema_filepath = vim.fs.joinpath(config_dir, 'wsschema.json')
-                if not filetools.file_exists(schema_filepath) then
-                    jsoncodec.save_to_file(schema_filepath, schema)
-                end
-                data = {}
-                data["$schema"] = './wsschema.json'
-                data["workspace"] = vim.fn.deepcopy(require('loop.ws.template'))
-                data["workspace"].name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
-                return data
-            end        
-    end)
-
-    editor:open(uitools.get_regular_window())
-    editor:save()
+    editor:open()
 end
 
 ---@param config_dir string
@@ -268,7 +265,7 @@ function M.create_workspace(dir)
 
     local ws_name = vim.fn.fnamemodify(dir, ":p:h:t")
     logs.user_log("Workspace created: " .. ws_name, "workspace")
-    
+
     _configure_workspace(dir)
 end
 

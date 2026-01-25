@@ -7,6 +7,7 @@ local file_util = require("loop.tools.file")
 local validator = require("loop.json.validator")
 local jsontools = require("loop.json.jsontools")
 local jsoncodec = require("loop.json.codec")
+local uitools = require('loop.tools.uitools')
 
 ---@alias JsonPrimitive string|number|boolean|nil
 ---@alias JsonValue JsonPrimitive|table<string,JsonValue>|JsonValue[]
@@ -28,7 +29,6 @@ local jsoncodec = require("loop.json.codec")
 ---@field _redo_stack table[]
 ---@field _validation_errors loop.json.ValidationError[]
 ---@field _is_dirty boolean
----@field _post_read_handler fun(data:table):table?
 ---@field _on_add_node fun(path:string, callback:fun(to_add:any|nil))?
 ---@field _itemtree loop.comp.ItemTree
 ---@field _buf_ctrl any
@@ -292,17 +292,12 @@ function JsonEditor:init(opts)
     self._is_open = false
 end
 
----@param handler fun(data:table):table?
-function JsonEditor:set_post_read_handler(handler)
-    self._post_read_handler = handler
-end
-
 ---@param handler fun(path:string, continue:fun(to_add:any|nil))?
 function JsonEditor:set_add_node_handler(handler)
     self._on_add_node = handler
 end
 
----@param winid integer
+---@param winid integer?
 function JsonEditor:open(winid)
     assert(not self._is_open, "Editor already open")
     self._is_open = true
@@ -372,7 +367,8 @@ function JsonEditor:open(winid)
     self._buf_ctrl = ctrl
 
     local bufid = buf:get_or_create_buf()
-    vim.api.nvim_win_set_buf(winid, bufid)
+    local tgtwin = winid or uitools.get_regular_window()
+    vim.api.nvim_win_set_buf(tgtwin, bufid)
 end
 
 function JsonEditor:_apply_changes()
@@ -392,11 +388,6 @@ function JsonEditor:_reload_data()
             data = {}
         end
     end
-    if self._post_read_handler then
-        local ret = self._post_read_handler(data)
-        if ret ~= nil then data = ret end
-    end
-
     self._data = data
     self:_reload_tree()
 end
@@ -458,6 +449,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
         end
     else
         local keys = vim.tbl_keys(tbl)
+        jsoncodec.order_keys(keys, parent_schema)
 
         for _, k in ipairs(keys) do
             if k == "$schema" then goto continue end

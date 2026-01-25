@@ -60,26 +60,24 @@ function M.configure_variables(config_dir)
     local schema = require("loop.task.variablesschema")
     local filepath = vim.fs.joinpath(config_dir, "variables.json")
 
+    if not filetools.file_exists(filepath) then
+        local schema_filepath = vim.fs.joinpath(config_dir, 'variablesschema.json')
+        if not filetools.file_exists(schema_filepath) then
+            jsoncodec.save_to_file(schema_filepath, schema)
+        end
+        local data = {}
+        data["$schema"] = './variablesschema.json'
+        data["variables"] = vim.empty_dict()
+        jsoncodec.save_to_file(filepath, data)
+    end
+
     local editor = JsonEditor:new({
         name = "Variables editor",
         filepath = filepath,
         schema = schema,
     })
 
-    editor:set_post_read_handler(function(data)
-        if not data or not data.variables or not data["$schema"] then
-            local schema_filepath = vim.fs.joinpath(config_dir, 'variablesschema.json')
-            if not filetools.file_exists(schema_filepath) then
-                jsoncodec.save_to_file(schema_filepath, schema)
-            end
-            data = {}
-            data["$schema"] = './variablesschema.json'
-            data["variables"] = vim.empty_dict()
-            return data
-        end
-    end)
-
-    editor:open(uitools.get_regular_window())
+    editor:open()
 end
 
 return M
