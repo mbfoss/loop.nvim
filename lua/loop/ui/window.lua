@@ -99,7 +99,7 @@ local function _setup_tabs()
             end
             local str1 = ("[%s%s]"):format(tab.label, uiflags1)
             table.insert(winbar_parts,
-                string.format("%%%d@v:lua._LoopPluginGloalState.wbc@%s%%T", arr_idx * 1000, str1))
+                string.format("%%%d@v:lua.LoopPluginWinbarClick@%s%%T", arr_idx * 1000, str1))
             if is_active_tab then table.insert(winbar_parts, "%#LoopPluginInactiveTab#") end
         end
         if #tab.pages > 1 then
@@ -112,7 +112,7 @@ local function _setup_tabs()
                 local str2 = ("[%d%s]"):format(idx, uiflags2)
                 if active_page then table.insert(winbar_parts, "%#LoopPluginActiveTab#") end
                 table.insert(winbar_parts,
-                    string.format("%%%d@v:lua._LoopPluginGloalState.wbc@%s%%T", arr_idx * 1000 + idx, str2))
+                    string.format("%%%d@v:lua.LoopPluginWinbarClick@%s%%T", arr_idx * 1000 + idx, str2))
                 if active_page then table.insert(winbar_parts, "%#LoopPluginInactiveTab#") end
             end
         end
@@ -307,7 +307,7 @@ local function _check_winbar()
     local buf = vim.api.nvim_win_get_buf(winid)
     if winid ~= _loop_win then
         local winbar = vim.wo[winid].winbar
-        if type(winbar) == 'string' and winbar:match('v:lua._LoopPluginGloalState.wbc') then
+        if type(winbar) == 'string' and winbar:match('v:lua.LoopPluginWinbarClick') then
             vim.wo[winid].winbar = nil
         end
     end

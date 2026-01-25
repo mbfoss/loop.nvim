@@ -1,7 +1,5 @@
 local M = {}
 
-local tbltools = require("loop.tools.tabletools")
-
 local function _escape_ptr(token)
     return (tostring(token)
         :gsub("~", "~0")
@@ -93,9 +91,9 @@ local function _validate(schema, data, path)
         for _, t in ipairs(allowed_types) do
             if t == "null" and data == nil then
                 ok = true
-            elseif t == "object" and type(data) == "table" and not tbltools.is_list(data) then
+            elseif t == "object" and type(data) == "table" and not vim.islist(data) then
                 ok = true
-            elseif t == "array" and tbltools.is_list(data) then
+            elseif t == "array" and vim.islist(data) then
                 ok = true
             elseif t == "string" and type(data) == "string" then
                 ok = true
@@ -112,7 +110,7 @@ local function _validate(schema, data, path)
             ---@type string
             local got = type(data)
             if got == "table" then
-                got = tbltools.is_list(data) and "array" or "object"
+                got = vim.islist(data) and "array" or "object"
             elseif data == nil then
                 got = "null"
             end
@@ -153,7 +151,7 @@ local function _validate(schema, data, path)
 
     -- object
     if schema.type == "object" or (type(schema.type) == "table" and vim.tbl_contains(schema.type, "object")) then
-        if type(data) ~= "table" or tbltools.is_list(data) then
+        if type(data) ~= "table" or vim.islist(data) then
             add_error(errors, path, "expected object")
             return errors
         end
@@ -204,7 +202,7 @@ local function _validate(schema, data, path)
 
     -- array
     if schema.type == "array" or (type(schema.type) == "table" and vim.tbl_contains(schema.type, "array")) then
-        if not tbltools.is_list(data) then
+        if not vim.islist(data) then
             add_error(errors, path, "expected array")
             return errors
         end

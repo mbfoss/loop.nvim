@@ -1,14 +1,12 @@
 local M = {}
 
-local tabletools = require("loop.tools.tabletools")
-
 ---Determine displayed type name for tree rendering
 ---@param v any
 ---@return string
 function M.value_type(v)
     local ty = type(v)
     if ty == "table" then
-        return tabletools.is_list(v) and "array" or "object"
+        return vim.islist(v) and "array" or "object"
     end
     if ty == "boolean" then return "boolean" end
     if ty == "number" then return "number" end

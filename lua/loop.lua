@@ -195,8 +195,7 @@ function M.init()
 
     workspace.init()
 
-    _G._LoopPluginGloalState = _G._LoopPluginGloalState or {}
-    _G._LoopPluginGloalState.wbc = workspace.winbar_click
+    _G.LoopPluginWinbarClick = workspace.winbar_click
 end
 
 function M.load_workspace(dir)
