@@ -16,6 +16,8 @@ local M = {}
 
 -- Namespace for prompt highlighting
 local NS_PROMPT = vim.api.nvim_create_namespace("LoopSelectorPrompt")
+local NS_PREVIEW = vim.api.nvim_create_namespace("LoopSelectorPreview")
+
 
 --------------------------------------------------------------------------------
 -- Utility functions
@@ -96,27 +98,7 @@ local function update_preview(formatter, items, cur, buf)
     end
 
     -- ──────────────────────────────────────────────────────────────
-    --  1. Custom formatter has highest priority
-    -- ──────────────────────────────────────────────────────────────
-    if formatter then
-        local ok, text, ft = pcall(formatter, item.data, item)
-        if not ok then
-            vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
-                "Formatter error:",
-                vim.inspect(text), -- error message
-            })
-            vim.bo[buf].filetype = "lua"
-            return
-        end
-
-        local lines = type(text) == "string" and vim.split(text, "\n") or { "<empty preview>" }
-        vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-        vim.bo[buf].filetype = ft or ""
-        return
-    end
-
-    -- ──────────────────────────────────────────────────────────────
-    --  2. File + line → load file contents into the preview buffer
+    --  File + line → load file contents into the preview buffer
     -- ──────────────────────────────────────────────────────────────
     if item.file and item.line then
         local filepath = vim.fs.normalize(item.file)
@@ -182,11 +164,37 @@ local function update_preview(formatter, items, cur, buf)
         end
 
         -- Brief visual feedback: highlight target line
-        local ns = vim.api.nvim_create_namespace("nvim_loop_plugin_preview_line")
-        pcall(vim.api.nvim_buf_clear_namespace, buf, ns, 0, -1)
-        pcall(vim.api.nvim_buf_add_highlight, buf, ns, "CursorLine", target_lnum - 1, 0, -1)
+        pcall(vim.api.nvim_buf_clear_namespace, buf, NS_PREVIEW, 0, -1)
+        -- Highlight the target line fully (works for single-line too)
+        vim.api.nvim_buf_set_extmark(buf, NS_PREVIEW, target_lnum - 1, 0, {
+            end_row = target_lnum, -- makes it "multiline" → enables hl_eol
+            hl_group = "CursorLine",
+            hl_eol = true,
+            hl_mode = "blend",
+        })
         return
     end
+
+    -- ──────────────────────────────────────────────────────────────
+    --  Custom formatter has highest priority
+    -- ──────────────────────────────────────────────────────────────
+    if formatter then
+        local ok, text, ft = pcall(formatter, item.data, item)
+        if not ok then
+            vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+                "Formatter error:",
+                vim.inspect(text), -- error message
+            })
+            vim.bo[buf].filetype = "lua"
+            return
+        end
+
+        local lines = type(text) == "string" and vim.split(text, "\n") or { "<empty preview>" }
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+        vim.bo[buf].filetype = ft or ""
+        return
+    end
+
 
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
     vim.bo[buf].filetype = ""
