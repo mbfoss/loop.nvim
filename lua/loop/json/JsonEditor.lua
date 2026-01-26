@@ -201,11 +201,15 @@ local function _request_value(name, value_type, enum, default_text, multiline, o
         for _, v in ipairs(values) do
             table.insert(choices, { label = vim.inspect(v), data = v })
         end
-        selector.select("Select value", choices, nil, function(data)
-            if data ~= nil then
-                on_confirm(data)
+        selector.select({
+            prompt = "Select value",
+            items = choices,
+            callback = function(data)
+                if data ~= nil then
+                    on_confirm(data)
+                end
             end
-        end)
+        })
         return
     end
     ---@type table
@@ -665,11 +669,15 @@ function JsonEditor:_add_array_item(item, schema)
             table.insert(choices, { label = t, data = t })
         end
 
-        selector.select("Select item type", choices, nil, function(data)
-            if data then
-                self:_create_and_add_array_item(item, data)
+        selector.select({
+            prompt = "Select item type",
+            items = choices,
+            callback = function(data)
+                if data then
+                    self:_create_and_add_array_item(item, data)
+                end
             end
-        end)
+        })
     end
 end
 
@@ -760,14 +768,13 @@ function JsonEditor:_add_object_property(item, schema)
                         data = info.schema,
                     })
                 end
-                selector.select(
-                    "Select schema for '" .. key .. "'",
-                    choices,
-                    nil,
-                    function(data)
+                selector.select({
+                    prompt = "Select schema for '" .. key .. "'",
+                    items = choices,
+                    callback = function(data)
                         if data then with_schema(data) end
                     end
-                )
+                })
                 return
             end
 
@@ -800,11 +807,15 @@ function JsonEditor:_choose_type_and_add_property(item, key, prop_schema)
         table.insert(choices, { label = t, data = t })
     end
 
-    selector.select("Select property type", choices, nil, function(data)
-        if data then
-            self:_create_and_add_object_property(item, key, data, prop_schema)
+    selector.select({
+        prompt = "Select property type",
+        items = choices,
+        callback = function(data)
+            if data then
+                self:_create_and_add_object_property(item, key, data, prop_schema)
+            end
         end
-    end)
+    })
 end
 
 ---@param item loop.comp.ItemTree.Item

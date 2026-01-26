@@ -309,12 +309,16 @@ function M.open_workspace(dir, at_startup)
             table.insert(items, { label = label, data = path })
         end
 
-        selector.select("Open workspace", items, nil, function(choice)
-            if choice then
-                -- async open of selected workspace
-                M.open_workspace(choice, false)
+        selector.select({
+            prompt = "Open workspace",
+            items = items,
+            callback = function(choice)
+                if choice then
+                    -- async open of selected workspace
+                    M.open_workspace(choice, false)
+                end
             end
-        end)
+        })
         return
     end
 

@@ -229,23 +229,32 @@ function M.configure_tasks(config_dir)
                 }
                 table.insert(category_choices, item)
             end
-            selector.select("Task category", category_choices, nil, function(provider)
-                if provider then
-                    local templates = provider.get_task_templates()
-                    local choices = {}
-                    for _, template in pairs(templates) do
-                        ---@type loop.SelectorItem
-                        local item = {
-                            label = template.name,
-                            data = template.task,
-                        }
-                        table.insert(choices, item)
+            selector.select({
+                prompt = "Task category",
+                items = category_choices,
+                callback = function(provider)
+                    if provider then
+                        local templates = provider.get_task_templates()
+                        local choices = {}
+                        for _, template in pairs(templates) do
+                            ---@type loop.SelectorItem
+                            local item = {
+                                label = template.name,
+                                data = template.task,
+                            }
+                            table.insert(choices, item)
+                        end
+                        selector.select({
+                            prompt = "Select template",
+                            items = choices,
+                            formatter = _task_preview,
+                            callback = function(task)
+                                if task then continue(task) end
+                            end
+                        })
                     end
-                    selector.select("Select template", choices, _task_preview, function(task)
-                        if task then continue(task) end
-                    end)
                 end
-            end)
+            })
         elseif path:match("^/tasks/[0-9]*/depends_on$") then
             local task_path = path:match("^(/tasks/[0-9]*/)")
             local cur_name_path = task_path .. "name"
@@ -266,9 +275,13 @@ function M.configure_tasks(config_dir)
                 if #choices == 0 then
                     continue(nil)
                 else
-                    selector.select("Select dependency", choices, nil, function(name)
-                        if name then continue(name) end
-                    end)
+                    selector.select({
+                        prompt = "Select dependency",
+                        items = choices,
+                        callback = function(name)
+                            if name then continue(name) end
+                        end
+                    })
                 end
             end
         else
@@ -298,11 +311,16 @@ local function _select_task(args, task_handler)
         }
         table.insert(choices, item)
     end
-    selector.select(args.prompt, choices, _task_preview, function(task)
+    selector.select({
+        prompt = args.prompt,
+        items = choices,
+        formatter = _task_preview,
+        callback = function(task)
         if task then
-            task_handler(task)
+                task_handler(task)
+            end
         end
-    end)
+    })
 end
 
 ---@param config_dir string

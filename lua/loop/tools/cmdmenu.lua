@@ -17,15 +17,18 @@ function M.select_and_run_command(cmd_list)
         }
         table.insert(choices, item)
     end
-    selector.select("", choices,
-        function(cmd)
-            return tostring(cmd.help),""
+    selector.select({
+        prompt = "",
+        items = choices,
+        formatter = function(cmd)
+            return tostring(cmd.help), ""
         end,
-        function(cmd)
+        callback = function(cmd)
             if cmd then
                 vim.cmd(cmd.vimcmd)
             end
-        end)
+        end
+    })
 end
 
 return M

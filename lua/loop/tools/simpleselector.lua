@@ -3,6 +3,8 @@
 
 ---@class loop.SelectorItem
 ---@field label string        Display label
+---@field file string?
+---@field line number?
 ---@field data  any           Payload returned on select
 
 ---@alias loop.SelectorCallback fun(data:any|nil)
@@ -80,30 +82,114 @@ local function update_list(items, cur, buf, win)
     end
 end
 
----@param formatter loop.PreviewFormatter?
+---@param formatter loop.PreviewFormatter?   (optional custom preview generator)
 ---@param items loop.SelectorItem[]
----@param cur integer
----@param buf integer
+---@param cur integer                        current selected index (1-based)
+---@param buf integer                        preview buffer handle
 local function update_preview(formatter, items, cur, buf)
+    -- Guard: no valid item
     local item = items[cur]
     if not item then
-        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "" })
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "No selection" })
+        vim.bo[buf].filetype = ""
         return
     end
 
-    local ok, text, ft
+    -- ──────────────────────────────────────────────────────────────
+    --  1. Custom formatter has highest priority
+    -- ──────────────────────────────────────────────────────────────
     if formatter then
-        ok, text, ft = pcall(formatter, item.data)
-    else
-        ok, text, ft = true, "", ""
+        local ok, text, ft = pcall(formatter, item.data, item)
+        if not ok then
+            vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+                "Formatter error:",
+                vim.inspect(text), -- error message
+            })
+            vim.bo[buf].filetype = "lua"
+            return
+        end
+
+        local lines = type(text) == "string" and vim.split(text, "\n") or { "<empty preview>" }
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+        vim.bo[buf].filetype = ft or ""
+        return
     end
 
-    vim.bo[buf].filetype = ft or ""
-    if not ok then
-        text = "<preview error>"
+    -- ──────────────────────────────────────────────────────────────
+    --  2. File + line → load file contents into the preview buffer
+    -- ──────────────────────────────────────────────────────────────
+    if item.file and item.line then
+        local filepath = vim.fs.normalize(item.file)
+        local target_lnum = tonumber(item.line)
+
+        if vim.fn.filereadable(filepath) ~= 1 then
+            vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+                "File not readable:",
+                filepath,
+            })
+            vim.bo[buf].filetype = "text"
+            return
+        end
+
+        if not target_lnum or target_lnum < 1 then
+            vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+                "Invalid line number:",
+                filepath .. ":" .. tostring(item.line),
+            })
+            vim.bo[buf].filetype = "text"
+            return
+        end
+
+        -- Clear previous content safely
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
+
+        -- Load file contents into the buffer using :read (most "native" way)
+        local ok, load_err = pcall(vim.api.nvim_buf_call, buf, function()
+            -- :read adds content after current line → so we read into an empty buffer
+            vim.cmd("silent! read " .. vim.fn.fnameescape(filepath))
+
+            -- :read often inserts an empty first line when buffer was empty
+            local first_line = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
+            if first_line == "" then
+                vim.api.nvim_buf_set_lines(buf, 0, 1, false, {})
+            end
+        end)
+
+        if not ok then
+            vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+                "Failed to load file into preview buffer:",
+                vim.inspect(load_err),
+            })
+            vim.bo[buf].filetype = "text"
+            return
+        end
+
+        -- Enable syntax highlighting
+        vim.bo[buf].filetype = vim.filetype.match({ filename = filepath }) or "text"
+
+        -- Try to position cursor / view at target line
+        local preview_win = vim.fn.bufwinid(buf)
+        local target_win = preview_win ~= -1 and preview_win or 0
+
+        local set_ok = pcall(vim.api.nvim_win_set_cursor, target_win, { target_lnum, 0 })
+        if set_ok then
+            vim.api.nvim_win_call(target_win, function()
+                vim.cmd("normal! zz") -- center the target line
+            end)
+        else
+            -- Line might be out of range → fall back to first line
+            pcall(vim.api.nvim_win_set_cursor, target_win, { 1, 0 })
+        end
+
+        -- Brief visual feedback: highlight target line
+        local ns = vim.api.nvim_create_namespace("nvim_loop_plugin_preview_line")
+        pcall(vim.api.nvim_buf_clear_namespace, buf, ns, 0, -1)
+        pcall(vim.api.nvim_buf_add_highlight, buf, ns, "CursorLine", target_lnum - 1, 0, -1)
+        return
     end
 
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, vim.split(text, "\n"))
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
+    vim.bo[buf].filetype = ""
 end
 
 ---@param items loop.SelectorItem[]
@@ -162,23 +248,29 @@ end
 -- Public API
 --------------------------------------------------------------------------------
 
----@param prompt string
----@param items loop.SelectorItem[]
----@param formatter loop.PreviewFormatter|nil
----@param callback loop.SelectorCallback
-function M.select(prompt, items, formatter, callback)
+---@class loop.selector.opts
+---@field prompt string
+---@field items loop.SelectorItem[]
+---@field file_preview boolean?
+---@field formatter loop.PreviewFormatter|nil
+---@field callback loop.SelectorCallback
+
+---@param opts loop.selector.opts
+function M.select(opts)
+    local prompt, items, formatter, callback = opts.prompt, opts.items, opts.formatter, opts.callback
+
     if #items == 0 then
         callback(nil)
         return
     end
 
-    local has_preview = type(formatter) == "function"
+    local has_preview = opts.file_preview or type(opts.formatter) == "function"
 
     --------------------------------------------------------------------------
     -- Layout
     --------------------------------------------------------------------------
 
-    local list_w = compute_width(items, 4)
+    local list_w = compute_width(opts.items, 4)
     local cols = vim.o.columns
     local lines = vim.o.lines
 

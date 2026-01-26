@@ -353,11 +353,15 @@ local function _select_and_show_page(target_winid)
         vim.notify("No pages to show")
         return
     end
-    selector.select("Select page", choices, nil, function(data)
-        if data and data.tabidx then
-            _show_page(target_winid, data.tabidx, data.pageidx)
+    selector.select({
+        prompt = "Select page",
+        items = choices,
+        callback = function(data)
+            if data and data.tabidx then
+                _show_page(target_winid, data.tabidx, data.pageidx)
+            end
         end
-    end)
+    })
 end
 
 function M.show_window()
