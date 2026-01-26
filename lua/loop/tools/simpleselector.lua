@@ -466,14 +466,11 @@ function M.select(opts)
 
     vim.api.nvim_set_current_win(pwin)
     vim.schedule(function()
-        -- schedule AGAIN to ensure all WinEnter/BufEnter events are done
-        vim.schedule(function()
-            if vim.api.nvim_win_is_valid(pwin)
-                and vim.api.nvim_get_current_win() == pwin
-                and vim.fn.mode() ~= "i" then
-                vim.cmd("startinsert!")
-            end
-        end)
+        if vim.api.nvim_win_is_valid(pwin)
+            and vim.api.nvim_get_current_win() == pwin
+            and vim.fn.mode() ~= "i" then
+            vim.cmd("startinsert!")
+        end
     end)
 end
 
