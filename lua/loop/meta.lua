@@ -49,8 +49,8 @@ error('Cannot require a meta file')
 ---@field dispatch fun(args:string[],opts:vim.api.keyset.create_user_command.command_args)
 
 ---@class loop.Extension
----@field on_workspace_load? fun(ext_data:loop.ExtensionData)
----@field on_workspace_unload? fun(ext_data:loop.ExtensionData)
+---@field on_workspace_load fun(ext_data:loop.ExtensionData)
+---@field on_workspace_unload fun(ext_data:loop.ExtensionData)
 ---@field on_state_will_save? fun(ext_data:loop.ExtensionData)
 
 ---@class loop.KeyMap

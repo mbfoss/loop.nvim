@@ -128,7 +128,9 @@ function M.on_workspace_load(wsinfo)
 		}
 		_extension_data[name] = ext_data
 		local ext = extensions.get_extension(name)
-		if ext and ext.on_workspace_load then
+		if ext then
+			assert(ext.on_workspace_load and ext.on_workspace_unload,
+				"required function missing in extention: " .. name)
 			ext.on_workspace_load(ext_data)
 		end
 	end
@@ -141,7 +143,7 @@ function M.on_workspace_unload(wsinfo)
 		local ext_data = _extension_data[name]
 		assert(ext_data)
 		local ext = extensions.get_extension(name)
-		if ext and ext.on_workspace_unload then
+		if ext then
 			ext.on_workspace_unload(ext_data)
 		end
 	end
