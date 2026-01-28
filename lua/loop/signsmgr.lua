@@ -1,4 +1,10 @@
-local M              = {}
+local extmarks = require("loop.extmarks")
+
+local M = {}
+
+-- ===================================================================
+-- Types (unchanged externally)
+-- ===================================================================
 
 ---@class loop.signs.Sign
 ---@field id number
@@ -7,7 +13,7 @@ local M              = {}
 ---@field lnum number
 ---@field priority number
 
----@alias loop.signs.ById table<number, loop.signs.Sign>        -- id → sign
+---@alias loop.signs.ById table<number, loop.signs.Sign>
 ---@alias loop.signs.BySignName table<string, loop.signs.ById>
 ---@alias loop.signs.ByFile table<string, loop.signs.BySignName>
 
@@ -16,91 +22,40 @@ local M              = {}
 ---@field id_to_file table<number, string>
 
 ---@class loop.signs.GroupInfo
----@field sign_names table<string,boolean>
+---@field sign_names table<string, { text: string, texthl: string }>
 ---@field priority number
 
----@type table<string,loop.signs.GroupInfo>
-local _defined_signs = {} -- group -> info
+---@type table<string, loop.signs.GroupInfo>
+local _defined_signs = {}
 
----@type table<string, loop.signs.GroupData> -- group -> data
-local _signs         = {}
-local _id_prefix     = "loopplugin_"
+---@type table<string, loop.signs.GroupData>
+local _signs = {}
 
-local _init_done     = false
+-- ===================================================================
+-- Helpers
+-- ===================================================================
 
----@param file string
----@return integer
-local function _get_loaded_bufnr(file)
-    local bufnr = vim.fn.bufnr(file, false)
-    return (bufnr ~= -1 and vim.api.nvim_buf_is_loaded(bufnr)) and bufnr or -1
+local function _normalize_file(file)
+    return vim.fn.fnamemodify(file, ":p")
 end
 
-local function _remove_buf_signs(bufnr, group)
-    vim.fn.sign_unplace(_id_prefix .. group, { buffer = bufnr })
-end
-
-local function _place_sign(bufnr, sign)
-    vim.fn.sign_place(
-        sign.id,
-        _id_prefix .. sign.group,
-        _id_prefix .. sign.name,
-        bufnr,
-        { lnum = sign.lnum, priority = sign.priority }
-    )
-end
-
-local function _unplace_sign(bufnr, sign)
-    vim.fn.sign_unplace(_id_prefix .. sign.group, {
-        buffer = bufnr,
-        id = sign.id,
-    })
-end
-
-local function _apply_buffer_signs(bufnr, group)
-    local file = vim.api.nvim_buf_get_name(bufnr)
-    if file == "" then return end
-    file = vim.fn.fnamemodify(file, ":p")
-
-    local group_data = _signs[group]
-    if not group_data then return end
-
-    local file_data = group_data.byfile[file]
-    if not file_data then return end
-
-    for _, signs in pairs(file_data) do
-        for _, sign in pairs(signs) do
-            _place_sign(bufnr, sign)
-        end
-    end
-end
-
-local function _ensure_init()
-    if _init_done then return end
-    _init_done = true
-    local au_group = vim.api.nvim_create_augroup("loopplugin_signs", { clear = true })
-    vim.api.nvim_create_autocmd({ "BufReadPost", "BufWinEnter" }, {
-        group = au_group,
-        callback = function(ev)
-            for group_name, _ in pairs(_defined_signs) do
-                _apply_buffer_signs(ev.buf, group_name)
-            end
-        end
-    })
-end
-
--- -------------------------------------------------------------------
+-- ===================================================================
 -- Public API
--- -------------------------------------------------------------------
+-- ===================================================================
 
 ---@param group string
 ---@param priority number
 function M.define_sign_group(group, priority)
     assert(group and priority)
-    assert(not _defined_signs[group])
+    assert(not _defined_signs[group], "sign group already defined")
+
     _defined_signs[group] = {
         sign_names = {},
         priority = priority,
     }
+
+    -- mirrored extmark group
+    extmarks.define_group(group, { priority = priority })
 end
 
 ---@param group string
@@ -109,29 +64,27 @@ end
 ---@param texthl string
 function M.define_sign(group, name, text, texthl)
     assert(group and name and text and texthl)
-    local defined_group = _defined_signs[group]
-    assert(defined_group, "sign group not defined")
-    assert(not defined_group.sign_names[name], "sign already in group")
 
-    defined_group.sign_names[name] = true
-    vim.fn.sign_define(_id_prefix .. name, {
+    local g = _defined_signs[group]
+    assert(g, "sign group not defined")
+    assert(not g.sign_names[name], "sign already defined")
+
+    g.sign_names[name] = {
         text = text,
         texthl = texthl,
-    })
+    }
 end
 
 ---@param id number
 ---@param file string
----@param line number
+---@param line number   -- 1-based (sign API preserved)
 ---@param group string
 ---@param name string
 function M.place_file_sign(id, file, line, group, name)
-    _ensure_init()
-    local defined_group = _defined_signs[group]
-    assert(defined_group and defined_group.sign_names[name], "sign group/name not defined")
+    local g = _defined_signs[group]
+    assert(g and g.sign_names[name], "sign group/name not defined")
 
-    file = vim.fn.fnamemodify(file, ":p")
-    local bufnr = _get_loaded_bufnr(file)
+    file = _normalize_file(file)
 
     local group_data = _signs[group]
     if not group_data then
@@ -139,14 +92,10 @@ function M.place_file_sign(id, file, line, group, name)
         _signs[group] = group_data
     end
 
-    -- remove this id from all sign names for this file
+    -- remove this id from all names in this file
     local file_table = group_data.byfile[file]
     if file_table then
         for _, signs in pairs(file_table) do
-            local old = signs[id]
-            if old and bufnr >= 0 then
-                _unplace_sign(bufnr, old)
-            end
             signs[id] = nil
         end
     end
@@ -157,172 +106,109 @@ function M.place_file_sign(id, file, line, group, name)
     local byname = group_data.byfile[file]
     byname[name] = byname[name] or {}
 
-    local name_table = byname[name]
-
-    -- Replace existing sign with same id
-    local old = name_table[id]
-    if old and bufnr >= 0 then
-        _unplace_sign(bufnr, old)
-    end
-
     local sign = {
         id = id,
         group = group,
         name = name,
         lnum = line,
-        priority = defined_group.priority or 12,
+        priority = g.priority,
     }
 
-    name_table[id] = sign
+    byname[name][id] = sign
 
-    if bufnr > 0 then
-        _place_sign(bufnr, sign)
-    end
+    local def = g.sign_names[name]
+
+    extmarks.place_file_extmark(
+        id,
+        file,
+        line - 1, -- extmarks are 0-based
+        0,
+        group,
+        {
+            sign_text = def.text,
+            sign_hl_group = def.texthl,
+        }
+    )
 end
 
 ---@param id number
 ---@param group string
 function M.remove_file_sign(id, group)
-    _ensure_init()
     assert(_defined_signs[group], "sign group not defined")
 
-    local group_table = _signs[group]
-    if not group_table then return end
+    local group_data = _signs[group]
+    if not group_data then return end
 
-    local file = group_table.id_to_file[id]
+    local file = group_data.id_to_file[id]
     if not file then return end
 
-    group_table.id_to_file[id] = nil
+    group_data.id_to_file[id] = nil
 
-    local file_table = group_table.byfile[file]
-    if not file_table then return end
-
-    local bufnr = _get_loaded_bufnr(file)
-
-    for _, signs in pairs(file_table) do
-        local sign = signs[id]
-        if sign then
-            if bufnr > 0 then
-                _unplace_sign(bufnr, sign)
-            end
+    local file_table = group_data.byfile[file]
+    if file_table then
+        for _, signs in pairs(file_table) do
             signs[id] = nil
         end
     end
+
+    extmarks.remove_file_extmark(id, group)
 end
 
 ---@param file string
 ---@param group string
 function M.remove_file_signs(file, group)
-    _ensure_init()
     assert(_defined_signs[group], "sign group not defined")
 
-    file = vim.fn.fnamemodify(file, ":p")
-    local group_table = _signs[group]
-    if not group_table then return end
+    file = _normalize_file(file)
 
-    local file_table = group_table.byfile[file]
+    local group_data = _signs[group]
+    if not group_data then return end
+
+    local file_table = group_data.byfile[file]
     if not file_table then return end
 
     for _, signs in pairs(file_table) do
         for id in pairs(signs) do
-            group_table.id_to_file[id] = nil
+            group_data.id_to_file[id] = nil
         end
     end
 
-    group_table.byfile[file] = nil
+    group_data.byfile[file] = nil
 
-    if not next(group_table.byfile) then
-        _signs[group] = nil
-    end
-
-    local bufnr = _get_loaded_bufnr(file)
-    if bufnr > 0 then
-        _remove_buf_signs(bufnr, group)
-    end
+    extmarks.remove_file_extmarks(file, group)
 end
 
 ---@param group string
 function M.remove_signs(group)
-    _ensure_init()
     assert(_defined_signs[group], "sign group not defined")
 
-    local group_table = _signs[group]
-    if not group_table then return end
-
-    for file in pairs(group_table.byfile) do
-        local bufnr = _get_loaded_bufnr(file)
-        if bufnr > 0 then
-            _remove_buf_signs(bufnr, group)
-        end
-    end
-
     _signs[group] = nil
+    extmarks.remove_extmarks(group)
 end
 
 function M.clear_all()
-    _ensure_init()
-    for group, group_table in pairs(_signs) do
-        for file in pairs(group_table.byfile) do
-            local bufnr = _get_loaded_bufnr(file)
-            if bufnr > 0 then
-                _remove_buf_signs(bufnr, group)
-            end
-        end
-    end
     _signs = {}
+    extmarks.clear_all()
 end
 
 ---@param group string
 function M.refresh_all_signs(group)
-    _ensure_init()
     assert(_defined_signs[group], "sign group not defined")
-
-    for _, bufnr in ipairs(vim.api.nvim_list_bufs()) do
-        if vim.api.nvim_buf_is_loaded(bufnr) then
-            _remove_buf_signs(bufnr, group)
-            _apply_buffer_signs(bufnr, group)
-        end
-    end
+    extmarks.refresh_group(group)
 end
 
 ---@param file string
 ---@return table<number, loop.signs.Sign>
 function M.get_file_signs_by_id(file)
-    _ensure_init()
-
     file = vim.fn.fnamemodify(file, ":p")
-
     ---@type table<number, loop.signs.Sign>
     local out = {}
-    -- Collect stored signs first
-    for group, group_table in pairs(_signs) do
-        local file_table = group_table.byfile[file]
+    for _, group_data in pairs(_signs) do
+        local file_table = group_data.byfile[file]
         if file_table then
             for _, signs in pairs(file_table) do
                 for id, sign in pairs(signs) do
                     out[id] = sign
-                end
-            end
-        end
-    end
-    -- If buffer isn't loaded, stored data is best we can do
-    local bufnr = _get_loaded_bufnr(file)
-    if bufnr < 0 or not next(out) then
-        return out
-    end
-    -- Fetch live sign positions from Neovim
-    for group in pairs(_signs) do
-        local placed = vim.fn.sign_getplaced(
-            bufnr,
-            { group = _id_prefix .. group }
-        )[1]
-
-        if placed and placed.signs then
-            for _, psign in ipairs(placed.signs) do
-                local sign = out[psign.id]
-                if sign then
-                    -- Update stored state lazily
-                    sign.lnum = psign.lnum
                 end
             end
         end
