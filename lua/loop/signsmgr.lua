@@ -45,17 +45,50 @@ end
 
 ---@param group string
 ---@param priority number
-function M.define_sign_group(group, priority)
+---@param on_update fun(file:string,signs:loop.signs.ById)?
+function M.define_sign_group(group, priority, on_update)
     assert(group and priority)
     assert(not _defined_signs[group], "sign group already defined")
 
     _defined_signs[group] = {
         sign_names = {},
         priority = priority,
+        on_update = on_update,
     }
 
-    -- mirrored extmark group
-    extmarks.define_group(group, { priority = priority })
+    ---@type fun(file:string,marks:loop.extmarks.ById)
+    local on_marks_update = function(file, marks)
+        file = _normalize_file(file)
+        local group_data = _signs[group]
+        if not group_data then return end
+
+        local signs_by_file = group_data.byfile[file]
+        if not signs_by_file then return end
+
+        ---@type loop.signs.ById
+        local updated = {}
+
+        -- Loop through extmarks reported by extmarks module
+        for id, mark in pairs(marks) do
+            -- Find which sign name this ID belongs to
+            for name, signs in pairs(signs_by_file) do
+                local sign = signs[id]
+                if sign then
+                    sign.lnum = mark.row + 1 -- convert back to 1-based
+                    updated[id] = sign
+                    break
+                end
+            end
+        end
+
+        -- Call user-defined callback
+        if on_update then
+            on_update(file, updated)
+        end
+    end
+
+    -- Mirror the extmarks group
+    extmarks.define_group(group, { priority = priority, on_update = on_marks_update })
 end
 
 ---@param group string
@@ -195,25 +228,6 @@ end
 function M.refresh_all_signs(group)
     assert(_defined_signs[group], "sign group not defined")
     extmarks.refresh_group(group)
-end
-
----@param file string
----@return table<number, loop.signs.Sign>
-function M.get_file_signs_by_id(file)
-    file = vim.fn.fnamemodify(file, ":p")
-    ---@type table<number, loop.signs.Sign>
-    local out = {}
-    for _, group_data in pairs(_signs) do
-        local file_table = group_data.byfile[file]
-        if file_table then
-            for _, signs in pairs(file_table) do
-                for id, sign in pairs(signs) do
-                    out[id] = sign
-                end
-            end
-        end
-    end
-    return out
 end
 
 return M

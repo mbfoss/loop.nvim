@@ -214,7 +214,7 @@ local function _request_value(name, value_type, enum, default_text, multiline, o
     end
     ---@type table
     local input_opts = {
-        title = ("%s (%s)"):format(name, value_type),
+        prompt = ("%s (%s)"):format(name, value_type),
         default_text = default_text,
         on_confirm = function(txt)
             if txt == nil then return end
@@ -225,9 +225,9 @@ local function _request_value(name, value_type, enum, default_text, multiline, o
         end,
     }
     if multiline then
-        floatwin.input_multiline(input_opts)
+        floatwin.input_multiline(input_opts, on_confirm)
     else
-        floatwin.input_at_cursor(input_opts)
+        floatwin.input_at_cursor(input_opts, on_confirm)
     end
 end
 
@@ -745,9 +745,10 @@ function JsonEditor:_add_object_property(item, schema)
     table.sort(suggested_keys)
 
     floatwin.input_at_cursor({
-        title = "New property name",
-        completions = suggested_keys,
-        on_confirm = function(key)
+            title = "New property name",
+            completions = suggested_keys,
+        },
+        function(key)
             if not key or key == "" then return end
             if obj[key] ~= nil then
                 vim.notify("Key already exists", vim.log.levels.WARN)
@@ -786,8 +787,8 @@ function JsonEditor:_add_object_property(item, schema)
             -- fallback: additionalProperties
             local ap = schema.additionalProperties
             with_schema(type(ap) == "table" and ap or {})
-        end,
-    })
+        end
+    )
 end
 
 ---@param item loop.comp.ItemTree.Item

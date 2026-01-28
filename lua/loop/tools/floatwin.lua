@@ -19,13 +19,12 @@ local _current_win = nil
 ---@field move_to_bot? boolean
 
 ---@class loop.floatwin.InputOpts
----@field title? string
+---@field prompt? string
 ---@field default_text? string
 ---@field default_width? number
 ---@field row_offset? number
 ---@field col_offset? number
 ---@field completions? string[]
----@field on_confirm fun(value: string|nil)
 
 ---@param buf number
 ---@param opts loop.floatwin.CenteredWinOpts
@@ -190,7 +189,8 @@ end
 -- Single-line input function (existing behavior)
 -- ===================================================================
 ---@param opts loop.floatwin.InputOpts
-function M.input_at_cursor(opts)
+---@param on_confirm fun(value: string|nil)
+function M.input_at_cursor(opts, on_confirm)
     local prev_win = vim.api.nvim_get_current_win()
     local buf = vim.api.nvim_create_buf(false, true)
 
@@ -206,7 +206,7 @@ function M.input_at_cursor(opts)
     local initial_text = opts.default_text or ""
     if initial_text:match("\n") then initial_text = "" end
 
-    local min_width = math.max(opts.default_width or 20, vim.fn.strdisplaywidth(opts.title or "") + 2)
+    local min_width = math.max(opts.default_width or 20, vim.fn.strdisplaywidth(opts.prompt or "") + 2)
     local max_width = math.floor(vim.o.columns * 0.8)
     local current_width = math.max(min_width, 40)
     current_width = math.min(current_width, max_width)
@@ -223,7 +223,7 @@ function M.input_at_cursor(opts)
         height = 1,
         style = "minimal",
         border = "rounded",
-        title = opts.title and (" %s "):format(opts.title) or nil
+        title = opts.prompt and (" %s "):format(opts.prompt) or nil
     })
 
     vim.wo[win].wrap = true
@@ -307,7 +307,7 @@ function M.input_at_cursor(opts)
         if vim.api.nvim_win_is_valid(prev_win) then
             vim.api.nvim_set_current_win(prev_win)
         end
-        vim.schedule(function() opts.on_confirm(value) end)
+        vim.schedule(function() on_confirm(value) end)
     end
 
     -- ---------------- Keymaps ----------------
@@ -328,7 +328,8 @@ function M.input_at_cursor(opts)
 end
 
 ---@param opts loop.floatwin.InputOpts
-function M.input_multiline(opts)
+---@param on_confirm fun(value: string|nil)
+function M.input_multiline(opts, on_confirm)
     local prev_win = vim.api.nvim_get_current_win()
     local buf = vim.api.nvim_create_buf(false, true)
 
@@ -344,7 +345,7 @@ function M.input_multiline(opts)
     local initial_lines = vim.split(initial_text, "\n", { plain = true })
     if #initial_lines == 0 then initial_lines = { "" } end
 
-    local title = opts.title and (" %s [Ctrl-S to confirm, Ctrl-C to cancel] "):format(opts.title) or nil
+    local title = opts.prompt and (" %s [Ctrl-S to confirm, Ctrl-C to cancel] "):format(opts.prompt) or nil
     local width = math.floor(vim.o.columns * 0.8)
     local height = math.floor(vim.o.lines * 0.8)
 
@@ -388,7 +389,7 @@ function M.input_multiline(opts)
             vim.api.nvim_set_current_win(prev_win)
         end
 
-        vim.schedule(function() opts.on_confirm(value) end)
+        vim.schedule(function() on_confirm(value) end)
     end
 
     local function try_close()

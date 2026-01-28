@@ -66,7 +66,7 @@ end
 local function _load_state(config_dir, ext_name)
 	assert(ext_name and ext_name:match("[_%a][_%w]*") ~= nil, "invalid input")
 	local data = {}
-	local filepath = vim.fs.joinpath(config_dir, ext_name .. ".state.json")
+	local filepath = vim.fs.joinpath(config_dir, "state." .. ext_name .. ".json")
 	if filetools.file_exists(filepath) then
 		local decoded, data_or_err = jsoncodec.load_from_file(filepath)
 		assert(decoded, "failed to load state file for " .. ext_name)
@@ -163,7 +163,7 @@ function M.save(wsinfo)
 		if ext and ext.on_state_will_save then
 			ext.on_state_will_save(ext_data)
 		end
-		local filepath = vim.fs.joinpath(wsinfo.config_dir, name .. ".state.json")
+		local filepath = vim.fs.joinpath(wsinfo.config_dir, "state." .. name .. ".json")
 		jsoncodec.save_to_file(filepath, state)
 	end
 end
