@@ -74,7 +74,7 @@ function M.define_sign_group(group, priority, on_update)
             for name, signs in pairs(signs_by_file) do
                 local sign = signs[id]
                 if sign then
-                    sign.lnum = mark.row + 1 -- convert back to 1-based
+                    sign.lnum = mark.row
                     updated[id] = sign
                     break
                 end
@@ -110,7 +110,7 @@ end
 
 ---@param id number
 ---@param file string
----@param line number   -- 1-based (sign API preserved)
+---@param line number   -- 1-based
 ---@param group string
 ---@param name string
 function M.place_file_sign(id, file, line, group, name)
@@ -154,7 +154,7 @@ function M.place_file_sign(id, file, line, group, name)
     extmarks.place_file_extmark(
         id,
         file,
-        line - 1, -- extmarks are 0-based
+        line,
         0,
         group,
         {
