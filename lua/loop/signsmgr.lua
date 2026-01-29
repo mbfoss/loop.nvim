@@ -74,7 +74,7 @@ function M.define_sign_group(group, priority, on_update)
             for name, signs in pairs(signs_by_file) do
                 local sign = signs[id]
                 if sign then
-                    sign.lnum = mark.row
+                    sign.lnum = mark.lnum
                     updated[id] = sign
                     break
                 end
@@ -88,7 +88,7 @@ function M.define_sign_group(group, priority, on_update)
     end
 
     -- Mirror the extmarks group
-    extmarks.define_group(group, { priority = priority, on_update = on_marks_update })
+    extmarks.define_group(group, { priority = priority}, on_marks_update)
 end
 
 ---@param group string
@@ -110,12 +110,13 @@ end
 
 ---@param id number
 ---@param file string
----@param line number   -- 1-based
+---@param lnum number   -- 1-based
 ---@param group string
 ---@param name string
-function M.place_file_sign(id, file, line, group, name)
+function M.place_file_sign(id, file, lnum, group, name)
     local g = _defined_signs[group]
     assert(g and g.sign_names[name], "sign group/name not defined")
+    assert(lnum >= 1, "lnum must be 1-based")
 
     file = _normalize_file(file)
 
@@ -143,7 +144,7 @@ function M.place_file_sign(id, file, line, group, name)
         id = id,
         group = group,
         name = name,
-        lnum = line,
+        lnum = lnum,
         priority = g.priority,
     }
 
@@ -154,7 +155,7 @@ function M.place_file_sign(id, file, line, group, name)
     extmarks.place_file_extmark(
         id,
         file,
-        line,
+        lnum,
         0,
         group,
         {

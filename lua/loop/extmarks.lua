@@ -8,7 +8,7 @@ local M = {}
 ---@field id number
 ---@field group string
 ---@field ns number
----@field row number        -- 0-based
+---@field lnum number        -- 1-based
 ---@field col number        -- 0-based
 ---@field opts vim.api.keyset.set_extmark
 
@@ -55,13 +55,13 @@ local function _place_extmark(bufnr, mark)
     local line_count = vim.api.nvim_buf_line_count(bufnr)
     if line_count == 0 then return end
 
-    local row = math.max(0, math.min(mark.row, line_count - 1))
-    local line = vim.api.nvim_buf_get_lines(bufnr, row, row + 1, true)[1] or ""
+    local lnum = math.max(1, math.min(mark.lnum, line_count))
+    local line = vim.api.nvim_buf_get_lines(bufnr, lnum - 1, lnum, true)[1] or ""
     local col = math.max(0, math.min(mark.col, #line))
 
-    mark.row, mark.col = row, col
+    mark.lnum, mark.col = lnum, col
 
-    vim.api.nvim_buf_set_extmark(bufnr, mark.ns, row, col, mark.opts)
+    vim.api.nvim_buf_set_extmark(bufnr, mark.ns, lnum - 1, col, mark.opts)
 end
 
 ---@param bufnr integer
@@ -102,6 +102,7 @@ local function _notify_group_update(group, file)
         local file_table = group_data.byfile[file]
         if file_table then
             for id, mark in pairs(file_table) do
+                ---@type loop.extmarks.Mark
                 update[id] = mark
             end
         end
@@ -134,14 +135,12 @@ local function _sync_file_extmarks(bufnr)
             local id, row, col = m[1], m[2], m[3]
             local mark = file_table[id]
             if mark then
-                mark.row = row
+                mark.lnum = row + 1
                 mark.col = col
             end
         end
 
-        vim.schedule(function()
-            _notify_group_update(group, file)
-        end)
+        _notify_group_update(group, file)
 
         ::continue::
     end
@@ -178,29 +177,31 @@ end
 -- ===================================================================
 
 ---@param group string
----@param opts { priority: number, on_update:fun(file:string,marks:loop.extmarks.ById)? }
-function M.define_group(group, opts)
+---@param opts { priority: number}
+---@param on_update fun(file:string,marks:loop.extmarks.ById)?
+function M.define_group(group, opts, on_update)
     assert(group, "group required")
-    assert(opts.priority and opts.on_update, "missing opts")
+    assert(opts.priority, "missing opts")
     assert(not _defined_groups[group], "group already defined")
     _defined_groups[group] = {
         priority = opts.priority,
-        update_handler = opts.on_update,
+        update_handler = on_update,
     }
 end
 
 ---@param id number
 ---@param file string
----@param line number        -- 1-based
+---@param lnum number        -- 1-based
 ---@param col number        -- 0-based
 ---@param group string
 ---@param opts vim.api.keyset.set_extmark       -- extmark opts
 ---@see vim.api.nvim_buf_set_extmark
-function M.place_file_extmark(id, file, line, col, group, opts)
+function M.place_file_extmark(id, file, lnum, col, group, opts)
     _ensure_init()
 
     local group_info = _defined_groups[group]
     assert(group_info, "group not defined")
+    assert(lnum >= 1, "lnum must be 1-based")
 
     file = _normalize_file(file)
     local bufnr = _get_loaded_bufnr(file)
@@ -227,12 +228,13 @@ function M.place_file_extmark(id, file, line, col, group, opts)
     group_data.id_to_file[id] = file
     group_data.byfile[file] = group_data.byfile[file] or {}
 
+    ---@type loop.extmarks.Mark
     local mark = {
         id = id,
         group = group,
         ns = group_data.ns,
-        row = line - 1, -- 0 based
-        col = col, -- 0 based
+        lnum = lnum, -- 1 based
+        col = col,   -- 0 based
         opts = vim.tbl_extend("force", {
             id = id,
             priority = group_info.priority,
