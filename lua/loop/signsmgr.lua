@@ -24,6 +24,7 @@ local M = {}
 ---@class loop.signs.GroupInfo
 ---@field sign_names table<string, { text: string, texthl: string }>
 ---@field priority number
+---@field functions loop.extmarks.GroupFunctions
 
 ---@type table<string, loop.signs.GroupInfo>
 local _defined_signs = {}
@@ -49,12 +50,6 @@ end
 function M.define_sign_group(group, priority, on_update)
     assert(group and priority)
     assert(not _defined_signs[group], "sign group already defined")
-
-    _defined_signs[group] = {
-        sign_names = {},
-        priority = priority,
-        on_update = on_update,
-    }
 
     ---@type fun(file:string,marks:loop.extmarks.ById)
     local on_marks_update = function(file, marks)
@@ -88,7 +83,14 @@ function M.define_sign_group(group, priority, on_update)
     end
 
     -- Mirror the extmarks group
-    extmarks.define_group(group, { priority = priority}, on_marks_update)
+    local functions = extmarks.define_group(group, { priority = priority }, on_marks_update)
+
+    _defined_signs[group] = {
+        sign_names = {},
+        priority = priority,
+        on_update = on_update,
+        functions = functions
+    }
 end
 
 ---@param group string
@@ -152,12 +154,11 @@ function M.place_file_sign(id, file, lnum, group, name)
 
     local def = g.sign_names[name]
 
-    extmarks.place_file_extmark(
+    g.functions.place_file_extmark(
         id,
         file,
         lnum,
         0,
-        group,
         {
             sign_text = def.text,
             sign_hl_group = def.texthl,
@@ -168,7 +169,8 @@ end
 ---@param id number
 ---@param group string
 function M.remove_file_sign(id, group)
-    assert(_defined_signs[group], "sign group not defined")
+    local g = _defined_signs[group]
+    assert(g, "sign group not defined")
 
     local group_data = _signs[group]
     if not group_data then return end
@@ -185,14 +187,14 @@ function M.remove_file_sign(id, group)
         end
     end
 
-    extmarks.remove_file_extmark(id, group)
+    g.functions.remove_extmark(id)
 end
 
 ---@param file string
 ---@param group string
 function M.remove_file_signs(file, group)
-    assert(_defined_signs[group], "sign group not defined")
-
+    local g = _defined_signs[group]
+    assert(g, "sign group not defined")
     file = _normalize_file(file)
 
     local group_data = _signs[group]
@@ -209,26 +211,23 @@ function M.remove_file_signs(file, group)
 
     group_data.byfile[file] = nil
 
-    extmarks.remove_file_extmarks(file, group)
+    g.functions.remove_file_extmarks(file)
 end
 
 ---@param group string
 function M.remove_signs(group)
-    assert(_defined_signs[group], "sign group not defined")
+    local g = _defined_signs[group]
+    assert(g, "sign group not defined")
 
     _signs[group] = nil
-    extmarks.remove_extmarks(group)
-end
-
-function M.clear_all()
-    _signs = {}
-    extmarks.clear_all()
+    g.functions.remove_extmarks()
 end
 
 ---@param group string
 function M.refresh_all_signs(group)
-    assert(_defined_signs[group], "sign group not defined")
-    extmarks.refresh_group(group)
+    local g = _defined_signs[group]
+    assert(g, "sign group not defined")
+    g.functions.refresh()
 end
 
 return M

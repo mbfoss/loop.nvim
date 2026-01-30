@@ -173,21 +173,8 @@ local function _ensure_init()
 end
 
 -- ===================================================================
--- Public API
+-- Public API immplementation
 -- ===================================================================
-
----@param group string
----@param opts { priority: number}
----@param on_update fun(file:string,marks:loop.extmarks.ById)?
-function M.define_group(group, opts, on_update)
-    assert(group, "group required")
-    assert(opts.priority, "missing opts")
-    assert(not _defined_groups[group], "group already defined")
-    _defined_groups[group] = {
-        priority = opts.priority,
-        update_handler = on_update,
-    }
-end
 
 ---@param id number
 ---@param file string
@@ -196,7 +183,7 @@ end
 ---@param group string
 ---@param opts vim.api.keyset.set_extmark       -- extmark opts
 ---@see vim.api.nvim_buf_set_extmark
-function M.place_file_extmark(id, file, lnum, col, group, opts)
+local function _place_file_extmark(id, file, lnum, col, group, opts)
     _ensure_init()
 
     local group_info = _defined_groups[group]
@@ -250,7 +237,7 @@ end
 
 ---@param id number
 ---@param group string
-function M.remove_file_extmark(id, group)
+local function _remove_extmark(id, group)
     _ensure_init()
     assert(_defined_groups[group], "group not defined")
 
@@ -275,7 +262,7 @@ end
 
 ---@param file string
 ---@param group string
-function M.remove_file_extmarks(file, group)
+local function _remove_file_extmarks(file, group)
     _ensure_init()
     assert(_defined_groups[group], "group not defined")
 
@@ -300,7 +287,7 @@ function M.remove_file_extmarks(file, group)
 end
 
 ---@param group string
-function M.remove_extmarks(group)
+local function _remove_extmarks(group)
     _ensure_init()
     assert(_defined_groups[group], "group not defined")
 
@@ -317,23 +304,8 @@ function M.remove_extmarks(group)
     _groups[group] = nil
 end
 
-function M.clear_all()
-    _ensure_init()
-
-    for _, group_data in pairs(_groups) do
-        for file in pairs(group_data.byfile) do
-            local bufnr = _get_loaded_bufnr(file)
-            if bufnr >= 0 then
-                _clear_buf_namespace(bufnr, group_data.ns)
-            end
-        end
-    end
-
-    _groups = {}
-end
-
 ---@param group string
-function M.refresh_group(group)
+local function _refresh_group(group)
     _ensure_init()
     assert(_defined_groups[group], "group not defined")
 
@@ -346,6 +318,46 @@ function M.refresh_group(group)
             _apply_buffer_extmarks(bufnr, group)
         end
     end
+end
+
+---@class loop.extmarks.GroupFunctions
+---@field place_file_extmark fun(id:number, file:string,lnum:number,col:number,opts:vim.api.keyset.set_extmark )
+---@field remove_extmarks fun()
+---@field remove_extmark fun(id:number)
+---@field remove_file_extmarks fun(file:string)
+---@field refresh fun()
+
+---@param group string
+---@param opts { priority: number}
+---@param on_update fun(file:string,marks:loop.extmarks.ById)?
+---@return loop.extmarks.GroupFunctions
+function M.define_group(group, opts, on_update)
+    assert(group, "group required")
+    assert(opts.priority, "missing opts")
+    assert(not _defined_groups[group], "group already defined")
+    _defined_groups[group] = {
+        priority = opts.priority,
+        update_handler = on_update,
+    }
+    ---@type loop.extmarks.GroupFunctions
+    return {
+        place_file_extmark = function(id, file, lnum, col, opts)
+            _place_file_extmark(id, file, lnum, col, group, opts)
+        end
+        ,
+        remove_extmark = function(id)
+            _remove_extmark(id, group)
+        end,
+        remove_file_extmarks = function(file)
+            _remove_file_extmarks(file, group)
+        end,
+        remove_extmarks = function()
+            _remove_extmarks(group)
+        end,
+        refresh = function()
+            _refresh_group(group)
+        end
+    }
 end
 
 return M
