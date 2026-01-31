@@ -10,7 +10,6 @@
 
 - **Automatic Workspace Detection:** Projects are recognized via a `.nvimloop` directory.
 - **Structured, Dependency-Aware Tasks:** Define simple or composite tasks with dependencies and parallel/sequential execution.
-- **Quickfix Integration:** Compiler output is parsed into the quickfix list for easy navigation.
 - **Macro System:** Use `${macro}` variable substitution for dynamic commands.
 - **Workspace Variables:** Manage per-project variables with `:Loop var`.
 - **Optional Per-Workspace Isolation:** Isolate shada (history, marks) and undo data per workspace.
@@ -54,12 +53,12 @@ Workspace auto opens when starting Neovim without any arguments in a workspace d
 You can display the current workspace in your statusline:
 Example with `lualine`:
 ```lua
-lualine_c = { function() return require('loop.wsinfo').status_line() end, 'filename' }
+lualine_c = { function() return require('loop.statusline').status_line() end, 'filename' }
 ```
 
 ## Task Types
 
-- **command:** Run build commands with quickfix parsing (e.g. `make`, `gcc`) or long-running processes (e.g. servers).
+- **proccess:** Run an executable.
 - **composite:** Combine multiple tasks, run in sequence or parallel.
 
 Example build task:

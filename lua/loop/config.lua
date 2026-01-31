@@ -13,7 +13,6 @@
 ---@field selector ("builtin"|"default")?
 ---@field window loop.Config.Window?
 ---@field macros table<string,(fun(ctx:loop.TaskContext,...):any,string|nil)>?
----@field quickfix_matchers table<string,function>?
 ---@field debug boolean? Enable debug/verbose mode for development
 ---@field autosave_interval integer? Auto-save interval in minutes (default: 5 minutes).
 ---@field logs_count integer? Number of recent logs to show with :Loop logs (default: 50).

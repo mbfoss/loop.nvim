@@ -5,7 +5,6 @@ local throttle = require('loop.tools.throttle')
 local uitools = require('loop.tools.uitools')
 local jsoncodec = require('loop.json.codec')
 local selector = require("loop.tools.selector")
-local logs = require("loop.logs")
 local BaseBuffer = require('loop.buf.BaseBuffer')
 local OutputBuffer = require('loop.buf.OutputBuffer')
 local CompBuffer = require('loop.buf.CompBuffer')
@@ -709,6 +708,9 @@ function M.load_settings(config_dir)
     local loaded, conf = jsoncodec.load_from_file(vim.fs.joinpath(config_dir, "window.json"))
     if loaded then
         _loop_win_height_ratio = conf.height
+    end
+    if _loop_win ~= -1 and _loop_win_height_ratio then
+        vim.api.nvim_win_set_height(_loop_win, math.floor(vim.o.lines * _loop_win_height_ratio))
     end
 end
 

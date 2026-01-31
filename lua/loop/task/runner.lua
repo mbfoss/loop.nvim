@@ -8,7 +8,6 @@ local StatusComp    = require("loop.task.StatusComp")
 local config        = require("loop.config")
 local variablesmgr  = require("loop.task.variablesmgr")
 local strtools      = require("loop.tools.strtools")
-local wsinfo        = require("loop.wsinfo")
 
 ---@type loop.task.TasksStatusComp?,loop.PageController?,loop.PageGroup?
 local _status_comp, _status_page, _status_pagegroup
@@ -66,25 +65,30 @@ local function _load_variables(config_dir)
     return vars, var_errors
 end
 
+---@param ws_dir string
 ---@param config_dir string
 ---@param page_manager_fact loop.PageManagerFactory
 ---@param mode "task"|"repeat"
 ---@param task_name string|nil
-function M.load_and_run_task(config_dir, page_manager_fact, mode, task_name)
+function M.load_and_run_task(ws_dir, config_dir, page_manager_fact, mode, task_name)
     taskmgr.get_or_select_task(config_dir, mode, task_name, function(root_name, all_tasks)
         if not root_name or not all_tasks then
             return
         end
         taskmgr.save_last_task_name(root_name, config_dir)
-        M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
+        M.run_task(ws_dir, config_dir, page_manager_fact, all_tasks, root_name)
     end)
 end
 
+---@param ws_dir string
 ---@param config_dir string
 ---@param page_manager_fact loop.PageManagerFactory
 ---@param all_tasks loop.Task[]
 ---@param root_name string
-function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
+function M.run_task(ws_dir, config_dir, page_manager_fact, all_tasks, root_name)
+    assert(type(ws_dir) == "string")
+    assert(type(config_dir) == "string")
+
     if not _status_comp then
         assert(not _status_page)
         assert(not _status_pagegroup)
@@ -124,9 +128,6 @@ function M.run_task(config_dir, page_manager_fact, all_tasks, root_name)
     _status_pagegroup.activate_page("status")
 
     local vars, _ = _load_variables(config_dir)
-    local ws_dir = wsinfo.get_ws_dir()
-
-    assert(ws_dir)
 
     -- Build task context
     ---@type loop.TaskContext

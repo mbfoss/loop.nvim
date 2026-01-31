@@ -6,25 +6,50 @@ function M.get_composite_templates_provider()
     ---@type loop.TaskTemplateProvider
     return {
         get_task_templates = function()
-            return require('loop.coretasks.templates.composite')
+            ---@type loop.taskTemplate[]
+            return {
+
+                {
+                    name = "Task Sequence",
+                    task = {
+                        name = "Sequence",
+                        type = "composite",
+                        depends_on = { "", "" },
+                        depends_order = "sequence",
+                        save_buffers = nil,
+                    },
+                },
+                {
+                    name = "Parallel tasks",
+                    task = {
+                        name = "Parallel",
+                        type = "composite",
+                        depends_on = { "", "" },
+                        depends_order = "parallel",
+                        save_buffers = nil,
+                    },
+                },
+            }
         end
     }
 end
 
-function M.get_build_templates_provider()
+function M.get_process_templates_provider()
     ---@type loop.TaskTemplateProvider
     return {
         get_task_templates = function()
-            return require('loop.coretasks.templates.build')
-        end
-    }
-end
-
-function M.get_run_templates_provider()
-    ---@type loop.TaskTemplateProvider
-    return {
-        get_task_templates = function()
-            return require('loop.coretasks.templates.run')
+            ---@type loop.taskTemplate[]
+            return {
+                {
+                    name = "Run process",
+                    task = {
+                        name = "Run",
+                        type = "process",
+                        command = "",
+                        cwd = "${wsdir}",
+                        save_buffers = false,
+                    },
+                }, }
         end
     }
 end
@@ -45,14 +70,19 @@ function M.get_composite_task_provider()
     }
 end
 
-function M.get_process_task_provider()
+---@param ws_dir string
+function M.get_process_task_provider(ws_dir)
+    assert(type(ws_dir) == "string")
     ---@type loop.TaskTypeProvider
     return {
         get_task_schema = function()
             local schema = require('loop.coretasks.processschema')
             return schema
         end,
-        start_one_task = process_task.start_task
+        start_one_task = function(task, page_manager, on_exit)
+            ---@cast task loop.coretasks.process.Task
+            process_task.start_task(ws_dir, task, page_manager, on_exit)
+        end
     }
 end
 

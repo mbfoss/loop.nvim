@@ -37,7 +37,6 @@ Neovim. It enables you to:
   • Organize projects into isolated workspaces with per-project configurations
   • Define and execute tasks (shell, Neovim commands, composites)
   • Resolve task dependencies with parallel/sequential execution
-  • Parse compiler output into the quickfix list
   • Manage workspace-specific variables and macros
   • Persist workspace state across sessions (history, undo, marks, etc.)
   • Integrate directly with your editor workflow
@@ -102,7 +101,6 @@ require("loop").setup({
     selector = "builtin",  -- or "default" (vim.ui.select)
     autosave_interval = 5, -- Minutes (0 to disable)
     macros = {},
-    quickfix_matchers = {}
 })
 ```
 
@@ -148,8 +146,7 @@ Common fields:
 ==============================================================================
 TASK TYPES                                                 *loop-task-types*
 
-- **build**: Commands with quickfix parsing (e.g. make, gcc)
-- **run**: Long-running processes (e.g. servers)
+- **process**: run an executable
 - **composite**: Combine multiple tasks, parallel or sequential
 
 Example build task:
@@ -159,7 +156,6 @@ Example build task:
   "type": "process",
   "command": "make",
   "cwd": "${wsdir}",
-  "quickfix_matcher": "gcc",
   "env": { "VAR": "value" },
   "depends_on": []
 }
@@ -299,7 +295,6 @@ TROUBLESHOOTING                                            *loop-troubleshooting
 
 - If tasks do not appear, check that tasks.json is valid JSON.
 - If macros do not expand, ensure you are using the correct syntax (${macro}).
-- If quickfix parsing fails, verify the quickfix_matcher matches your compiler.
 - Use :Loop logs to view plugin logs and error messages.
 
 ==============================================================================

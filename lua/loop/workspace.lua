@@ -4,9 +4,8 @@ local logs = require('loop.logs')
 local taskmgr = require("loop.task.taskmgr")
 local variablesmgr = require("loop.task.variablesmgr")
 local window = require("loop.ui.window")
-local wsinfo = require("loop.wsinfo")
+local statusline = require("loop.statusline")
 local runner = require("loop.task.runner")
-local uitools = require('loop.tools.uitools')
 local jsoncodec = require('loop.json.codec')
 local jsonvalidator = require('loop.json.validator')
 local filetools = require('loop.tools.file')
@@ -18,6 +17,13 @@ local JsonEditor = require('loop.json.JsonEditor')
 
 local _init_done = false
 local _init_err_msg = "init() not called"
+
+
+---@class loop.ws.WorkspaceInfo
+---@field name string
+---@field ws_dir string
+---@field config_dir string
+---@field config loop.WorkspaceConfig
 
 ---@type loop.ws.WorkspaceInfo?
 local _workspace_info = nil
@@ -108,7 +114,7 @@ local function _close_workspace(quiet)
         vim.notify("Workspace closed")
     end
     _workspace_info = nil
-    wsinfo.set_ws_info(nil)
+    statusline.set_workspace_name(nil)
 end
 
 ---@param ws_dir string
@@ -191,11 +197,11 @@ local function _load_workspace(dir)
         _workspace_info.name = vim.fn.fnamemodify(dir, ":p:h:t")
     end
 
-    wsinfo.set_ws_info(vim.deepcopy(_workspace_info)) --copy for safety
+    statusline.set_workspace_name(_workspace_info.name)
 
     window.load_settings(config_dir)
 
-    taskmgr.reset_provider_list()
+    taskmgr.reset_provider_list(dir)
     extdata.on_workspace_load(_workspace_info)
 
     if not _save_timer then
@@ -462,15 +468,15 @@ function M.task_command(command, arg1, arg2)
         return
     end
 
-
     command = command and command:match("^%s*(.-)%s*$") or ""
     command = command ~= "" and command or "run"
 
+    local ws_dir = ws_info.ws_dir
     local config_dir = ws_info.config_dir
     if command == "run" then
-        runner.load_and_run_task(config_dir, window.page_manger_factory(), "task", arg1)
+        runner.load_and_run_task(ws_dir, config_dir, window.page_manger_factory(), "task", arg1)
     elseif command == "repeat" then
-        runner.load_and_run_task(config_dir, window.page_manger_factory(), "repeat")
+        runner.load_and_run_task(ws_dir, config_dir, window.page_manger_factory(), "repeat")
     elseif command == "configure" then
         taskmgr.configure_tasks(config_dir)
     elseif command == "terminate" then
@@ -488,8 +494,9 @@ function M.run_custom_task(task_and_deps, root_name)
     if not ws_info then
         return
     end
+    local ws_dir = ws_info.ws_dir
     local config_dir = ws_info.config_dir
-    runner.run_task(config_dir, window.page_manger_factory(), task_and_deps, root_name)
+    runner.run_task(ws_dir, config_dir, window.page_manger_factory(), task_and_deps, root_name)
 end
 
 ---@param args string[]

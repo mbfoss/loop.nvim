@@ -168,8 +168,9 @@ local function _load_tasks(config_dir)
     return tasks, nil
 end
 
-function M.reset_provider_list()
-    providers.reset()
+---@param ws_dir string
+function M.reset_provider_list(ws_dir)
+    providers.reset(ws_dir)
 end
 
 ---@param name string

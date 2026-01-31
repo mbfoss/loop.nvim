@@ -3,10 +3,7 @@ local M = {}
 local extensions = require('loop.extensions')
 local taskproviders = require('loop.task.providers')
 local filetools = require('loop.tools.file')
-local uitools = require('loop.tools.uitools')
 local jsoncodec = require('loop.json.codec')
-local jsonvalidator = require('loop.json.validator')
-
 
 ---@type table<string,table>
 local _extension_states = {}

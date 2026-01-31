@@ -745,7 +745,7 @@ function JsonEditor:_add_object_property(item, schema)
     table.sort(suggested_keys)
 
     floatwin.input_at_cursor({
-            title = "New property name",
+            prompt = "New property name",
             completions = suggested_keys,
         },
         function(key)

@@ -1,18 +1,18 @@
 local schema = {
     __name = "Command",
-    description = "Executes a shell command as a task",
+    description = "Executes a process or shell command as a task",
     required = { "command" },
-    ["x-order"] = { "command", "cwd", "env", "quickfix_matcher" },
+    ["x-order"] = { "command", "cwd", "env" },
 
     properties = {
         command = {
             description =
-            "Command to execute. Can be a single string, a list of arguments, or null to disable execution.",
+            "Command to execute. Can be a single string, or a list of string (program + args)",
             oneOf = {
                 {
                     type = "string",
                     minLength = 1,
-                    description = "Shell command executed as-is"
+                    description = "Command or process to execute, can include arguments"
                 },
                 {
                     type = "array",
@@ -43,11 +43,6 @@ local schema = {
                 type = "string",
                 description = "Environment variable value"
             },
-        },
-
-        quickfix_matcher = {
-            type = { "string", "null" },
-            description = "Name of a quickfix matcher used to parse command output into quickfix entries"
         },
     },
 }
