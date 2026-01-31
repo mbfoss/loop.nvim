@@ -334,6 +334,7 @@ end
 ---@param target_winid? number|nil
 local function _select_and_show_page(target_winid)
     local choices = {}
+    local initial
     for tabidx, tab in ipairs(_tabs_arr) do
         for pageidx, page in ipairs(tab.pages) do
             local label = tab.label
@@ -346,6 +347,9 @@ local function _select_and_show_page(target_winid)
                 data = { tabidx = tabidx, pageidx = pageidx },
             }
             table.insert(choices, item)
+            if tabidx == _active_tab_idx and pageidx == tab.active_page_idx then
+                initial = #choices
+            end
         end
     end
     if #choices == 0 then
@@ -355,6 +359,7 @@ local function _select_and_show_page(target_winid)
     selector.select({
         prompt = "Select page",
         items = choices,
+        initial = initial,
         callback = function(data)
             if data and data.tabidx then
                 _show_page(target_winid, data.tabidx, data.pageidx)

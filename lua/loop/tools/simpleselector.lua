@@ -262,6 +262,7 @@ end
 ---@field file_preview boolean?
 ---@field formatter loop.PreviewFormatter|nil
 ---@field callback loop.SelectorCallback
+---@field initial integer? -- 1-based index into items
 
 ---@param opts loop.selector.opts
 function M.select(opts)
@@ -356,7 +357,7 @@ function M.select(opts)
 
     local query = ""
     local filtered = vim.deepcopy(items)
-    local cur = 1
+    local cur = math.max(1, math.min(opts.initial or 1, #items))
     local closed = false
     local prompt_prefix = prompt .. " > "
 

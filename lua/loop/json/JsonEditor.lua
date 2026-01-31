@@ -198,12 +198,16 @@ local function _request_value(name, value_type, enum, default_text, multiline, o
         local values = enum or { true, false }
         ---@type {label: string, data: any}[]
         local choices = {}
-        for _, v in ipairs(values) do
-            table.insert(choices, { label = vim.inspect(v), data = v })
+        local initial
+        for i, v in ipairs(values) do
+            local text = tostring(v)
+            if text == default_text then initial = i end
+            table.insert(choices, { label = text, data = v })
         end
         selector.select({
             prompt = "Select value",
             items = choices,
+            initial = initial,
             callback = function(data)
                 if data ~= nil then
                     on_confirm(data)
