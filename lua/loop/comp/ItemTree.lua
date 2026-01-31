@@ -26,10 +26,8 @@ local Trackers = require("loop.tools.Trackers")
 ---@field text string
 ---@field highlight string
 
----@alias loop.comp.ItemTree.FormatterFn fun(
----id:any,
----data:any)
----:string,out_highlights:loop.Highlight[]?,loop.comp.ItemTree.VirtText?
+---@alias loop.comp.ItemTree.FormatterChunk { text: string, highlight: string?, virt_text: string? }
+---@alias loop.comp.ItemTree.FormatterFn fun(id:any, data:any): loop.comp.ItemTree.FormatterChunk[]
 
 ---@class loop.comp.ItemTree.InitArgs
 ---@field formatter loop.comp.ItemTree.FormatterFn
@@ -44,6 +42,29 @@ local Trackers = require("loop.tools.Trackers")
 local ItemTree = class()
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemTreeComp')
+
+local function _normalize_chunks(chunks)
+    local out = {}
+
+    for _, chunk in ipairs(chunks or {}) do
+        local text = chunk.text or ""
+        local hl = chunk.highlight
+        local vt = chunk.virt_text
+
+        local parts = vim.split(text, "\n", { trimempty = false })
+        for i, part in ipairs(parts) do
+            table.insert(out, {
+                text = part,
+                highlight = hl,
+                virt_text = (i == 1) and vt or nil,
+                _nl = (i < #parts),
+            })
+        end
+    end
+
+    return out
+end
+
 
 ---@param item loop.comp.ItemTree.Item
 ---@return loop.comp.ItemTree.ItemData
@@ -333,6 +354,7 @@ function ItemTree:_on_render_request(buf)
         local item_id = flatnode.id
         local item = flatnode.data
 
+        -- icon
         local icon = ""
         if item_id and (self._tree:have_children(item_id) or item.children_callback) then
             if self._loading_char and item.children_loading then
@@ -344,6 +366,7 @@ function ItemTree:_on_render_request(buf)
             end
         end
 
+        -- prefix
         local prefix = string.rep(self._indent_string, flatnode.depth or 0)
         if icon ~= "" then
             prefix = prefix .. icon .. " "
@@ -351,30 +374,31 @@ function ItemTree:_on_render_request(buf)
             prefix = prefix .. string.rep(" ", vim.fn.strdisplaywidth(self._expand_char)) .. " "
         end
 
-        local raw_text, raw_hls, virt_text
+        local prefix_width = vim.fn.strdisplaywidth(prefix)
+        local empty_prefix = string.rep(" ", prefix_width)
+
+        -- formatter → normalized chunks
+        local chunks = {}
         if item_id then
-            raw_text, raw_hls, virt_text = self._formatter(item_id, item.userdata)
-        else
-            raw_text = ""
+            chunks = _normalize_chunks(self._formatter(item_id, item.userdata))
         end
 
-        assert(type(raw_text) == "string")
-        raw_hls = raw_hls or {}
+        -- line state
+        local cur_line = prefix
+        local cur_col = #prefix
+        local cur_hls = {}
+        local first_row = nil
 
-        local node_lines, mappings, all_node_hls = self:_process_node_lines(
-            flatnode, prefix, raw_text, raw_hls
-        )
+        local function flush()
+            table.insert(buffer_lines, cur_line)
+            table.insert(new_flat_nodes, flatnode)
 
-        for i, line in ipairs(node_lines) do
-            table.insert(buffer_lines, line)
-            table.insert(new_flat_nodes, mappings[i])
+            local row = #buffer_lines - 1
+            first_row = first_row or row
 
-            local current_row = #buffer_lines - 1
-            local hls_for_this_line = all_node_hls[i]
-
-            for _, hl in ipairs(hls_for_this_line) do
+            for _, hl in ipairs(cur_hls) do
                 table.insert(extmarks_data, {
-                    row = current_row,
+                    row = row,
                     start_col = hl.start_col,
                     mark = {
                         end_col = hl.end_col,
@@ -382,17 +406,48 @@ function ItemTree:_on_render_request(buf)
                     }
                 })
             end
-            if virt_text then
-                local mark_vt = {}
-                for _, t in ipairs(virt_text) do
-                    table.insert(mark_vt, { t.text, t.highlight })
-                end
-                table.insert(extmarks_data, {
-                    row = current_row,
-                    start_col = 0,
-                    mark = { virt_text = mark_vt },
+
+            cur_line = empty_prefix
+            cur_col = #empty_prefix
+            cur_hls = {}
+        end
+
+        -- render chunks
+        for _, chunk in ipairs(chunks) do
+            local start_col = cur_col
+            cur_line = cur_line .. chunk.text
+            cur_col = cur_col + #chunk.text
+
+            if chunk.highlight and #chunk.text > 0 then
+                table.insert(cur_hls, {
+                    group = chunk.highlight,
+                    start_col = start_col,
+                    end_col = cur_col,
                 })
             end
+
+            if chunk._nl then
+                flush()
+            end
+        end
+
+        -- flush final line
+        flush()
+
+        -- virt_text (first line only)
+        local vt = {}
+        for _, c in ipairs(chunks) do
+            if c.virt_text then
+                table.insert(vt, { c.virt_text, c.highlight })
+            end
+        end
+
+        if #vt > 0 and first_row then
+            table.insert(extmarks_data, {
+                row = first_row,
+                start_col = 0,
+                mark = { virt_text = vt },
+            })
         end
     end
 
@@ -408,48 +463,6 @@ function ItemTree:_on_render_request(buf)
     end
 
     return true
-end
-
-function ItemTree:_process_node_lines(node_data, prefix, text, highlights)
-    local lines = {}
-    local mappings = {}
-    local line_highlights = {}
-
-    local node_lines = vim.split(text, "\n", { trimempty = false })
-    local prefix_width = vim.fn.strdisplaywidth(prefix)
-    local empty_prefix = string.rep(" ", prefix_width)
-
-    local current_offset = 0
-    for i, line_content in ipairs(node_lines) do
-        local current_prefix = (i == 1) and prefix or empty_prefix
-        table.insert(lines, current_prefix .. line_content)
-        table.insert(mappings, node_data)
-
-        local current_line_hls = {}
-        local line_start = current_offset
-        local line_end = current_offset + #line_content
-
-        for _, hl in ipairs(highlights) do
-            local hl_start = hl.start_col or 0
-            local hl_end = hl.end_col or #text
-
-            local intersect_start = math.max(line_start, hl_start)
-            local intersect_end = math.min(line_end, hl_end)
-
-            if intersect_start < intersect_end then
-                table.insert(current_line_hls, {
-                    group = hl.group,
-                    start_col = #current_prefix + (intersect_start - line_start),
-                    end_col = #current_prefix + (intersect_end - line_start),
-                })
-            end
-        end
-
-        table.insert(line_highlights, current_line_hls)
-        current_offset = line_end + 1
-    end
-
-    return lines, mappings, line_highlights
 end
 
 function ItemTree:toggle_expand(id)

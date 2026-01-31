@@ -6,8 +6,6 @@ local BaseBuffer = require('loop.buf.BaseBuffer')
 ---@field _auto_scroll boolean
 local OutputBuffer = class(BaseBuffer)
 
-local _ns_id = vim.api.nvim_create_namespace('LoopPluginOutputBuf')
-
 ---@param type string
 ---@param name string
 function OutputBuffer:init(type, name)
@@ -57,8 +55,7 @@ function OutputBuffer:_setup_buf()
 end
 
 ---@param lines string|string[]
----@param highlights loop.Highlight[]?
-function OutputBuffer:add_lines(lines, highlights)
+function OutputBuffer:add_lines(lines)
     local bufnr = self:get_or_create_buf()
 
     if type(lines) == 'string' then
@@ -83,27 +80,6 @@ function OutputBuffer:add_lines(lines, highlights)
         vim.bo[bufnr].modifiable = true
         vim.api.nvim_buf_set_lines(bufnr, start_line, start_line, false, lines)
         vim.bo[bufnr].modifiable = false
-    end
-
-    -- apply highlights using extmarks
-    if highlights and #highlights > 0 then
-        for i = 0, #lines - 1 do
-            local lnum = start_line + i
-            for _, hl in ipairs(highlights) do
-                vim.api.nvim_buf_set_extmark(
-                    bufnr,
-                    _ns_id,
-                    lnum,
-                    hl.start_col or 0,
-                    {
-                        end_col = hl.end_col,
-                        hl_group = hl.group,
-                        priority = 200,
-                        strict = false,
-                    }
-                )
-            end
-        end
     end
 
     if self._auto_scroll and on_last_line and winid > 0 then

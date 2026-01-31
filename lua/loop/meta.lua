@@ -61,11 +61,6 @@ error('Cannot require a meta file')
 ---@field render fun(bufnr:number):boolean -- return true if changed
 ---@field dispose fun()
 
----@class loop.Highlight
----@field group string
----@field start_col number|nil 0-based
----@field end_col number|nil 0-based
-
 ---@class loop.BaseBufferController
 ---@field set_user_data fun(user_data:any)
 ---@field get_user_data fun():any
@@ -74,7 +69,7 @@ error('Cannot require a meta file')
 ---@field disable_change_events fun()
 
 ---@class loop.OutputBufferController : loop.BaseBufferController
----@field add_lines fun(lines: string|string[], highlights:loop.Highlight[]?)
+---@field add_lines fun(lines: string|string[])
 ---@field set_auto_scroll fun(enabled: boolean)
 
 ---@class loop.CompBufferController : loop.BaseBufferController

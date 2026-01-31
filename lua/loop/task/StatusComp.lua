@@ -21,43 +21,57 @@ vim.api.nvim_set_hl(0, _highlights.failure, { link = "ErrorMsg" })
 
 local _line_id = 0
 
+---@param id any
+---@param data table
+---@return {text:string, highlight:string?}[]
+local function _item_formatter(id, data)
+    local chunks = {}
+    local symbols = config.current.window.symbols
+
+    if data.log_message then
+        local hl = data.log_level == vim.log.levels.ERROR and _highlights.failure or nil
+        table.insert(chunks, { text = data.log_message, highlight = hl })
+        return chunks
+    end
+
+    local hl = _highlights.pending
+    local icon = symbols.waiting
+
+    if data.event == "start" then
+        icon = symbols.running
+        hl = _highlights.running
+    elseif data.event == "stop" then
+        if data.success then
+            icon = symbols.success
+            hl = _highlights.success
+        else
+            icon = symbols.failure
+            hl = _highlights.failure
+        end
+    end
+
+    -- icon prefix
+    table.insert(chunks, { text = "[" .. icon .. "]", highlight = hl })
+
+    -- main name
+    table.insert(chunks, { text = data.name })
+
+    -- optional error message
+    if data.error_msg then
+        table.insert(chunks, { text = " - " .. data.error_msg, highlight = _highlights.failure })
+    end
+
+    return chunks
+end
+
 ---@class loop.task.TasksStatusComp : loop.comp.ItemList
 ---@field new fun(self: loop.task.TasksStatusComp): loop.task.TasksStatusComp
 local TasksStatusComp = class(ItemListComp)
 
 function TasksStatusComp:init()
-    local symbols = config.current.window.symbols
     ---@type loop.comp.ItemList.InitArgs
     local comp_args = {
-        formatter = function(id, data, out_highlights)
-            if data.log_message then
-                if data.log_level == vim.log.levels.ERROR then
-                    table.insert(out_highlights, { group = _highlights.failure })
-                end
-                return data.log_message
-            end
-            local hl = _highlights.pending
-            local icon = symbols.waiting
-            if data.event == "start" then
-                icon = symbols.running
-                hl = _highlights.running
-            elseif data.event == "stop" then
-                if data.success then
-                    icon = symbols.success
-                    hl = _highlights.success
-                else
-                    icon = symbols.failure
-                    hl = _highlights.failure
-                end
-            end
-            local prefix = "[" .. icon .. "]"
-            table.insert(out_highlights, { group = hl, end_col = #prefix })
-            local text = prefix .. data.name
-            if data.error_msg then
-                text = text .. ' - ' .. data.error_msg
-            end
-            return text
-        end,
+        formatter = _item_formatter,
     }
     ItemListComp.init(self, comp_args)
 end

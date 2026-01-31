@@ -11,11 +11,13 @@ local Trackers = require("loop.tools.Trackers")
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListComp')
 
+---@alias loop.comp.ItemList.Chunk { text:string, highlight:string?, virt_text:string? }
+
 ---@class loop.comp.ItemList.InitArgs
----@field formatter fun(id:any,data:any,out_highlights:loop.Highlight[]):string
+---@field formatter fun(id:any,data):loop.comp.ItemList.Chunk[]
 ---@field render_delay_ms number|nil
 ---@field show_current_prefix boolean|nil            # NEW: whether to show ">" prefix on current item
----@field current_prefix string|nil                  # NEW: custom prefix, defaults to "> "
+---@field current_prefix string|nil                  # NEW: custom prefix, defaults to "⇒ "
 ---@field allow_selection boolean?
 
 ---@class loop.comp.ItemList
@@ -42,7 +44,7 @@ function ItemList:init(args)
     -- NEW: current item tracking
     self._current_item = nil
     if args.show_current_prefix then
-        self._current_prefix = args.current_prefix or "›"
+        self._current_prefix = (args.current_prefix or "⇒") .. " "
         self._noncurrent_prefix = (" "):rep(vim.fn.strdisplaywidth(self._current_prefix))
     end
 end
@@ -195,71 +197,82 @@ function ItemList:clear_items()
 end
 
 ---@param buf number
----@param idx number
----@param highlights loop.Highlight[]
-function ItemList:_highlight(buf, idx, highlights)
-    local item = self._items[idx]
-    if #highlights > 0 then
-        local line_text = vim.api.nvim_buf_get_lines(buf, idx - 1, idx, false)[1] or ""
-        local line_len = #line_text
-
-        -- Adjust for current prefix if present
-        local offset = 0
-        if self._args.show_current_prefix then
-            if self._current_item and self._current_item.id == item.id then
-                offset = #self._current_prefix
-            else
-                offset = #self._noncurrent_prefix
-            end
-        end
-
-        for _, hl in ipairs(highlights) do
-            local start_col = (hl.start_col or 0) + offset
-            local end_col = hl.end_col and (hl.end_col + offset) or (line_len)
-            end_col = math.min(end_col, line_len)
-
-            start_col = math.max(0, start_col)
-            if start_col < end_col then
-                vim.api.nvim_buf_set_extmark(buf, _ns_id, idx - 1, start_col, {
-                    end_col = end_col,
-                    hl_group = hl.group,
-                    priority = 200,
-                })
-            end
-        end
-    end
-end
-
----@param buf number
 ---@return boolean
 function ItemList:render(buf)
     vim.api.nvim_buf_clear_namespace(buf, _ns_id, 0, -1)
 
-    ---@type loop.Highlight[][]
-    local all_highlights = {}
     local lines = {}
-    for _, item in ipairs(self._items) do
-        local highlights = {}
-        local text = self._args.formatter(item.id, item.data, highlights)
-        text = text:gsub("\n", " ")
-        table.insert(all_highlights, highlights)
+    local extmarks = {}
+
+    for idx, item in ipairs(self._items) do
+        local chunks = self._args.formatter(item.id, item.data) or {}
+
+        -- prefix (current / non-current)
+        local prefix = ""
         if self._args.show_current_prefix then
             if self._current_item and self._current_item.id == item.id then
-                text = self._current_prefix .. text
+                prefix = self._current_prefix
             else
-                text = self._noncurrent_prefix .. text
+                prefix = self._noncurrent_prefix
             end
         end
-        lines[#lines + 1] = text
+
+        local line = prefix
+        local col = #prefix
+        local hls = {}
+        local vt = {}
+
+        for _, chunk in ipairs(chunks) do
+            local text = (chunk.text or ""):gsub("\n", " ")
+            local start_col = col
+
+            line = line .. text
+            col = col + #text
+
+            if chunk.highlight and #text > 0 then
+                table.insert(hls, {
+                    start_col = start_col,
+                    end_col = col,
+                    group = chunk.highlight,
+                })
+            end
+
+            if chunk.virt_text then
+                table.insert(vt, { chunk.virt_text, chunk.highlight })
+            end
+        end
+
+        table.insert(lines, line)
+
+        local row = #lines - 1
+
+        for _, hl in ipairs(hls) do
+            table.insert(extmarks, {
+                row = row,
+                start_col = hl.start_col,
+                mark = {
+                    end_col = hl.end_col,
+                    hl_group = hl.group,
+                    priority = 200,
+                }
+            })
+        end
+
+        if #vt > 0 then
+            table.insert(extmarks, {
+                row = row,
+                start_col = 0,
+                mark = { virt_text = vt },
+            })
+        end
     end
 
     vim.bo[buf].modifiable = true
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.bo[buf].modifiable = false
 
-    assert(#all_highlights == #lines)
-    for idx, highlights in ipairs(all_highlights) do
-        self:_highlight(buf, idx, highlights)
+    for _, m in ipairs(extmarks) do
+        vim.api.nvim_buf_set_extmark(buf, _ns_id, m.row, m.start_col, m.mark)
     end
 
     return true

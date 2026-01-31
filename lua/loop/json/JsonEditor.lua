@@ -237,54 +237,48 @@ end
 
 ---@param _ any
 ---@param data table
----@return string
----@return loop.Highlight[]?
----@return loop.comp.ItemTree.VirtText[]?
+---@return {text:string, highlight:string?, virt_text:string?}[]
 local function _formatter(_, data)
-    ---@type loop.Highlight[]
-    local hls = {}
-    ---@type loop.comp.ItemTree.VirtText[]
-    local virt_text = {}
+    if not data then return {} end
 
-    if not data then return "", hls, virt_text end
+    local chunks = {}
 
     local key = tostring(data.key or "")
     local vt = data.value_type
     local value = data.value
     local err_msg = data.err_msg
 
-    table.insert(hls, { group = "Label", start_col = 0, end_col = #key })
-
-    local line = key
+    -- Key label
+    table.insert(chunks, { text = key, highlight = "Label" })
 
     if vt == "object" or vt == "array" then
+        -- Show bracket count as virt_text
         local count = type(value) == "table" and #value or 0
         local bracket = vt == "object" and "{…}" or ("[…] (" .. count .. ")")
-        table.insert(virt_text, { text = bracket, highlight = "Comment" })
+        table.insert(chunks, { text = " ", highlight = "Comment" }) -- spacing after key
+        table.insert(chunks, { virt_text = bracket, highlight = "Comment" })
     else
-        table.insert(hls, { group = "Comment", start_col = #line, end_col = #line + 2 })
-        line = line .. ": "
+        -- Separator between key and value
+        table.insert(chunks, { text = ": ", highlight = "Comment" })
 
         if vt == "string" then
-            table.insert(hls, { group = "@string", start_col = #line })
-            line = line .. value
+            table.insert(chunks, { text = tostring(value), highlight = "@string" })
         elseif vt == "null" then
-            table.insert(hls, { group = "@constant", start_col = #line })
-            line = line .. "null"
+            table.insert(chunks, { text = "null", highlight = "@constant" })
         elseif vt == "boolean" then
-            table.insert(hls, { group = "@boolean", start_col = #line })
-            line = line .. tostring(value)
+            table.insert(chunks, { text = tostring(value), highlight = "@boolean" })
         else
-            table.insert(hls, { group = "@number", start_col = #line })
-            line = line .. tostring(value)
+            table.insert(chunks, { text = tostring(value), highlight = "@number" })
         end
     end
 
+    -- Append error as virt_text if present
     if err_msg then
-        table.insert(virt_text, { text = "● " .. err_msg, highlight = "DiagnosticError" })
+        table.insert(chunks, { text = " ", highlight = nil }) -- spacing
+        table.insert(chunks, { text = "● " .. err_msg, highlight = "DiagnosticError", virt_text = "● " .. err_msg })
     end
 
-    return line, hls, virt_text
+    return chunks
 end
 
 ---@param opts loop.JsonEditorOpts
