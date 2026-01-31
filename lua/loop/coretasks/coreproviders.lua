@@ -41,15 +41,17 @@ function M.get_process_templates_provider()
             ---@type loop.taskTemplate[]
             return {
                 {
-                    name = "Run process",
+                    name = "Process",
                     task = {
                         name = "Run",
                         type = "process",
                         command = "",
                         cwd = "${wsdir}",
                         save_buffers = false,
+                        depends_on = {}
                     },
-                }, }
+                },
+            }
         end
     }
 end
