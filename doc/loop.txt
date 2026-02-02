@@ -98,13 +98,13 @@ GLOBAL SETUP                                               *loop-setup*
 
 ```lua
 require("loop").setup({
-    selector = "builtin",  -- or "default" (vim.ui.select)
+    selector = "builtin",  -- or "ui_select" (vim.ui.select)
     autosave_interval = 5, -- Minutes (0 to disable)
     macros = {},
 })
 ```
 
-- `selector`: "builtin" (native picker) or "default" (vim.ui.select)
+- `selector`: "builtin" (native picker) or "ui_select" (vim.ui.select)
 - `autosave_interval`: Minutes between autosaves (0 disables)
 
 WORKSPACE CONFIGURATION                                    *loop-ws-config*
