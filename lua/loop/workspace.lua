@@ -201,8 +201,9 @@ local function _load_workspace(dir)
 
     window.load_settings(config_dir)
 
-    taskmgr.reset_provider_list(dir)
-    extdata.on_workspace_load(_workspace_info)
+    local page_manager_fact = window.get_page_manger_factory()
+    taskmgr.reset_provider_list(dir, page_manager_fact)
+    extdata.on_workspace_load(_workspace_info, page_manager_fact)
 
     if not _save_timer then
         local config = require('loop.config')
@@ -468,15 +469,16 @@ function M.task_command(command, arg1, arg2)
         return
     end
 
+    runner.init_status_page(window.get_page_manger_factory())
+
     command = command and command:match("^%s*(.-)%s*$") or ""
     command = command ~= "" and command or "run"
-
     local ws_dir = ws_info.ws_dir
     local config_dir = ws_info.config_dir
     if command == "run" then
-        runner.load_and_run_task(ws_dir, config_dir, window.page_manger_factory(), "task", arg1)
+        runner.load_and_run_task(ws_dir, config_dir, "task", arg1)
     elseif command == "repeat" then
-        runner.load_and_run_task(ws_dir, config_dir, window.page_manger_factory(), "repeat")
+        runner.load_and_run_task(ws_dir, config_dir, "repeat")
     elseif command == "configure" then
         taskmgr.configure_tasks(config_dir)
     elseif command == "terminate" then
@@ -484,19 +486,6 @@ function M.task_command(command, arg1, arg2)
     else
         vim.notify('Invalid task command: ' .. command)
     end
-end
-
----@param task_and_deps loop.Task[]
----@param root_name string
-function M.run_custom_task(task_and_deps, root_name)
-    assert(_init_done, _init_err_msg)
-    local ws_info = _get_ws_info_or_warn()
-    if not ws_info then
-        return
-    end
-    local ws_dir = ws_info.ws_dir
-    local config_dir = ws_info.config_dir
-    runner.run_task(ws_dir, config_dir, window.page_manger_factory(), task_and_deps, root_name)
 end
 
 ---@param args string[]
@@ -578,6 +567,7 @@ end
 
 function M.show_window()
     assert(_init_done, _init_err_msg)
+    runner.init_status_page(window.get_page_manger_factory())
     window.show_window()
 end
 
@@ -588,6 +578,7 @@ end
 
 function M.toggle_window()
     assert(_init_done, _init_err_msg)
+    runner.init_status_page(window.get_page_manger_factory())
     window.toggle_window()
 end
 

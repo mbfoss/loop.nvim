@@ -31,6 +31,7 @@ error('Cannot require a meta file')
 ---@field ws_name string
 ---@field ws_dir string
 ---@field state loop.ExtensionState
+---@field page_manager loop.PageManager
 ---@field get_config_file_path fun(key:string,fileext:string?):string
 ---@field register_task_type fun(task_type:string, provider:loop.TaskTypeProvider)
 ---@field register_task_templates fun(category:string, provider:loop.TaskTemplateProvider)
@@ -38,7 +39,7 @@ error('Cannot require a meta file')
 
 ---@class loop.TaskTypeProvider
 ---@field get_task_schema fun():table
----@field start_one_task fun(task:loop.Task,page_manager:loop.PageManager, on_exit:loop.TaskExitHandler):(loop.TaskControl|nil,string|nil)
+---@field start_one_task fun(task:loop.Task, on_exit:loop.TaskExitHandler):(loop.TaskControl|nil,string|nil)
 ---@field on_tasks_cleanup fun()?
 
 ---@class loop.TaskTemplateProvider
@@ -88,7 +89,7 @@ error('Cannot require a meta file')
 
 ---@class loop.PageOpts
 ---@field type "term"|"output"|"comp"|"repl"
----@field id string
+---@field buftype string
 ---@field label string
 ---@field activate boolean?
 ---@field term_args loop.tools.TermProc.StartArgs?
@@ -102,16 +103,14 @@ error('Cannot require a meta file')
 ---@field term_proc loop.tools.TermProc?
 
 ---@class loop.PageGroup
+---@field expired fun():boolean
 ---@field add_page fun(opts:loop.PageOpts):loop.PageData?,string?
----@field get_page fun(id:string):loop.PageData|nil
----@field activate_page fun(id:string)
 ---@field delete_pages fun()
+---@field delete_group fun()
 
 ---@class loop.PageManager
----@field add_page_group fun(id:string,label:string):loop.PageGroup|nil
----@field get_page_group fun(id:string):loop.PageGroup|nil
----@field delete_page_group fun(id:string)
+---@field expired fun():boolean
+---@field add_page_group fun(label:string):loop.PageGroup|nil
 ---@field delete_all_groups fun(expire:boolean)
----@field get_page fun(group_id:string,page_id:string):loop.PageData|nil
 
 ---@alias loop.PageManagerFactory fun():loop.PageManager

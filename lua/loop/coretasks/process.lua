@@ -1,5 +1,8 @@
 local M = {}
 
+---@type loop.PageGroup?
+local _page_group
+
 ---@class loop.coretasks.process.Task : loop.Task
 ---@field command string[]|string|nil
 ---@field cwd string?
@@ -32,16 +35,14 @@ function M.start_task(ws_dir, task, page_manager, on_exit)
         end,
     }
 
-    local pagegroup = page_manager.get_page_group(task.type)
-    if not pagegroup then
-        pagegroup = page_manager.add_page_group(task.type, task.name)
+    if not _page_group or _page_group.expired() then
+        _page_group = page_manager.add_page_group(task.name)
     end
-    if not pagegroup then
+    if not _page_group then
         return nil, "page manager expired"
     end
 
-    local page_data, err_msg = pagegroup.add_page({
-        id = "term",
+    local page_data, err_msg = _page_group.add_page({
         type = "term",
         buftype = "term",
         label = task.name,

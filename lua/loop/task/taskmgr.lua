@@ -169,8 +169,9 @@ local function _load_tasks(config_dir)
 end
 
 ---@param ws_dir string
-function M.reset_provider_list(ws_dir)
-    providers.reset(ws_dir)
+---@param page_manager_fact loop.PageManagerFactory
+function M.reset_provider_list(ws_dir, page_manager_fact)
+    providers.reset_to_default(ws_dir, page_manager_fact)
 end
 
 ---@param name string
@@ -378,17 +379,16 @@ function M.get_or_select_task(config_dir, mode, task_name, handler)
 end
 
 ---@param task loop.Task
----@param page_manager loop.PageManager
 ---@param exit_handler loop.TaskExitHandler
 ---@return loop.TaskControl|nil, string|nil
-function M.run_one_task(task, page_manager, exit_handler)
+function M.run_one_task(task, exit_handler)
     assert(task.type)
     local provider = M.get_task_type_provider(task.type)
     if not provider then
         vim.notify("Invalid task type: " .. tostring(task.type))
         return nil, "Invalid task type"
     end
-    return provider.start_one_task(task, page_manager, exit_handler)
+    return provider.start_one_task(task, exit_handler)
 end
 
 return M

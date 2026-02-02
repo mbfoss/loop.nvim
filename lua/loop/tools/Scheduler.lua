@@ -283,9 +283,9 @@ function Scheduler:_run_leaf(run_id, id, on_exit)
     self._running[id] = ctl
 end
 
-function Scheduler:is_running() return self._current_run_id and not self._terminating end
+function Scheduler:is_running() return self._current_run_id ~= nil end
 
-function Scheduler:is_terminated() return not self._current_run_id end
+function Scheduler:is_terminated() return self._current_run_id == nil end
 
 function Scheduler:is_terminating() return self._terminating end
 

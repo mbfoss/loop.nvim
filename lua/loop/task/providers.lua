@@ -9,12 +9,20 @@ local _task_type_providers = {}
 ---@type {category:string,provider:loop.TaskTemplateProvider}[]
 local _template_providers = {}
 
+---@type loop.PageManager
+local _process_pm
+
 local M = {}
 
 ---@param ws_dir string
-function M.reset(ws_dir)
+---@param page_manager_fact loop.PageManagerFactory
+function M.reset_to_default(ws_dir, page_manager_fact)
+    if _process_pm then
+        _process_pm.delete_all_groups(true)
+    end
+    _process_pm = page_manager_fact()
     _task_type_providers = {
-        process   = coreproviders.get_process_task_provider(ws_dir),
+        process   = coreproviders.get_process_task_provider(ws_dir, _process_pm),
         composite = coreproviders.get_composite_task_provider(),
     }
     _task_types = { "process", "composite" }

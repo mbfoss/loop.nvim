@@ -15,10 +15,73 @@ local _status_comp, _status_page, _status_pagegroup
 ---@type loop.TaskScheduler
 local _scheduler    = TaskScheduler:new()
 
+---@param task_name string
+---@param name_to_task table<string, loop.Task>
+---@param visiting table<string, boolean>
+---@param visited table<string, boolean>
+---@return loop.TaskTreeNode? node, string? error
+local function _build_task_tree(task_name, name_to_task, visiting, visited)
+    -- True cycle (back-edge)
+    if visiting[task_name] then
+        return nil, "Cycle detected at task: " .. task_name
+    end
+    local task = name_to_task[task_name]
+    if not task then
+        return nil, "Unknown task: " .. task_name
+    end
+    -- Option B: already expanded elsewhere → return leaf
+    if visited[task_name] then
+        return {
+            name = task.name,
+            order = task.depends_order or "sequence",
+            deps = {}, -- no re-expansion
+        }, nil
+    end
+    visiting[task_name] = true
+    local deps = {}
+    for _, dep_name in ipairs(task.depends_on or {}) do
+        local dep_node, err =
+            _build_task_tree(dep_name, name_to_task, visiting, visited)
+        if err then
+            return nil, err
+        end
+        table.insert(deps, dep_node)
+    end
+    visiting[task_name] = nil
+    visited[task_name] = true
+    return {
+        name = task.name,
+        order = task.depends_order or "sequence",
+        deps = deps,
+    }, nil
+end
+
+---@param tasks loop.Task[]
+---@param root string
+---@return loop.TaskTreeNode|nil task_tree
+---@return loop.Task[]? used_tasks
+---@return string? error_msg
+local function _generate_task_plan(tasks, root)
+    local name_to_task = {}
+    for _, t in ipairs(tasks) do
+        if name_to_task[t.name] then
+            return nil, nil, "Duplicate task: " .. t.name
+        end
+        name_to_task[t.name] = t
+    end
+    local visited = {}
+    local visiting = {}
+    local tree, err = _build_task_tree(root, name_to_task, visiting, visited)
+    if err then return nil, nil, err end
+
+    local used_tasks = vim.tbl_map(function(name) return name_to_task[name] end, vim.tbl_keys(visited))
+    return tree, used_tasks, nil
+end
+
 ---@param node table Task node from generate_task_plan_tree
 ---@param prefix? string Internal use for indentation
 ---@param is_last? boolean Internal use to determine tree branch
-local function print_task_tree(node, prefix, is_last)
+local function _print_task_tree(node, prefix, is_last)
     prefix = prefix or ""
     is_last = is_last or true
 
@@ -27,29 +90,10 @@ local function print_task_tree(node, prefix, is_last)
     local new_prefix = prefix .. (is_last and "   " or "│  ")
     if node.deps then
         for i, child in ipairs(node.deps) do
-            line = line .. '\n' .. print_task_tree(child, new_prefix, i == #node.deps)
+            line = line .. '\n' .. _print_task_tree(child, new_prefix, i == #node.deps)
         end
     end
     return line
-end
-
----@param page_manager_fact loop.PageManagerFactory
----@return loop.task.TasksStatusComp,loop.PageController,loop.PageGroup
-local function _create_status_page(page_manager_fact)
-    local group = page_manager_fact().add_page_group("status", "Status")
-    assert(group, "page mgr error")
-    local page_data = group.add_page({
-        id = "status",
-        type = "comp",
-        label = "Status",
-        buftype = "status",
-        activate = true,
-    })
-    assert(page_data)
-    page_data.comp_buf.disable_change_events()
-    local comp = StatusComp:new()
-    comp:link_to_buffer(page_data.comp_buf)
-    return comp, page_data.page, group
 end
 
 ---@param config_dir string
@@ -65,36 +109,47 @@ local function _load_variables(config_dir)
     return vars, var_errors
 end
 
+---@param page_manager_fact loop.PageManagerFactory
+function M.init_status_page(page_manager_fact)
+    if (_status_comp or _status_page or _status_pagegroup) then return end
+    local group = page_manager_fact().add_page_group("Status")
+    assert(group, "page mgr error")
+    local page_data = group.add_page({
+        type = "comp",
+        label = "Status",
+        buftype = "status",
+        activate = false,
+    })
+    assert(page_data)
+    page_data.comp_buf.disable_change_events()
+    local comp = StatusComp:new()
+    comp:link_to_buffer(page_data.comp_buf)
+    _status_comp, _status_page, _status_pagegroup = comp, page_data.page, group
+end
+
 ---@param ws_dir string
 ---@param config_dir string
----@param page_manager_fact loop.PageManagerFactory
 ---@param mode "task"|"repeat"
 ---@param task_name string|nil
-function M.load_and_run_task(ws_dir, config_dir, page_manager_fact, mode, task_name)
+function M.load_and_run_task(ws_dir, config_dir, mode, task_name)
     taskmgr.get_or_select_task(config_dir, mode, task_name, function(root_name, all_tasks)
         if not root_name or not all_tasks then
             return
         end
         taskmgr.save_last_task_name(root_name, config_dir)
-        M.run_task(ws_dir, config_dir, page_manager_fact, all_tasks, root_name)
+        M.run_task(ws_dir, config_dir, all_tasks, root_name)
     end)
 end
 
 ---@param ws_dir string
 ---@param config_dir string
----@param page_manager_fact loop.PageManagerFactory
 ---@param all_tasks loop.Task[]
 ---@param root_name string
-function M.run_task(ws_dir, config_dir, page_manager_fact, all_tasks, root_name)
+function M.run_task(ws_dir, config_dir, all_tasks, root_name)
     assert(type(ws_dir) == "string")
     assert(type(config_dir) == "string")
-
-    if not _status_comp then
-        assert(not _status_page)
-        assert(not _status_pagegroup)
-        _status_comp, _status_page, _status_pagegroup = _create_status_page(page_manager_fact)
-    end
     assert(_status_comp and _status_page and _status_pagegroup)
+
     -- Log task start
     logs.user_log("Task started: " .. root_name, "task")
     local symbols = config.current.window.symbols
@@ -112,20 +167,19 @@ function M.run_task(ws_dir, config_dir, page_manager_fact, all_tasks, root_name)
         return
     end
 
-    local node_tree, used_tasks, plan_error_msg = _scheduler:generate_task_plan(all_tasks, root_name)
+    local node_tree, used_tasks, plan_error_msg = _generate_task_plan(all_tasks, root_name)
     if not node_tree or not used_tasks then
         report_failure(plan_error_msg or "Failed to build task plan")
         return
     end
 
-    logs.user_log("Scheduling tasks:\n" .. print_task_tree(node_tree))
+    logs.user_log("Scheduling tasks:\n" .. _print_task_tree(node_tree))
 
     for _, task in ipairs(used_tasks) do
         if task.name ~= root_name then
             _status_comp:add_task(task.name)
         end
     end
-    _status_pagegroup.activate_page("status")
 
     local vars, _ = _load_variables(config_dir)
 
@@ -168,7 +222,6 @@ function M.run_task(ws_dir, config_dir, page_manager_fact, all_tasks, root_name)
         _scheduler:start(
             resolved_tasks,
             root_name,
-            page_manager_fact,
             function() -- on start
                 _status_page.set_ui_flags(config.current.window.symbols.running)
             end,
@@ -193,12 +246,12 @@ end
 --- Check if a task plan is currently running or terminating
 ---@return boolean
 function M.have_running_task()
-    return _scheduler:is_running() or _scheduler:is_terminating()
+    return _scheduler:is_running()
 end
 
 --- Terminate the currently running task plan (if any)
 function M.terminate_tasks()
-    if _scheduler:is_running() or _scheduler:is_terminating() then
+    if _scheduler:is_running() then
         _scheduler:terminate()
         logs.user_log("Task terminated by user", "task")
     end

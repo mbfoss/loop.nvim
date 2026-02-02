@@ -230,15 +230,6 @@ local function _get_tab_index(tab)
 end
 
 ---@param tab loop.TabInfo
----@param page loop.pages.Page
-local function _get_page_index(tab, page)
-    for idx, p in ipairs(tab.pages) do
-        if p == page then return idx end
-    end
-    return 0
-end
-
----@param tab loop.TabInfo
 local function _delete_tab(tab)
     local index = _get_tab_index(tab)
     assert(index > 0)
@@ -619,81 +610,59 @@ end
 local function _create_page_manager()
     assert(_init_done, "init not done")
 
-    local is_expired = false
-
     ---@param tab loop.TabInfo
     ---@return loop.PageGroup
     local function make_page_group(tab)
-        ---@type table<number,loop.PageData>
-        local by_id = {}
+        local deleted = false
         ---@type loop.PageGroup
         return {
+            expired = function()
+                return deleted
+            end,
             add_page = function(opts)
-                if is_expired then return nil end
-                assert(not by_id[opts.id], "page already exists in group")
+                if deleted then return nil end
                 local page_data, err = _add_tab_page(tab, opts)
-                by_id[opts.id] = page_data
                 return page_data, err
             end,
-            get_page = function(id)
-                if is_expired then return nil end
-                local page = by_id[id]
-                return page and page:get_user_data() or nil
-            end,
-            activate_page = function(id)
-                if is_expired then return end
-                _set_active_tab(_get_tab_index(tab), _get_page_index(tab, by_id[id]))
-            end,
             delete_pages = function()
-                if is_expired then return end
+                if deleted then return end
                 _delete_tab_pages(tab)
             end,
+            delete_group = function()
+                if deleted then return end
+                _delete_tab(tab)
+                deleted = true
+            end
         }
     end
 
-    ---@class loop.window.GroupInfo
-    ---@field group loop.PageGroup
-    ---@field tab loop.TabInfo
-
-    ---@type table<string, loop.window.GroupInfo>
+    ---@type loop.PageGroup[]
     local groups = {}
+    local is_expired = false
 
     ---@type loop.PageManager
     return {
-        get_page = function(group_id, page_id)
-            if is_expired then return nil end
-            local group = groups[group_id]
-            return group and group.group.get_page(page_id) or nil
+        expired = function()
+            return is_expired
         end,
-        add_page_group = function(id, label)
+        add_page_group = function(label)
             if is_expired then return nil end
-            assert(not groups[id], "page group already exists")
             local tab = _add_tab(label)
             local group = make_page_group(tab)
-            groups[id] = { group = group, tab = tab }
+            table.insert(groups, group)
             return group
-        end,
-        get_page_group = function(id)
-            if is_expired then return nil end
-            local data = groups[id]
-            return data and data.group or nil
-        end,
-        delete_page_group = function(id)
-            if is_expired then return end
-            local group = groups[id]
-            if group then _delete_tab(group.tab) end
         end,
         delete_all_groups = function(expire)
             if is_expired then return end
-            for _, grp in pairs(groups) do
-                _delete_tab(grp.tab)
+            for _, grp in ipairs(groups) do
+                grp.delete_group()
             end
             if expire then is_expired = true end
         end
     }
 end
 
-function M.page_manger_factory()
+function M.get_page_manger_factory()
     if not _page_manger_factory then
         _page_manger_factory = function()
             return _create_page_manager()
