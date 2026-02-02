@@ -3,6 +3,7 @@ local M = {}
 local config = require('loop.config')
 local simple_selector = require('loop.tools.simpleselector')
 
+--[[
 local function _snacks_select(opts) -- opts: loop.selector.opts
     local picker = require("snacks.picker")
     local items = opts.items or {}
@@ -133,15 +134,13 @@ local function _snacks_select(opts) -- opts: loop.selector.opts
         },
     })
 end
+]]
 
 ---@param opts loop.selector.opts
 function M.select(opts)
     local type = config.current.selector
     if type == "builtin" then
         return simple_selector.select(opts)
-    end
-    if type == "snacks" then
-        return _snacks_select(opts)
     end
     vim.ui.select(opts.items, {
         prompt = opts.prompt,
