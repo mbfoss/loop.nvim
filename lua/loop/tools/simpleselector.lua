@@ -15,9 +15,7 @@
 local M = {}
 
 -- Namespace for prompt highlighting
-local NS_PROMPT = vim.api.nvim_create_namespace("LoopSelectorPrompt")
 local NS_PREVIEW = vim.api.nvim_create_namespace("LoopSelectorPreview")
-
 
 --------------------------------------------------------------------------------
 -- Utility functions
@@ -41,28 +39,6 @@ local function fuzzy_filter(items, query)
     end
 
     return res
-end
-
----@param prompt_prefix string
----@param query string
----@param buf integer
----@param win integer
-local function update_prompt(prompt_prefix, query, buf, win)
-    local text = prompt_prefix .. query
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, { text })
-
-    vim.api.nvim_buf_clear_namespace(buf, NS_PROMPT, 0, -1)
-
-    vim.api.nvim_buf_set_extmark(buf, NS_PROMPT, 0, 0, {
-        end_col = #prompt_prefix,
-        hl_group = "Title",
-    })
-
-    vim.schedule(function()
-        if vim.api.nvim_win_is_valid(win) then
-            vim.api.nvim_win_set_cursor(win, { 1, #text })
-        end
-    end)
 end
 
 ---@param items loop.SelectorItem[]
@@ -324,6 +300,8 @@ function M.select(opts)
         col = col,
         width = width,
         height = 1,
+        title = (" %s "):format(prompt),
+        title_pos = "center"
     }))
 
     local lwin = vim.api.nvim_open_win(lbuf, false, vim.tbl_extend("force", base_cfg, {
@@ -355,24 +333,9 @@ function M.select(opts)
     -- State
     --------------------------------------------------------------------------
 
-    local query = ""
     local filtered = vim.deepcopy(items)
     local cur = math.max(1, math.min(opts.initial or 1, #items))
     local closed = false
-    local prompt_prefix = prompt .. " > "
-
-    --------------------------------------------------------------------------
-    -- Redraw
-    --------------------------------------------------------------------------
-
-    local function redraw()
-        filtered, cur = recompute(items, query, cur)
-        update_prompt(prompt_prefix, query, pbuf, pwin)
-        update_list(filtered, cur, lbuf, lwin)
-        if vbuf then
-            update_preview(formatter, filtered, cur, vbuf)
-        end
-    end
 
     local function close(result)
         if closed then return end
@@ -394,70 +357,65 @@ function M.select(opts)
         end)
     end
 
-    --------------------------------------------------------------------------
-    -- Keymaps
-    --------------------------------------------------------------------------
+    local function update_content()
+        update_list(filtered, cur, lbuf, lwin)
+        if vbuf then update_preview(formatter, filtered, cur, vbuf) end
+    end
 
-    local opts = { buffer = pbuf, nowait = true, silent = true }
+    local key_opts = { buffer = pbuf, nowait = true, silent = true }
 
     vim.keymap.set("i", "<CR>", function()
         close(filtered[cur] and filtered[cur].data)
-    end, opts)
+    end, key_opts)
 
-    vim.keymap.set("i", "<Esc>", function() close(nil) end, opts)
-    vim.keymap.set("i", "<C-c>", function() close(nil) end, opts)
+    vim.keymap.set("i", "<Esc>", function() close(nil) end, key_opts)
+    vim.keymap.set("i", "<C-c>", function() close(nil) end, key_opts)
 
     vim.keymap.set("i", "<Down>", function()
         cur = move_wrap(#filtered, cur, 1)
-        redraw()
-    end, opts)
+        update_content()
+    end, key_opts)
 
     vim.keymap.set("i", "<C-n>", function()
         cur = move_wrap(#filtered, cur, 1)
-        redraw()
-    end, opts)
+        update_content()
+    end, key_opts)
 
     vim.keymap.set("i", "<Up>", function()
         cur = move_wrap(#filtered, cur, -1)
-        redraw()
-    end, opts)
+        update_content()
+    end, key_opts)
 
     vim.keymap.set("i", "<C-p>", function()
         cur = move_wrap(#filtered, cur, -1)
-        redraw()
-    end, opts)
+        update_content()
+    end, key_opts)
 
     local page = math.max(1, math.floor(height / 2))
     vim.keymap.set("i", "<C-d>", function()
         cur = move_clamp(#filtered, cur, page)
-        redraw()
-    end, opts)
+        update_content()
+    end, key_opts)
 
     vim.keymap.set("i", "<C-u>", function()
         cur = move_clamp(#filtered, cur, -page)
-        redraw()
-    end, opts)
+        update_content()
+    end, key_opts)
 
-    vim.keymap.set("i", "<BS>", function()
-        if #query > 0 then
-            query = query:sub(1, -2)
-            redraw()
-        end
-    end, opts)
+    vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+        buffer = pbuf,
+        callback = function()
+            if vim.api.nvim_buf_line_count(pbuf) == 0 then
+                vim.api.nvim_buf_set_lines(pbuf, 0, -1, false, { "" })
+            end
 
-    for i = 32, 126 do
-        local c = string.char(i)
-        vim.keymap.set("i", c, function()
-            query = query .. c
-            redraw()
-        end, opts)
-    end
-
-    --------------------------------------------------------------------------
-    -- Start
-    --------------------------------------------------------------------------
-
-    redraw()
+            local plines = vim.api.nvim_buf_get_lines(pbuf, 0, -1, false)
+            local query = plines[1] or ""
+            -- now recompute filtered list
+            filtered, cur = recompute(items, query, cur)
+            update_content()
+        end,
+    })
 
     vim.api.nvim_create_autocmd("BufLeave", {
         buffer = pbuf,
@@ -473,6 +431,8 @@ function M.select(opts)
             vim.cmd("startinsert!")
         end
     end)
+
+    update_content()
 end
 
 return M
