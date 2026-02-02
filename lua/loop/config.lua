@@ -10,7 +10,7 @@
 
 ---@class window loop.Config.Window
 ---@class loop.Config
----@field selector ("builtin"|"default")?
+---@field selector ("builtin"|"default"|"snacks")?
 ---@field window loop.Config.Window?
 ---@field macros table<string,(fun(ctx:loop.TaskContext,...):any,string|nil)>?
 ---@field debug boolean? Enable debug/verbose mode for development
