@@ -17,7 +17,7 @@ local M = {}
 -- Namespace for prompt highlighting
 local NS_PROMPT = vim.api.nvim_create_namespace("LoopSelectorPrompt")
 local NS_PREVIEW = vim.api.nvim_create_namespace("LoopSelectorPreview")
-local NS_SELECTED_ITEM = vim.api.nvim_create_namespace("LoopSelectorSelectedItem")
+
 
 --------------------------------------------------------------------------------
 -- Utility functions
@@ -71,26 +71,18 @@ end
 ---@param win integer
 local function update_list(items, cur, buf, win)
     local lines = {}
+
     for i, item in ipairs(items) do
-        lines[i] = item.label
+        local prefix = (i == cur) and "> " or "  "
+        lines[i] = prefix .. item.label
     end
+
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-    -- Clear previous selection highlight
-    vim.api.nvim_buf_clear_namespace(buf, NS_SELECTED_ITEM, 0, -1)
-    -- Highlight current line using Visual
-    if items[cur] then
-        vim.api.nvim_buf_set_extmark(buf, NS_SELECTED_ITEM, cur - 1, 0, {
-            end_row = cur,
-            hl_group = "Visual",
-            hl_eol = true,
-        })
-    end
-    -- Keep cursor stable (top-left is fine)
+
     if vim.api.nvim_win_is_valid(win) then
         vim.api.nvim_win_set_cursor(win, { math.max(cur, 1), 0 })
     end
 end
-
 
 ---@param formatter loop.PreviewFormatter?   (optional custom preview generator)
 ---@param items loop.SelectorItem[]
