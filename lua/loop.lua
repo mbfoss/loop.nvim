@@ -7,33 +7,6 @@ local M = {}
 local workspace = require("loop.workspace")
 local config = require("loop.config")
 
----@type table<string, string>
-local COMMAND_HELP = {
-    ["Loop workspace info"]      = "Show information about the current workspace",
-    ["Loop workspace create"]    = "Create a new workspace in the current working directory",
-    ["Loop workspace open"]      = "Open a workspace or reload the current one",
-    ["Loop workspace save"]      = "Save workspace buffers (as defined in the workspace configuration)",
-    ["Loop workspace configure"] = "Create/Open the workspace configuration file",
-
-    ["Loop ui"]        = "Toggle Loop window",
-    ["Loop ui toggle"] = "Toggle Loop window",
-    ["Loop ui show"]   = "Show Loop window",
-    ["Loop ui hide"]   = "Hide Loop window",
-
-    ["Loop page"]      = "Select the page shown in the Loop window",
-    ["Loop page open"] = "Select and open a page in the current window",
-
-    ["Loop logs"] = "Show recent logs",
-
-    ["Loop task run"]       = "Run task",
-    ["Loop task repeat"]    = "Repeat last task",
-    ["Loop task terminate"] = "Terminate running tasks",
-    ["Loop task configure"] = "Configure tasks or check the current configuration",
-
-    ["Loop var add"]        = "Create a new variable",
-    ["Loop var configure"] = "Configure variables or check the current configuration",
-}
-
 -----------------------------------------------------------
 -- Defaults
 -----------------------------------------------------------
@@ -122,7 +95,6 @@ local function _collect_commands(prefix, out)
 
         table.insert(out, {
             vimcmd = vimcmd,
-            help = COMMAND_HELP[vimcmd] or "",
         })
 
         -- recurse to catch deeper subcommands
@@ -142,7 +114,6 @@ function M.select_command()
 
         table.insert(all_cmds, {
             vimcmd = vimcmd,
-            help = COMMAND_HELP[vimcmd] or "",
         })
 
         -- Subcommands (recursive)

@@ -241,6 +241,7 @@ function M.select(opts)
         return
     end
 
+    local title = (prompt and prompt ~= "") and (" %s "):format(prompt) or ""
     local has_preview = opts.file_preview or type(opts.formatter) == "function"
 
     --------------------------------------------------------------------------
@@ -292,7 +293,7 @@ function M.select(opts)
         col = col,
         width = width,
         height = 1,
-        title = (" %s "):format(prompt),
+        title = title,
         title_pos = "center"
     }))
 
