@@ -31,7 +31,6 @@ local uitools = require('loop.tools.uitools')
 ---@field _is_dirty boolean
 ---@field _on_add_node fun(path:string, callback:fun(to_add:any|nil))?
 ---@field _itemtree loop.comp.ItemTree
----@field _buf_ctrl any
 ---@field _is_open boolean
 local JsonEditor = class()
 
@@ -305,10 +304,11 @@ function JsonEditor:open(winid)
     self._is_open = true
 
     local name = self._opts.name or "JSON Editor"
-    local header_line = " (For help: g?)"
+    local header = name .. " (use 'g?' for help)"
 
     ---@diagnostic disable-next-line: undefined-field
     self._itemtree = ItemTreeComp:new({
+        header = header,
         formatter = _formatter,
         render_delay_ms = 40,
     })
@@ -322,10 +322,9 @@ function JsonEditor:open(winid)
     })
 
     local buf = CompBuffer:new("jsoneditor", name)
-    local ctrl = buf:make_controller() ---@type any
 
     local function with_current_item(fn)
-        local item = self._itemtree:get_cur_item(ctrl)
+        local item = self._itemtree:get_cur_item()
         if item then fn(item) end
     end
 
@@ -365,8 +364,7 @@ function JsonEditor:open(winid)
     buf:add_keymap("g?", { desc = "Help (?)", callback = function() _show_help() end })
     buf:add_keymap("ge", { desc = "Show errors (!)", callback = function() self:_show_errors() end })
 
-    self._itemtree:link_to_buffer(ctrl)
-    self._buf_ctrl = ctrl
+    self._itemtree:link_to_buffer(buf:make_controller())
 
     local bufid = buf:get_or_create_buf()
     local tgtwin = winid or uitools.get_regular_window()

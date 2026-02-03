@@ -37,6 +37,8 @@ local Trackers = require("loop.tools.Trackers")
 ---@field loading_char string?
 ---@field indent_string string?
 ---@field render_delay_ms number|nil
+---@field header string|nil
+---@field header_highlight string|nil
 
 ---@class loop.comp.ItemTree
 local ItemTree = class()
@@ -144,6 +146,8 @@ function ItemTree:init(args)
     self._loading_char = args.enable_loading_indictaor and (args.loading_char or "⧗") or nil
     self._indent_string = args.indent_string or "  "
     self._render_delay_ms = args.render_delay_ms or 150
+    self._header = args.header
+    self._header_hl = args.header_highlight or "Title"
 
     self._tree = Tree:new()
     self._flat = {}
@@ -151,24 +155,25 @@ end
 
 function ItemTree:add_tracker(cb) return self._trackers:add_tracker(cb) end
 
-function ItemTree:link_to_buffer(buf_ctrl)
-    local cur_item_data = function()
-        local cursor = buf_ctrl:get_cursor()
-        if not cursor then return nil end
-        local row = cursor[1]
-        local node = self._flat[row]
-        if not node then return nil, nil end
-        return node.id, node.data
-    end
+function ItemTree:_get_cur_node(comp)
+    local cursor = comp:get_cursor()
+    if not cursor then return nil end
+    local row = cursor[1]
+    if self._header then row = row - 1 end
+    local node = self._flat[row]
+    if not node then return nil end
+    return node.id, node.data
+end
 
+function ItemTree:link_to_buffer(buf_ctrl)
     local function on_open()
-        local id, itemdata = cur_item_data()
+        local id, itemdata = self:_get_cur_node(buf_ctrl)
         if not id or not itemdata then return end
         self._trackers:invoke("on_open", id, itemdata.userdata)
     end
 
     local function on_toggle()
-        local id, itemdata = cur_item_data()
+        local id, itemdata = self:_get_cur_node(buf_ctrl)
         if not id or not itemdata then return end
         local have_children = self._tree:have_children(id)
         if have_children or itemdata.children_callback then
@@ -194,16 +199,13 @@ end
 
 function ItemTree:dispose() end
 
-function ItemTree:get_cur_item(comp)
-    local cursor = comp:get_cursor()
-    if not cursor then return nil end
-    local row = cursor[1]
-
-    local node = self._flat[row]
-    if not node then return nil end
-
-    local id, nodedata = node.id, node.data
-    return { id = id, data = nodedata.userdata }
+function ItemTree:get_cur_item()
+    if self._linked_buf then
+        local id, nodedata = self:_get_cur_node(self._linked_buf)
+        if id and nodedata then
+            return { id = id, data = nodedata.userdata }
+        end
+    end
 end
 
 --- Is this node a root node? (has no parent)
@@ -349,6 +351,19 @@ function ItemTree:_on_render_request(buf)
     local buffer_lines = {}
     local extmarks_data = {}
     local new_flat_nodes = {}
+
+    if self._header then
+        local text = self._header:gsub("\n", " ")
+        table.insert(buffer_lines, text)
+        table.insert(extmarks_data, {
+            row = 0,
+            start_col = 0,
+            mark = {
+                end_col = #self._header,
+                hl_group = self._header_hl,
+            },
+        })
+    end
 
     for _, flatnode in ipairs(flat) do
         local item_id = flatnode.id
