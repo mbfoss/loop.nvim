@@ -103,16 +103,9 @@ local function update_preview(formatter, items, cur, buf)
 
         -- Load file contents into the buffer using :read (most "native" way)
         local ok, load_err = pcall(vim.api.nvim_buf_call, buf, function()
-            -- :read adds content after current line → so we read into an empty buffer
-            vim.cmd("silent! read " .. vim.fn.fnameescape(filepath))
-
-            -- :read often inserts an empty first line when buffer was empty
-            local first_line = vim.api.nvim_buf_get_lines(buf, 0, 1, false)[1]
-            if first_line == "" then
-                vim.api.nvim_buf_set_lines(buf, 0, 1, false, {})
-            end
+            local lines = vim.fn.readfile(filepath)
+            vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
         end)
-
         if not ok then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
                 "Failed to load file into preview buffer:",
@@ -127,16 +120,16 @@ local function update_preview(formatter, items, cur, buf)
 
         -- Try to position cursor / view at target line
         local preview_win = vim.fn.bufwinid(buf)
-        local target_win = preview_win ~= -1 and preview_win or 0
-
-        local set_ok = pcall(vim.api.nvim_win_set_cursor, target_win, { target_lnum, 0 })
-        if set_ok then
-            vim.api.nvim_win_call(target_win, function()
-                vim.cmd("normal! zz") -- center the target line
-            end)
-        else
-            -- Line might be out of range → fall back to first line
-            pcall(vim.api.nvim_win_set_cursor, target_win, { 1, 0 })
+        if preview_win ~= -1 then
+            local set_ok = pcall(vim.api.nvim_win_set_cursor, preview_win, { target_lnum, 0 })
+            if set_ok then
+                vim.api.nvim_win_call(preview_win, function()
+                    vim.cmd("normal! zz") -- center the target line
+                end)
+            else
+                -- Line might be out of range → fall back to first line
+                pcall(vim.api.nvim_win_set_cursor, preview_win, { 1, 0 })
+            end
         end
 
         -- Brief visual feedback: highlight target line
@@ -245,7 +238,6 @@ function M.select(opts)
     local prompt, items, formatter, callback = opts.prompt, opts.items, opts.formatter, opts.callback
 
     if #items == 0 then
-        callback(nil)
         return
     end
 
