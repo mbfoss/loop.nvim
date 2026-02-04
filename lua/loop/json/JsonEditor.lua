@@ -304,11 +304,9 @@ function JsonEditor:open(winid)
     self._is_open = true
 
     local name = self._opts.name or "JSON Editor"
-    local header = name .. " (use 'g?' for help)"
 
     ---@diagnostic disable-next-line: undefined-field
     self._itemtree = ItemTreeComp:new({
-        header = header,
         formatter = _formatter,
         render_delay_ms = 40,
     })
@@ -358,11 +356,11 @@ function JsonEditor:open(winid)
         callback = function() with_current_item(function(i) _show_node_help(i) end) end,
     })
 
-    buf:add_keymap("s", { desc = "Save (s)", callback = function() self:save() end })
-    buf:add_keymap("u", { desc = "Undo (u)", callback = function() self:undo() end })
-    buf:add_keymap("<C-r>", { desc = "Redo (C-r)", callback = function() self:redo() end })
-    buf:add_keymap("g?", { desc = "Help (?)", callback = function() _show_help() end })
-    buf:add_keymap("ge", { desc = "Show errors (!)", callback = function() self:_show_errors() end })
+    buf:add_keymap("s", { desc = "Save", callback = function() self:save() end })
+    buf:add_keymap("u", { desc = "Undo", callback = function() self:undo() end })
+    buf:add_keymap("<C-r>", { desc = "Redo", callback = function() self:redo() end })
+    buf:add_keymap("g?", { desc = "Help", callback = function() _show_help() end })
+    buf:add_keymap("ge", { desc = "Show errors", callback = function() self:_show_errors() end })
 
     self._itemtree:link_to_buffer(buf:make_controller())
 

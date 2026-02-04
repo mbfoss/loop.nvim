@@ -26,7 +26,7 @@ local Trackers = require("loop.tools.Trackers")
 ---@field text string
 ---@field highlight string
 
----@alias loop.comp.ItemTree.FormatterChunk { text: string, highlight: string?, virt_text: string? }
+---@alias loop.comp.ItemTree.FormatterChunk { text: string?, virt_text: string?, highlight: string? }
 ---@alias loop.comp.ItemTree.FormatterFn fun(id:any, data:any): loop.comp.ItemTree.FormatterChunk[]
 
 ---@class loop.comp.ItemTree.InitArgs
@@ -36,9 +36,8 @@ local Trackers = require("loop.tools.Trackers")
 ---@field enable_loading_indictaor boolean?
 ---@field loading_char string?
 ---@field indent_string string?
----@field render_delay_ms number|nil
----@field header string|nil
----@field header_highlight string|nil
+---@field render_delay_ms number?
+---@field header loop.comp.ItemTree.FormatterChunk[]?
 
 ---@class loop.comp.ItemTree
 local ItemTree = class()
@@ -136,6 +135,8 @@ end
 
 function ItemTree:init(args)
     assert(args.formatter, "formatter is required")
+    assert(not args.header or type(args.header) == "table", "header must be a table")
+
 
     ---@type loop.comp.ItemTree.FormatterFn
     self._formatter = args.formatter
@@ -146,8 +147,6 @@ function ItemTree:init(args)
     self._loading_char = args.enable_loading_indictaor and (args.loading_char or "⧗") or nil
     self._indent_string = args.indent_string or "  "
     self._render_delay_ms = args.render_delay_ms or 150
-    self._header = args.header
-    self._header_hl = args.header_highlight or "Title"
 
     self._tree = Tree:new()
     self._flat = {}
@@ -159,7 +158,6 @@ function ItemTree:_get_cur_node(comp)
     local cursor = comp:get_cursor()
     if not cursor then return nil end
     local row = cursor[1]
-    if self._header then row = row - 1 end
     local node = self._flat[row]
     if not node then return nil end
     return node.id, node.data
@@ -352,19 +350,6 @@ function ItemTree:_on_render_request(buf)
     local extmarks_data = {}
     local new_flat_nodes = {}
 
-    if self._header then
-        local text = self._header:gsub("\n", " ")
-        table.insert(buffer_lines, text)
-        table.insert(extmarks_data, {
-            row = 0,
-            start_col = 0,
-            mark = {
-                end_col = #self._header,
-                hl_group = self._header_hl,
-            },
-        })
-    end
-
     for _, flatnode in ipairs(flat) do
         local item_id = flatnode.id
         local item = flatnode.data
@@ -461,7 +446,7 @@ function ItemTree:_on_render_request(buf)
             table.insert(extmarks_data, {
                 row = first_row,
                 start_col = 0,
-                mark = { virt_text = vt },
+                mark = { virt_text = vt, hl_mode = "combine" },
             })
         end
     end
