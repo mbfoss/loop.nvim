@@ -62,6 +62,29 @@ local function _show_help()
     floatwin.show_floatwin(table.concat(help_text, "\n"), { title = "Help" })
 end
 
+---@param filetype string
+local function _get_existing_window(filetype)
+    local curwin = vim.api.nvim_get_current_win()
+    local curbuf = vim.api.nvim_win_get_buf(curwin)
+    if vim.bo[curbuf].filetype == filetype then
+        return curwin
+    end
+    local tabpage = vim.api.nvim_get_current_tabpage()
+    local windows = vim.api.nvim_tabpage_list_wins(tabpage)
+    for _, winid in ipairs(windows) do
+        if vim.api.nvim_win_is_valid(winid) then
+            local cfg = vim.api.nvim_win_get_config(winid)
+            if cfg.relative == "" then -- skip poup windows
+                local bufnr = vim.api.nvim_win_get_buf(winid)
+                if vim.bo[bufnr].filetype == filetype then
+                    return winid
+                end
+            end
+        end
+    end
+    return -1
+end
+
 ---@param schema table|nil
 ---@param null_support boolean?
 ---@return string[]
@@ -320,7 +343,8 @@ function JsonEditor:open(winid)
         end,
     })
 
-    local buf = CompBuffer:new("jsoneditor", name)
+    local filetype = "loop-jsoneditor"
+    local buf = CompBuffer:new(filetype, name)
 
     local function with_current_item(fn)
         local item = self._itemtree:get_cur_item()
@@ -366,7 +390,14 @@ function JsonEditor:open(winid)
     self._itemtree:link_to_buffer(buf:make_controller())
 
     local bufid = buf:get_or_create_buf()
-    local tgtwin = winid or uitools.get_regular_window()
+    local tgtwin = winid
+    if not tgtwin or tgtwin < 0 then
+        tgtwin = _get_existing_window(filetype)
+        if tgtwin == -1 then
+            tgtwin = uitools.get_regular_window()
+        end
+    end
+    vim.api.nvim_set_current_win(tgtwin)
     vim.api.nvim_win_set_buf(tgtwin, bufid)
 end
 
@@ -633,6 +664,7 @@ function JsonEditor:_delete(item)
     if not parent_item then return end
 
     local parent = parent_item.data.value
+    if type(parent) ~= "table" then return end
 
     self:_push_undo()
 
@@ -643,6 +675,11 @@ function JsonEditor:_delete(item)
         table.remove(parent, idx)
     else
         parent[key] = nil
+        if next(parent) == nil then
+            local empty_dict_mt = getmetatable(vim.empty_dict())
+            assert(empty_dict_mt, "unsupported neovim API change")
+            setmetatable(parent, empty_dict_mt)
+        end
     end
 
     self:_apply_changes()

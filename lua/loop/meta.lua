@@ -89,7 +89,6 @@ error('Cannot require a meta file')
 ---@class loop.PageOpts
 ---@field type "term"|"output"|"comp"|"repl"
 ---@field id string
----@field buftype string
 ---@field label string
 ---@field activate boolean?
 ---@field term_args loop.tools.TermProc.StartArgs?

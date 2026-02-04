@@ -65,6 +65,7 @@ function BaseBuffer:request_change_notif()
         self._throttled_change_notif()
     end
 end
+
 function BaseBuffer:set_user_data(data)
     self._user_data = data
 end
@@ -122,6 +123,8 @@ end
 
 function BaseBuffer:_setup_buf()
     assert(self._buf > 0)
+    assert(type(self._type) == "string" and self._type ~= "")
+
     local buf = self._buf
 
     local bufname = "loop://" .. self._name
@@ -140,7 +143,7 @@ function BaseBuffer:_setup_buf()
         local b = vim.bo[buf]
         b.buftype = "nofile"
         b.bufhidden = "hide"
-        b.filetype = "loop-" .. self._type
+        b.filetype = self._type
         b.modifiable = false
         b.swapfile = false
         b.undolevels = -1   -- buffer can't become "modified"
