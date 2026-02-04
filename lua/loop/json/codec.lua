@@ -44,33 +44,38 @@ end
 ---@param keys string[]
 ---@param schema table|nil        -- schema node for this table
 local function _order_keys(keys, schema)
-    local order = type(schema) == "table" and schema["x-order"] or nil
+    local order = type(schema) == "table" and schema["x-order"]
     if not order then
-        vim.fn.sort(keys)
-        return
-    end
-    local ordered = {}
-    for i = 1, #order do
-        ordered[i] = order[i]
+        table.sort(keys)
+        return keys
     end
 
-    local index = 0
     local priorities = {}
-    for _, v in ipairs(ordered) do
+    local index = 0
+    -- assign priority from schema
+    for _, k in ipairs(order) do
         index = index + 1
-        priorities[v] = index
+        priorities[k] = index
     end
-    if #priorities ~= #keys then
-        vim.fn.sort(keys)
-        for _, v in ipairs(keys) do
-            if not priorities[v] then
-                index = index + 1
-                priorities[v] = index
-            end
+
+    -- assign priority to keys not in schema, using high index + alphabetical order
+    local remaining = {}
+    for _, k in ipairs(keys) do
+        if not priorities[k] then
+            table.insert(remaining, k)
         end
     end
+    table.sort(remaining) -- only sort the leftovers
+    for _, k in ipairs(remaining) do
+        index = index + 1
+        priorities[k] = index
+    end
 
-    table.sort(keys, function(a, b) return priorities[a] < priorities[b] end)
+    -- final sort by priority
+    table.sort(keys, function(a, b)
+        return (priorities[a] or 1e6) < (priorities[b] or 1e6)
+    end)
+
     return keys
 end
 
