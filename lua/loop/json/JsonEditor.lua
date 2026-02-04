@@ -46,10 +46,6 @@ local function _show_help()
         "  c        Change value",
         "  C        Change value (multiline)",
         "  d        Delete",
-
-        "",
-        "File:",
-        "  s        Save",
         "  u        Undo",
         "  C-r      Redo",
         "",
@@ -381,7 +377,6 @@ function JsonEditor:open(winid)
         callback = function() with_current_item(function(i) _show_node_help(i) end) end,
     })
 
-    buf:add_keymap("s", { desc = "Save", callback = function() self:save() end })
     buf:add_keymap("u", { desc = "Undo", callback = function() self:undo() end })
     buf:add_keymap("<C-r>", { desc = "Redo", callback = function() self:redo() end })
     buf:add_keymap("g?", { desc = "Help", callback = function() _show_help() end })
@@ -814,6 +809,15 @@ function JsonEditor:_add_object_property(item, schema)
             if schemas and schemas[1] then
                 with_schema(schemas[1].schema)
                 return
+            end
+
+            if type(schema.patternProperties) == "table" then
+                for pattern, pat_schema in pairs(schema.patternProperties) do
+                    if key:match(pattern) then
+                        with_schema(pat_schema)
+                        return
+                    end
+                end
             end
 
             -- fallback: additionalProperties

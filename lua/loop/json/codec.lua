@@ -106,7 +106,7 @@ local function _serialize(value, level, path, schema)
             -- MAP STYLE
             local keys = {}
             for k in pairs(value) do
-                table.insert(keys, k)
+                table.insert(keys, tostring(k))
             end
             _order_keys(keys, schema)
             if #keys == 0 then return "{}" end
