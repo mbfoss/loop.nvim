@@ -568,8 +568,7 @@ function JsonEditor:_set_value(path, new_value)
     if not par_item then return end
 
     local last = parts[#parts]
-    local numkey = tonumber(last)
-    local key = numkey or last
+    local key = vim.islist(par_item.data.value) and tonumber(last) or tostring(last)
 
     self:_push_undo()
     par_item.data.value[key] = new_value
