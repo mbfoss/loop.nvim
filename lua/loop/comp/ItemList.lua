@@ -11,10 +11,10 @@ local Trackers = require("loop.tools.Trackers")
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemListComp')
 
----@alias loop.comp.ItemList.Chunk { text:string, highlight:string?, virt_text:string? }
+---@alias loop.comp.ItemList.Chunk { [1]: string, [2]: string? }
 
 ---@class loop.comp.ItemList.InitArgs
----@field formatter fun(id:any,data):loop.comp.ItemList.Chunk[]
+---@field formatter fun(id:any,data): loop.comp.ItemList.Chunk[]
 ---@field render_delay_ms number|nil
 ---@field show_current_prefix boolean|nil            # NEW: whether to show ">" prefix on current item
 ---@field current_prefix string|nil                  # NEW: custom prefix, defaults to "⇒ "
@@ -204,7 +204,7 @@ function ItemList:render(buf)
     local lines = {}
     local extmarks = {}
 
-    for idx, item in ipairs(self._items) do
+    for _, item in ipairs(self._items) do
         local chunks = self._args.formatter(item.id, item.data) or {}
 
         -- prefix (current / non-current)
@@ -220,25 +220,22 @@ function ItemList:render(buf)
         local line = prefix
         local col = #prefix
         local hls = {}
-        local vt = {}
-
         for _, chunk in ipairs(chunks) do
-            local text = (chunk.text or ""):gsub("\n", " ")
+            local text = chunk[1]
+            local highlight = chunk[2]
+
+            text = (text or ""):gsub("\n", " ")
             local start_col = col
 
             line = line .. text
             col = col + #text
 
-            if chunk.highlight and #text > 0 then
+            if highlight and #text > 0 then
                 table.insert(hls, {
                     start_col = start_col,
                     end_col = col,
-                    group = chunk.highlight,
+                    group = highlight,
                 })
-            end
-
-            if chunk.virt_text then
-                table.insert(vt, { chunk.virt_text, chunk.highlight })
             end
         end
 
@@ -255,14 +252,6 @@ function ItemList:render(buf)
                     hl_group = hl.group,
                     priority = 200,
                 }
-            })
-        end
-
-        if #vt > 0 then
-            table.insert(extmarks, {
-                row = row,
-                start_col = 0,
-                mark = { virt_text = vt },
             })
         end
     end

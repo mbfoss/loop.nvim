@@ -26,8 +26,7 @@ local Trackers = require("loop.tools.Trackers")
 ---@field text string
 ---@field highlight string
 
----@alias loop.comp.ItemTree.FormatterChunk { text: string?, virt_text: string?, highlight: string? }
----@alias loop.comp.ItemTree.FormatterFn fun(id:any, data:any): loop.comp.ItemTree.FormatterChunk[]
+---@alias loop.comp.ItemTree.FormatterFn fun(id:any, data:any):string[][],string[][]
 
 ---@class loop.comp.ItemTree.InitArgs
 ---@field formatter loop.comp.ItemTree.FormatterFn
@@ -37,27 +36,24 @@ local Trackers = require("loop.tools.Trackers")
 ---@field loading_char string?
 ---@field indent_string string?
 ---@field render_delay_ms number?
----@field header loop.comp.ItemTree.FormatterChunk[]?
 
 ---@class loop.comp.ItemTree
 local ItemTree = class()
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginItemTreeComp')
 
-local function _normalize_chunks(chunks)
+local function _normalize_text_chunks(chunks)
     local out = {}
 
     for _, chunk in ipairs(chunks or {}) do
-        local text = chunk.text or ""
-        local hl = chunk.highlight
-        local vt = chunk.virt_text
+        local text = chunk[1] or ""
+        local hl = chunk[2]
 
         local parts = vim.split(text, "\n", { trimempty = false })
         for i, part in ipairs(parts) do
             table.insert(out, {
-                text = part,
-                highlight = hl,
-                virt_text = (i == 1) and vt or nil,
+                part, -- text
+                hl,   -- highlight
                 _nl = (i < #parts),
             })
         end
@@ -65,7 +61,6 @@ local function _normalize_chunks(chunks)
 
     return out
 end
-
 
 ---@param item loop.comp.ItemTree.Item
 ---@return loop.comp.ItemTree.ItemData
@@ -378,10 +373,8 @@ function ItemTree:_on_render_request(buf)
         local empty_prefix = string.rep(" ", prefix_width)
 
         -- formatter → normalized chunks
-        local chunks = {}
-        if item_id then
-            chunks = _normalize_chunks(self._formatter(item_id, item.userdata))
-        end
+        local text_chunks, virt_chunks = self._formatter(item_id, item.userdata)
+        local chunks = _normalize_text_chunks(text_chunks)
 
         -- line state
         local cur_line = prefix
@@ -414,19 +407,22 @@ function ItemTree:_on_render_request(buf)
 
         -- render chunks
         for _, chunk in ipairs(chunks) do
+            local text = chunk[1]
+            local hl_grp = chunk[2]
+            local is_nl = chunk[3]
             local start_col = cur_col
-            cur_line = cur_line .. chunk.text
-            cur_col = cur_col + #chunk.text
+            cur_line = cur_line .. text
+            cur_col = cur_col + #text
 
-            if chunk.highlight and #chunk.text > 0 then
+            if hl_grp and #text > 0 then
                 table.insert(cur_hls, {
-                    group = chunk.highlight,
+                    group = hl_grp,
                     start_col = start_col,
                     end_col = cur_col,
                 })
             end
 
-            if chunk._nl then
+            if is_nl then
                 flush()
             end
         end
@@ -434,14 +430,11 @@ function ItemTree:_on_render_request(buf)
         -- flush final line
         flush()
 
-        -- virt_text (first line only)
+        -- virt_text
         local vt = {}
-        for _, c in ipairs(chunks) do
-            if c.virt_text then
-                table.insert(vt, { c.virt_text, c.highlight })
-            end
+        for _, c in ipairs(virt_chunks or {}) do
+            table.insert(vt, c) -- each element is already {virt_text, hl}
         end
-
         if #vt > 0 and first_row then
             table.insert(extmarks_data, {
                 row = first_row,

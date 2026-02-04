@@ -236,11 +236,12 @@ end
 
 ---@param _ any
 ---@param data table
----@return {text:string, highlight:string?, virt_text:string?}[]
+---@return string[][], string[][]
 local function _formatter(_, data)
-    if not data then return {} end
+    if not data then return {}, {} end
 
-    local chunks = {}
+    local text_chunks = {}
+    local virt_chunks = {}
 
     local key = tostring(data.key or "")
     local vt = data.value_type
@@ -248,36 +249,36 @@ local function _formatter(_, data)
     local err_msg = data.err_msg
 
     -- Key label
-    table.insert(chunks, { text = key, highlight = "Label" })
+    table.insert(text_chunks, { key, "Label" })
 
     if vt == "object" or vt == "array" then
         -- Show bracket count as virt_text
         local count = type(value) == "table" and #value or 0
         local bracket = vt == "object" and "{…}" or ("[…] (" .. count .. ")")
-        table.insert(chunks, { text = " ", highlight = "Comment" }) -- spacing after key
-        table.insert(chunks, { virt_text = bracket, highlight = "Comment" })
+        table.insert(text_chunks, { " ", "Comment" }) -- spacing after key
+        table.insert(virt_chunks, { bracket, "Comment" })
     else
         -- Separator between key and value
-        table.insert(chunks, { text = ": ", highlight = "Comment" })
+        table.insert(text_chunks, { ": ", "Comment" })
 
         if vt == "string" then
-            table.insert(chunks, { text = tostring(value), highlight = "@string" })
+            table.insert(text_chunks, { tostring(value), "@string" })
         elseif vt == "null" then
-            table.insert(chunks, { text = "null", highlight = "@constant" })
+            table.insert(text_chunks, { "null", "@constant" })
         elseif vt == "boolean" then
-            table.insert(chunks, { text = tostring(value), highlight = "@boolean" })
+            table.insert(text_chunks, { tostring(value), "@boolean" })
         else
-            table.insert(chunks, { text = tostring(value), highlight = "@number" })
+            table.insert(text_chunks, { tostring(value), "@number" })
         end
     end
 
     -- Append error as virt_text if present
     if err_msg then
-        table.insert(chunks, { text = " ", highlight = nil }) -- spacing
-        table.insert(chunks, { text = "● " .. err_msg, highlight = "DiagnosticError", virt_text = "● " .. err_msg })
+        table.insert(text_chunks, { " ", nil }) -- spacing
+        table.insert(virt_chunks, { "● " .. err_msg, "DiagnosticError" })
     end
 
-    return chunks
+    return text_chunks, virt_chunks
 end
 
 ---@param opts loop.JsonEditorOpts

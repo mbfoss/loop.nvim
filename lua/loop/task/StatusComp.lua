@@ -23,14 +23,14 @@ local _line_id = 0
 
 ---@param id any
 ---@param data table
----@return {text:string, highlight:string?}[]
+---@return loop.comp.ItemList.Chunk[]
 local function _item_formatter(id, data)
     local chunks = {}
     local symbols = config.current.window.symbols
 
     if data.log_message then
         local hl = data.log_level == vim.log.levels.ERROR and _highlights.failure or nil
-        table.insert(chunks, { text = data.log_message, highlight = hl })
+        table.insert(chunks, { data.log_message, hl })
         return chunks
     end
 
@@ -51,18 +51,19 @@ local function _item_formatter(id, data)
     end
 
     -- icon prefix
-    table.insert(chunks, { text = "[" .. icon .. "]", highlight = hl })
+    table.insert(chunks, { "[" .. icon .. "]", hl })
 
     -- main name
-    table.insert(chunks, { text = data.name })
+    table.insert(chunks, { data.name })
 
     -- optional error message
     if data.error_msg then
-        table.insert(chunks, { text = " - " .. data.error_msg, highlight = _highlights.failure })
+        table.insert(chunks, { " - " .. data.error_msg, _highlights.failure })
     end
 
     return chunks
 end
+
 
 ---@class loop.task.TasksStatusComp : loop.comp.ItemList
 ---@field new fun(self: loop.task.TasksStatusComp): loop.task.TasksStatusComp
