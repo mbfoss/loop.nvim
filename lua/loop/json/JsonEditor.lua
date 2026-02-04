@@ -234,22 +234,22 @@ local function _request_value(name, value_type, enum, default_text, multiline, o
         })
         return
     end
+    local on_input = function(txt)
+        if txt == nil then return end
+        local coerced = _coerce_value(txt, value_type)
+        if coerced ~= nil then
+            on_confirm(coerced)
+        end
+    end
     ---@type table
     local input_opts = {
         prompt = ("%s (%s)"):format(name, value_type),
         default_text = default_text,
-        on_confirm = function(txt)
-            if txt == nil then return end
-            local coerced = _coerce_value(txt, value_type)
-            if coerced ~= nil then
-                on_confirm(coerced)
-            end
-        end,
     }
     if multiline then
-        floatwin.input_multiline(input_opts, on_confirm)
+        floatwin.input_multiline(input_opts, on_input)
     else
-        floatwin.input_at_cursor(input_opts, on_confirm)
+        floatwin.input_at_cursor(input_opts, on_input)
     end
 end
 
