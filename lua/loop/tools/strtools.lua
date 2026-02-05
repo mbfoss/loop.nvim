@@ -18,6 +18,17 @@ function M.special_marker3()
 	return "\240\159\188\130"
 end
 
+---@param str string
+---@param max_len number
+---@return string preview
+---@return boolean is_different
+function M.crop_string_for_ui(str, max_len)
+    assert(type(str) == 'string', str)
+    max_len = max_len > 2 and max_len or 2
+    if #str <= max_len then return str, false end
+    return str:sub(1, max_len) .. "…", true
+end
+
 ---Helper to check if a path matches a list of glob patterns
 ---@param path string
 ---@param patterns string[]
