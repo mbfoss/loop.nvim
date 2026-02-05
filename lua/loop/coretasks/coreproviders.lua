@@ -83,7 +83,7 @@ function M.get_process_task_provider(ws_dir)
         end,
         start_one_task = function(task, page_manager, on_exit)
             ---@cast task loop.coretasks.process.Task
-            process_task.start_task(ws_dir, task, page_manager, on_exit)
+            return process_task.start_task(ws_dir, task, page_manager, on_exit)
         end
     }
 end
