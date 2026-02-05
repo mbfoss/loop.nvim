@@ -29,7 +29,7 @@ local uitools = require('loop.tools.uitools')
 ---@field _redo_stack table[]
 ---@field _validation_errors loop.json.ValidationError[]
 ---@field _is_dirty boolean
----@field _on_add_node fun(path:string, callback:fun(to_add:any|nil))?
+---@field _get_new_array_item fun(path:string, callback:fun(to_add:any|nil))?
 ---@field _itemtree loop.comp.ItemTree
 ---@field _is_open boolean
 local JsonEditor = class()
@@ -274,7 +274,7 @@ local function _formatter(_, data)
         -- Show bracket count as virt_text
         local count = type(value) == "table" and #value or 0
         local bracket = vt == "object" and "{…}" or ("[…] (" .. count .. ")")
-        table.insert(text_chunks, { " ", "Comment" }) -- spacing after key
+        table.insert(virt_chunks, { "", nil }) -- spacing
         table.insert(virt_chunks, { bracket, "Comment" })
     else
         -- Separator between key and value
@@ -293,7 +293,7 @@ local function _formatter(_, data)
 
     -- Append error as virt_text if present
     if err_msg then
-        table.insert(text_chunks, { " ", nil }) -- spacing
+        if #virt_chunks > 0 then table.insert(virt_chunks, { " ", nil }) end -- spacing
         table.insert(virt_chunks, { "● " .. err_msg, "DiagnosticError" })
     end
 
@@ -313,9 +313,9 @@ function JsonEditor:init(opts)
     self._is_open = false
 end
 
----@param handler fun(path:string, continue:fun(to_add:any|nil))?
-function JsonEditor:set_add_node_handler(handler)
-    self._on_add_node = handler
+---@param handler fun(path:string, callback:fun(to_add:any|nil))?
+function JsonEditor:set_new_array_item_handler(handler)
+    self._get_new_array_item = handler
 end
 
 ---@param winid integer?
@@ -537,7 +537,30 @@ function JsonEditor:_edit_value(item, multiline)
     local path = item.data.path ---@type string
     local schema = item.data.schema or {} ---@type table
     local current_value = item.data.value ---@type any
-    if current_value == nil or type(current_value) == "table" then
+    if current_value == nil then
+        return
+    end
+    if type(current_value) == "table" then
+        ---@type loop.floatwin.MultilineInputOpts
+        local input_opts = {
+            prompt = path,
+            default_text = jsoncodec.to_string(current_value, schema),
+            filetype = "json",
+            validate = function(content)
+                local ok, err = jsoncodec.from_string(content)
+                return ok, ok and nil or "Input is not valid JSON"
+            end,
+        }
+        floatwin.input_multiline(input_opts, function(value)
+            if value then
+                local ok, data = jsoncodec.from_string(value)
+                if ok then
+                    self:_set_value(path, data)
+                else
+                    vim.notify("Invalid JSON")
+                end
+            end
+        end)
         return
     end
     -- Normal scalar editing
@@ -559,25 +582,38 @@ end
 ---@param new_value any
 function JsonEditor:_set_value(path, new_value)
     local parts = validator.split_path(path) ---@type string[]
-    if #parts < 1 then return end
+    local obj = nil
+    local key = nil
 
-    local parent_id = self._itemtree:get_parent_id(path)
-    if not parent_id then return end
-    ---@type loop.comp.ItemTree.Item?
-    local par_item = self._itemtree:get_item(parent_id)
-    if not par_item then return end
+    if #parts == 1 then
+        obj = self._data
+        key = parts[1]
+    else
+        local parent_id = self._itemtree:get_parent_id(path)
+        if parent_id then
+            ---@type loop.comp.ItemTree.Item?
+            local par_item = self._itemtree:get_item(parent_id)
+            if par_item then
+                local last = parts[#parts]
+                obj = par_item.data.value
+                key = vim.islist(par_item.data.value) and tonumber(last) or tostring(last)
+            end
+        end
+    end
 
-    local last = parts[#parts]
-    local key = vim.islist(par_item.data.value) and tonumber(last) or tostring(last)
-
-    self:_push_undo()
-    par_item.data.value[key] = new_value
-    self:_apply_changes()
+    if obj and key then
+        self:_push_undo()
+        obj[key] = new_value
+        self:_apply_changes()
+    else
+        vim.notify("Failed to set value")
+    end
 end
 
 ---@param item loop.comp.ItemTree.Item
 ---@param sibling boolean?
 function JsonEditor:_add_new(item, sibling)
+    local parent = item
     if sibling then
         local parts = validator.split_path(item.data.path)
         if #parts < 2 then return end
@@ -585,61 +621,64 @@ function JsonEditor:_add_new(item, sibling)
         local parent_path = validator.join_path_parts(parts)
         local par_item = self._itemtree:get_item(parent_path)
         if not par_item then return end
-        item = par_item
+        parent = par_item
     end
-    if self._on_add_node then
-        self._on_add_node(item.data.path, function(to_add)
-            if to_add ~= nil then
-                self:_add_new_from_object(item, to_add)
-            else
-                self:_add_new_default(item)
+    local vt = parent.data.value_type ---@type string
+    if vt == "array" then
+        self:get_new_array_member(parent, function(value)
+            if value then
+                self:_push_undo()
+                local pos = #parent.data.value + 1
+                table.insert(parent.data.value, pos, value)
+                self:_apply_changes()
             end
         end)
-    else
-        self:_add_new_default(item)
-    end
-end
-
----@param item loop.comp.ItemTree.Item
-function JsonEditor:_add_new_default(item)
-    local vt = item.data.value_type ---@type string
-    local schema = item.data.schema ---@type table|nil
-
-    if vt == "array" then
-        self:_add_array_item(item, schema)
     elseif vt == "object" then
-        self:_add_object_property(item, schema)
+        self:get_new_object_member(parent, function(key, value)
+            if value then
+                self:_push_undo()
+                parent.data.value[key] = value
+                self:_apply_changes()
+            end
+        end)
     else
         vim.notify("Can only add to object or array", vim.log.levels.INFO)
     end
 end
 
 ---@param item loop.comp.ItemTree.Item
----@param to_add any
-function JsonEditor:_add_new_from_object(item, to_add)
+---@param callback fun(alue:any)
+function JsonEditor:get_new_array_member(item, callback)
     local vt = item.data.value_type ---@type string
-    local path = item.data.path ---@type string
-
+    local schema = item.data.schema ---@type table|nil
     if vt == "array" then
-        self:_push_undo()
-        table.insert(item.data.value, to_add)
-        self:_apply_changes()
-        return
-    end
-
-    if vt == "object" then
-        self:_push_undo()
-        local obj = item.data.value ---@type table
-        for k, v in pairs(to_add) do
-            if obj[k] == nil then
-                obj[k] = v
-            end
+        local items_schema = schema and schema.items
+        if self._get_new_array_item then
+            self._get_new_array_item(item.data.path, function(value)
+                if value ~= nil then
+                    callback(value)
+                else
+                    self:_get_new_value(items_schema, function(v) callback(v) end)
+                end
+            end)
+        else
+            self:_get_new_value(items_schema, function(value) callback(value) end)
         end
-        self:_apply_changes()
-        return
+    else
+        callback(nil)
     end
+end
 
-    vim.notify("Can only add JSON object to object or array", vim.log.levels.INFO)
+---@param item loop.comp.ItemTree.Item
+---@param callback fun(key:string?,value:any)
+function JsonEditor:get_new_object_member(item, callback)
+    local vt = item.data.value_type ---@type string
+    local schema = item.data.schema ---@type table|nil
+    if vt == "object" then
+        self:_get_object_new_value(item, schema, callback)
+    else
+        callback(nil)
+    end
 end
 
 ---@param item loop.comp.ItemTree.Item
@@ -679,28 +718,37 @@ function JsonEditor:_delete(item)
     self:_apply_changes()
 end
 
----@param item loop.comp.ItemTree.Item
 ---@param schema table|nil
-function JsonEditor:_add_array_item(item, schema)
-    local item_schema = schema and schema.items or {} ---@type table
+---@param callback fun(value:any)
+function JsonEditor:_get_new_value(schema, callback)
+    ---@param type_choice string
+    local function get_value(type_choice)
+        local enum = schema and schema.enum or nil
+        if type_choice == "string" or type_choice == "number" or type_choice == "boolean" then
+            _request_value("New array item", type_choice, enum, "", false, function(value)
+                callback(value)
+            end)
+        else
+            callback(_create_default_value(type_choice))
+        end
+    end
 
-    local allowed = _get_allowed_types(item_schema, self._opts.null_support) ---@type string[]
+    local allowed = _get_allowed_types(schema, self._opts.null_support) ---@type string[]
 
     if #allowed == 1 then
-        self:_create_and_add_array_item(item, allowed[1])
+        get_value(allowed[1])
     else
         ---@type {label: string, data: string}[]
         local choices = {}
         for _, t in ipairs(allowed) do
             table.insert(choices, { label = t, data = t })
         end
-
         selector.select({
             prompt = "Select item type",
             items = choices,
             callback = function(data)
                 if data then
-                    self:_create_and_add_array_item(item, data)
+                    get_value(data)
                 end
             end
         })
@@ -708,28 +756,9 @@ function JsonEditor:_add_array_item(item, schema)
 end
 
 ---@param item loop.comp.ItemTree.Item
----@param type_choice string
-function JsonEditor:_create_and_add_array_item(item, type_choice)
-    local schema = item.data.schema or {}
-    if type_choice == "string" or type_choice == "number" or type_choice == "boolean" then
-        _request_value("New array item", type_choice, schema.enum, "", false, function(value)
-            self:_push_undo()
-            local arr = item.data.value ---@type any[]
-            table.insert(arr, value)
-            self:_apply_changes()
-        end)
-    else
-        -- object / array / null → insert directly
-        self:_push_undo()
-        local arr = item.data.value ---@type any[]
-        table.insert(arr, _create_default_value(type_choice))
-        self:_apply_changes()
-    end
-end
-
----@param item loop.comp.ItemTree.Item
 ---@param schema table|nil
-function JsonEditor:_add_object_property(item, schema)
+---@param callback fun(key:string, value:any)
+function JsonEditor:_get_object_new_value(item, schema, callback)
     schema = schema or {} ---@type table
     local obj = item.data.value ---@type table
 
@@ -783,7 +812,9 @@ function JsonEditor:_add_object_property(item, schema)
 
             local schemas = key_candidates[key]
             local function with_schema(prop_schema)
-                self:_choose_type_and_add_property(item, key, prop_schema)
+                self:_get_new_value(prop_schema, function(value)
+                    callback(key, value)
+                end)
             end
 
             if schemas and #schemas > 1 then
@@ -824,55 +855,6 @@ function JsonEditor:_add_object_property(item, schema)
             with_schema(type(ap) == "table" and ap or {})
         end
     )
-end
-
----@param item loop.comp.ItemTree.Item
----@param key string
----@param prop_schema table
-function JsonEditor:_choose_type_and_add_property(item, key, prop_schema)
-    local allowed = _get_allowed_types(prop_schema, self._opts.null_support) ---@type string[]
-
-    if #allowed == 1 then
-        self:_create_and_add_object_property(item, key, allowed[1], prop_schema)
-        return
-    end
-
-    ---@type {label: string, data: string}[]
-    local choices = {}
-    for _, t in ipairs(allowed) do
-        table.insert(choices, { label = t, data = t })
-    end
-
-    selector.select({
-        prompt = "Select property type",
-        items = choices,
-        callback = function(data)
-            if data then
-                self:_create_and_add_object_property(item, key, data, prop_schema)
-            end
-        end
-    })
-end
-
----@param item loop.comp.ItemTree.Item
----@param key string
----@param type_choice string
----@param schema table
-function JsonEditor:_create_and_add_object_property(item, key, type_choice, schema)
-    if type_choice == "string" or type_choice == "number" or type_choice == "boolean" then
-        _request_value("New array item", type_choice, schema.enum, "", false, function(value)
-            self:_push_undo()
-            local obj = item.data.value ---@type table
-            obj[key] = value
-            self:_apply_changes()
-        end)
-    else
-        -- object / array / null → insert directly
-        self:_push_undo()
-        local obj = item.data.value ---@type table
-        obj[key] = _create_default_value(type_choice)
-        self:_apply_changes()
-    end
 end
 
 function JsonEditor:_push_undo()

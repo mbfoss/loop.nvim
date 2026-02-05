@@ -219,7 +219,7 @@ function M.configure_tasks(config_dir)
         schema = tasks_file_schema,
     })
 
-    editor:set_add_node_handler(function(path, continue)
+    editor:set_new_array_item_handler(function(path, callback)
         if path:match("^/tasks$") then
             local category_choices = {}
             for _, elem in ipairs(providers.get_task_template_providers()) do
@@ -250,7 +250,7 @@ function M.configure_tasks(config_dir)
                             items = choices,
                             formatter = _task_preview,
                             callback = function(task)
-                                if task then continue(task) end
+                                if task then callback(task) end
                             end
                         })
                     end
@@ -263,7 +263,7 @@ function M.configure_tasks(config_dir)
             local tasks = _load_tasks(config_dir)
             if not tasks then
                 vim.notify("Failed to load tasks")
-                continue(nil)
+                callback(nil)
             else
                 local choices = {}
                 for _, task in pairs(tasks) do
@@ -274,19 +274,19 @@ function M.configure_tasks(config_dir)
                     end
                 end
                 if #choices == 0 then
-                    continue(nil)
+                    callback(nil)
                 else
                     selector.select({
                         prompt = "Select dependency",
                         items = choices,
                         callback = function(name)
-                            if name then continue(name) end
+                            if name then callback(name) end
                         end
                     })
                 end
             end
         else
-            continue(nil)
+            callback(nil)
         end
     end)
 

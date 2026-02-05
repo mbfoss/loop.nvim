@@ -26,6 +26,12 @@ local _current_win = nil
 ---@field col_offset? number
 ---@field completions? string[]
 
+---@class loop.floatwin.MultilineInputOpts
+---@field prompt? string
+---@field default_text? string
+---@field filetype? string
+---@field validate? fun(content:string):boolean,string?
+
 ---@param buf number
 ---@param opts loop.floatwin.CenteredWinOpts
 function M.open_centered_window(buf, opts)
@@ -230,7 +236,6 @@ function M.input_at_cursor(opts, on_confirm)
     vim.wo[win].winfixbuf = true
     vim.wo[win].winhighlight = "Normal:Normal,NormalNC:Normal,EndOfBuffer:Normal,FloatBorder:Normal"
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, { initial_text })
-    vim.api.nvim_win_set_cursor(win, { 1, #initial_text })
 
     if initial_text == "" then
         vim.schedule(function()
@@ -327,7 +332,7 @@ function M.input_at_cursor(opts, on_confirm)
     })
 end
 
----@param opts loop.floatwin.InputOpts
+---@param opts loop.floatwin.MultilineInputOpts
 ---@param on_confirm fun(value: string|nil)
 function M.input_multiline(opts, on_confirm)
     local prev_win = vim.api.nvim_get_current_win()
@@ -338,10 +343,12 @@ function M.input_multiline(opts, on_confirm)
         buftype = "nofile",
         bufhidden = "wipe",
         swapfile = false,
+        filetype = opts.filetype
     }
     for k, v in pairs(buf_opts) do vim.bo[buf][k] = v end
 
     local initial_text = opts.default_text or ""
+    local have_initial_text = initial_text ~= ""
     local initial_lines = vim.split(initial_text, "\n", { plain = true })
     if #initial_lines == 0 then initial_lines = { "" } end
 
@@ -362,13 +369,14 @@ function M.input_multiline(opts, on_confirm)
     "Normal:Normal,NormalNC:Normal,EndOfBuffer:Normal,FloatBorder:Normal"
 
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, initial_lines)
-    vim.api.nvim_win_set_cursor(win, { #initial_lines, #(initial_lines[#initial_lines] or "") })
 
-    vim.schedule(function()
-        if vim.api.nvim_get_current_win() == win then
-            vim.cmd("startinsert!")
-        end
-    end)
+    if not have_initial_text then
+        vim.schedule(function()
+            if vim.api.nvim_get_current_win() == win then
+                vim.cmd("startinsert!")
+            end
+        end)
+    end
 
     -- ---------------- Close logic ----------------
     local closed = false
@@ -377,7 +385,15 @@ function M.input_multiline(opts, on_confirm)
         return answer == 1
     end
 
+    ---@param value string
     local function close(value)
+        if value and opts.validate then
+            local validated, err_msg = opts.validate(value)
+            if not validated then
+                vim.notify(err_msg or "Validation failed")
+                return
+            end
+        end
         if closed then return end
         closed = true
 
