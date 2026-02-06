@@ -38,24 +38,24 @@ local function _show_help()
     local help_text = {
         "Navigation:",
         "  <CR>     Toggle expand/collapse",
-        "  j/k      Move up/down",
         "",
         "Editing:",
-        "  a        Add element to object or array",
-        "  i        Insert node",
+        "  i        Add element to object or array",
+        "  o        Add element after",
+        "  O        Add element before",
         "  c        Change value",
         "  C        Change value (multiline)",
-        "  d        Delete",
-        "  u        Undo",
-        "  C-r      Redo",
+        "  d        Delete element",
+        "  u        Undo last change",
+        "  C-r      Redo last change",
         "",
         "Other:",
-        "  K        Show node help (hover window)",
+        "  K        Show element help (hover window)",
         "  !        Show validation errors",
         "  g?       Show this help",
     }
 
-    floatwin.show_floatwin(table.concat(help_text, "\n"), { title = "Help" })
+    floatwin.show_floatwin(table.concat(help_text, "\n"), { title = "Show help" })
 end
 
 ---@param filetype string
@@ -357,14 +357,19 @@ function JsonEditor:open(winid)
         callback = function() with_current_item(function(i) self:_edit_value(i, true) end) end,
     })
 
-    buf:add_keymap("a", {
+    buf:add_keymap("i", {
         desc = "Add property/item",
-        callback = function() with_current_item(function(i) self:_add_new(i) end) end,
+        callback = function() with_current_item(function(i) self:_add_new(i, "under") end) end,
     })
 
-    buf:add_keymap("i", {
+    buf:add_keymap("o", {
         desc = "insert item (Add the parent node)",
-        callback = function() with_current_item(function(i) self:_add_new(i, true) end) end,
+        callback = function() with_current_item(function(i) self:_add_new(i, "after") end) end,
+    })
+
+    buf:add_keymap("O", {
+        desc = "insert item (Add the parent node)",
+        callback = function() with_current_item(function(i) self:_add_new(i, "before") end) end,
     })
 
     buf:add_keymap("d", {
@@ -611,24 +616,36 @@ function JsonEditor:_set_value(path, new_value)
 end
 
 ---@param item loop.comp.ItemTree.Item
----@param sibling boolean?
-function JsonEditor:_add_new(item, sibling)
-    local parent = item
-    if sibling then
+---@param where "under"|"before"|"after"
+function JsonEditor:_add_new(item, where)
+    local insert_pos
+    local parent
+    if where == "under" then
+        parent = item
+    else
         local parts = validator.split_path(item.data.path)
         if #parts < 2 then return end
-        table.remove(parts, #parts)
+        local item_key = table.remove(parts, #parts)
         local parent_path = validator.join_path_parts(parts)
         local par_item = self._itemtree:get_item(parent_path)
         if not par_item then return end
         parent = par_item
+        if parent.data.value_type == "array" then
+            if where == "before" then
+                insert_pos = tonumber(item_key)
+            else
+                insert_pos = tonumber(item_key) + 1
+            end
+        end
     end
     local vt = parent.data.value_type ---@type string
     if vt == "array" then
         self:get_new_array_member(parent, function(value)
             if value then
                 self:_push_undo()
-                local pos = #parent.data.value + 1
+                local last_pos = #parent.data.value + 1
+                local pos = insert_pos or last_pos
+                pos = math.min(pos, last_pos)
                 table.insert(parent.data.value, pos, value)
                 self:_apply_changes()
             end
@@ -636,6 +653,7 @@ function JsonEditor:_add_new(item, sibling)
     elseif vt == "object" then
         self:get_new_object_member(parent, function(key, value)
             if value then
+                assert(type(key) == "string")
                 self:_push_undo()
                 parent.data.value[key] = value
                 self:_apply_changes()
