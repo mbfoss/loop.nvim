@@ -11,30 +11,34 @@ local Scheduler = require("loop.tools.Scheduler")
 
 local M = {}
 
----@type table<number, loop.tools.Scheduler>
-local _base_schedulers = {}
+---@alias loop.TaskScheduler.PlanTasks table<string, { control: table, task: loop.Task }>
+
+---@class loop.TaskScheduler.PlanData
+---@field base_scheduler loop.tools.Scheduler
+---@field running_tasks loop.TaskScheduler.PlanTasks
+
+---@type table<number, loop.TaskScheduler.PlanData>
+local _plans = {}
 
 ---@type number
-local _last_base_scheduler_id = 0
+local _last_plan_id = 0
 
 ---@param trigger  loop.scheduler.exit_trigger
 ---@param param string?
 local function _get_failure_message(trigger, param)
-    local reason
     if trigger == "cycle" then
-        reason = "Task dependency loop detected in task: " .. tostring(param)
+        return "Task dependency loop detected in task: " .. tostring(param)
     elseif trigger == "invalid_node" then
-        reason = "Invalid task name: " .. tostring(param)
+        return "Invalid task name: " .. tostring(param)
     elseif trigger == "interrupt" then
-        reason = "Task interrupted"
+        return "Task interrupted"
     elseif trigger == "deps_failed" then
-        reason = "Dependency task failed"
+        return "Dependency task failed"
     elseif trigger == "node" then
-        reason = param or "Task failed"
+        return param or "Task failed"
     else
-        reason = "Task failed (" .. tostring(reason) .. ")"
+        return "Task failed (" .. tostring(param) .. ")"
     end
-    return reason
 end
 
 ---@param tasks loop.Task[]
@@ -65,33 +69,81 @@ local function _validate_and_build_nodes(tasks, root)
     return name_to_task, nodes, nil
 end
 
+---@param plan_id number
+---@param task loop.Task
+---@param start_task loop.TaskScheduler.StartTaskFn
+---@param on_exit fun(ok:boolean, reason:string|nil)):
+---@return loop.TaskControl?, string?
+local function _start_plan_task(plan_id, task, start_task, on_exit)
+    local plan_data = _plans[plan_id]
+    assert(plan_data)
+    assert(not plan_data.running_tasks[task.name], "Unexpected schedule logic error: task started twice in the same plan")
+
+    if task.concurrency == "refuse" then
+        for _, plan in ipairs(_plans) do
+            if plan.running_tasks[task.name] then
+                return nil, "Task refused (already running)"
+            end
+        end
+    end
+
+    -- Handle concurrency
+    if task.concurrency == "restart" then
+        ---@type loop.TaskControl[]
+        local running = {}
+        for _, plan in ipairs(_plans) do
+            local plan_task = plan.running_tasks[task.name]
+            if plan_task then
+                table.insert(running, plan_task.control)
+            end
+        end
+        if #running > 1 then
+            return nil, "task concurrency set as 'restart' but multiple instances already running"
+        end
+        if #running == 1 then
+            -- TODO
+        end
+    end
+
+    local control, err = start_task(task, on_exit)
+    if control then
+        plan_data.running_tasks[task.name] = { control = control, task = task }
+    end
+
+    return control, err
+end
+
 ---@param tasks loop.Task[]
 ---@param root string
 ---@param start_task loop.TaskScheduler.StartTaskFn
 ---@param on_task_event loop.TaskScheduler.TaskEventFn
 ---@param on_exit? fun(success:boolean, reason?:string)
 function M.start(tasks, root, start_task, on_task_event, on_exit)
-    local on_plan_exit = function(success, reason)
+    local call_on_exit = function(success, reason)
         if on_exit then on_exit(success, reason) end
     end
 
-    local name_to_task, nodes, err = _validate_and_build_nodes(tasks, root)
-    if err or not name_to_task or not nodes then
-        vim.schedule_wrap(on_plan_exit)(false, err)
+    local name_to_task, nodes, validation_err = _validate_and_build_nodes(tasks, root)
+    if validation_err or not name_to_task or not nodes then
+        vim.schedule_wrap(call_on_exit)(false, validation_err)
         return
     end
 
+    _last_plan_id = _last_plan_id + 1
+    local plan_id = _last_plan_id
+
     ---@type loop.scheduler.StartNodeFn
-    local function start_node(id, on_node_exit)
+    local start_node = function(id, on_node_exit)
         local task = name_to_task[id] --[[@as loop.Task]]
-        return start_task(task, on_node_exit)
+        assert(task)
+        return _start_plan_task(plan_id, task, start_task, on_node_exit)
     end
 
-    local scheduler = Scheduler:new(nodes, start_node)
-    _last_base_scheduler_id = _last_base_scheduler_id + 1
-    _base_schedulers[_last_base_scheduler_id] = scheduler
-
-    local final_cb = vim.schedule_wrap(on_plan_exit)
+    local scheduler = Scheduler:new()
+    _plans[plan_id] = {
+        base_scheduler = scheduler,
+        running_tasks = {}
+    }
 
     ---@type loop.scheduler.NodeEventFn
     local function on_node_event(id, event, success, reason, param)
@@ -100,24 +152,24 @@ function M.start(tasks, root, start_task, on_task_event, on_exit)
     end
 
     ---@type loop.scheduler.exit_fn
-    local on_plan_end = function(success, trigger, param)
+    local on_schedule_end = function(success, trigger, param)
         local msg = success and "" or _get_failure_message(trigger, param)
-        final_cb(success, msg)
+        vim.schedule_wrap(call_on_exit)(success, msg)
     end
 
-    scheduler:start(root, on_node_event, on_plan_end)
+    scheduler:start(nodes, root, start_node, on_node_event, on_schedule_end)
 end
 
 function M.terminate()
-    for _, s in pairs(_base_schedulers) do
-        s:terminate()
+    for _, p in pairs(_plans) do
+        p.base_scheduler:terminate()
     end
 end
 
 ---@return boolean
 function M.is_running()
-    for _, s in pairs(_base_schedulers) do
-        if s:is_running() then return true end
+    for _, p in pairs(_plans) do
+        if p.base_scheduler:is_running() then return true end
     end
     return false
 end

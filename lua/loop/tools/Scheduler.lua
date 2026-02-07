@@ -14,7 +14,7 @@ local class = require("loop.tools.class")
 ---@field order "sequence"|"parallel"|nil
 
 ---@class loop.tools.Scheduler
----@field new fun(self:loop.tools.Scheduler,nodes:loop.scheduler.Node[],start_node:loop.scheduler.StartNodeFn):loop.tools.Scheduler
+---@field new fun(self:loop.tools.Scheduler):loop.tools.Scheduler
 ---@field _nodes table<loop.scheduler.NodeId, loop.scheduler.Node>
 ---@field _start_node loop.scheduler.StartNodeFn
 ---@field _running table<loop.scheduler.NodeId, { terminate:fun() }>
@@ -27,16 +27,8 @@ local Scheduler = class()
 --──────────────────────────────────────────────────────────────────────────────
 -- Constructor
 --──────────────────────────────────────────────────────────────────────────────
----@param nodes loop.scheduler.Node[]
----@param start_node loop.scheduler.StartNodeFn
-function Scheduler:init(nodes, start_node)
+function Scheduler:init()
     self._nodes = {}
-    for _, n in ipairs(nodes) do
-        self._nodes[n.id] = n
-    end
-
-    self._start_node = start_node
-
     ---@type {loop.scheduler.NodeId: {on_node_event:loop.scheduler.NodeEventFn,on_exit:loop.scheduler.exit_fn}[]}
     self._inflight = {} -- NodeId → list of waiting callbacks
     self._running = {}
@@ -52,16 +44,25 @@ end
 --──────────────────────────────────────────────────────────────────────────────
 -- Public API
 --──────────────────────────────────────────────────────────────────────────────
+---@param nodes loop.scheduler.Node[]
 ---@param root loop.scheduler.NodeId
+---@param start_node loop.scheduler.StartNodeFn
 ---@param on_exit loop.scheduler.exit_fn
 ---@param on_node_event loop.scheduler.NodeEventFn
-function Scheduler:start(root, on_node_event, on_exit)
+function Scheduler:start(nodes, root, start_node, on_node_event, on_exit)
     if self._current_run_id then
         vim.schedule(function()
             on_exit(false, "interrupt", "another schedule is running")
         end)
         return
     end
+
+    self._nodes = {}
+    for _, n in ipairs(nodes) do
+        self._nodes[n.id] = n
+    end
+    self._start_node = start_node
+
     self._run_id = self._run_id + 1
     local my_run = self._run_id
 
@@ -265,7 +266,7 @@ function Scheduler:_run_leaf(run_id, id, on_exit)
     self._pending_running = self._pending_running + 1
 
     local ctl, err = self._start_node(id, function(ok, reason)
-        vim.schedule(function()
+        vim.schedule(function() -- important to schedule because on_exit my be called before the ctrl is returned
             self._running[id] = nil
             self._pending_running = math.max(0, self._pending_running - 1)
             self:_check_termination_complete()
