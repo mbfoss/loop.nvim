@@ -14,6 +14,10 @@ local _workspace_info
 
 ---@type loop.PageManagerFactory?
 local _page_manager_fact
+
+---@type table<string,loop.PageManager>?
+local _page_managers
+
 ---@
 ---@type loop.task.TasksStatusComp?,loop.PageController?,loop.PageGroup?
 local _status_comp, _status_page, _status_pagegroup
@@ -104,9 +108,17 @@ end
 ---@return loop.TaskControl|nil, string|nil
 local function _start_task(task, on_exit)
     logs.user_log("Starting task:\n" .. vim.inspect(task), "task")
-    assert(_page_manager_fact)
-    local page_manager = _page_manager_fact()
-    return taskmgr.run_one_task(task, page_manager, on_exit)
+    assert(_page_manager_fact and _page_managers)
+
+    local pm = _page_manager_fact()
+    if task.concurrency ~= "parallel" then
+        local old_pm = _page_managers[task.name]
+        if old_pm then
+            old_pm.delete_all_groups(true)
+        end
+        _page_managers[task.name] = pm
+    end
+    return taskmgr.run_one_task(task, pm, on_exit)
 end
 
 ---@param config_dir string
@@ -127,6 +139,7 @@ end
 function M.on_workspace_open(ws_info, page_manager_fact)
     _workspace_info = ws_info
     _page_manager_fact = page_manager_fact
+    _page_managers = {}
     if (_status_comp or _status_page or _status_pagegroup) then return end
     local group = page_manager_fact().add_page_group("Status")
     assert(group, "page mgr error")
@@ -146,6 +159,12 @@ end
 function M.on_workspace_close()
     _page_manager_fact = nil
     _workspace_info = nil
+    if _page_managers then
+        for _, pm in pairs(_page_managers) do
+            pm.delete_all_groups(true)
+        end
+    end
+    _page_managers = nil
 end
 
 ---@param mode "task"|"repeat"
