@@ -1,13 +1,13 @@
-local M                  = {}
+local M              = {}
 
-local taskmgr            = require("loop.task.taskmgr")
-local resolver           = require("loop.tools.resolver")
-local logs               = require("loop.logs")
-local TaskScheduler      = require("loop.task.TaskScheduler")
-local StatusComp         = require("loop.task.StatusComp")
-local config             = require("loop.config")
-local variablesmgr       = require("loop.task.variablesmgr")
-local strtools           = require("loop.tools.strtools")
+local taskmgr        = require("loop.task.taskmgr")
+local resolver       = require("loop.tools.resolver")
+local logs           = require("loop.logs")
+local task_scheduler = require("loop.task.task_scheduler")
+local StatusComp     = require("loop.task.StatusComp")
+local config         = require("loop.config")
+local variablesmgr   = require("loop.task.variablesmgr")
+local strtools       = require("loop.tools.strtools")
 
 ---@type loop.ws.WorkspaceInfo?
 local _workspace_info
@@ -17,11 +17,6 @@ local _page_manager_fact
 ---@
 ---@type loop.task.TasksStatusComp?,loop.PageController?,loop.PageGroup?
 local _status_comp, _status_page, _status_pagegroup
-
----@type table<number,loop.TaskScheduler>
-local _schedulers        = {}
----@type number
-local _last_scheduler_id = 0
 
 ---@param task_name string
 ---@param name_to_task table<string, loop.Task>
@@ -258,15 +253,10 @@ function M.run_task(all_tasks, root_name)
             end
         end
 
-        -- Start the real execution
-        local scheduler = TaskScheduler:new()
-        _last_scheduler_id = _last_scheduler_id + 1
-        _schedulers[_last_scheduler_id] = scheduler
-
-        scheduler:start(
+        task_scheduler.start(
             resolved_tasks,
             root_name,
-            function (task, on_exit)
+            function(task, on_exit)
                 _status_page.set_ui_flags(config.current.window.symbols.running)
                 return _start_task(task, on_exit)
             end,
@@ -291,19 +281,12 @@ end
 --- Check if a task plan is currently running or terminating
 ---@return boolean
 function M.have_running_task()
-    for _, s in pairs(_schedulers) do
-        if s:is_running() then
-            return true
-        end
-    end
-    return false
+    return task_scheduler.is_running()
 end
 
 --- Terminate the currently running task plan (if any)
 function M.terminate_tasks()
-    for _, s in pairs(_schedulers) do
-        s:terminate();
-    end
+    task_scheduler.terminate()
 end
 
 return M

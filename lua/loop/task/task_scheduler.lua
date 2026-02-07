@@ -9,10 +9,10 @@ local Scheduler = require("loop.tools.Scheduler")
 ---@field order "sequence"|"parallel"       -- Dependency execution order
 ---@field deps loop.TaskTreeNode[]           -- Child dependency nodes
 
----@class loop.TaskScheduler
----@field new fun(self:loop.TaskScheduler):loop.TaskScheduler
----@field _base_scheduler loop.tools.Scheduler?
-local TaskScheduler = class()
+local M = {}
+
+---@type loop.tools.Scheduler
+local _base_scheduler
 
 ---@param trigger  loop.scheduler.exit_trigger
 ---@param param string?
@@ -62,17 +62,13 @@ local function _validate_and_build_nodes(tasks, root)
     return name_to_task, nodes, nil
 end
 
---- Create a new TaskScheduler
-function TaskScheduler:init()
-end
-
 ---@param tasks loop.Task[]
 ---@param root string
 ---@param start_task loop.TaskScheduler.StartTaskFn
 ---@param on_task_event loop.TaskScheduler.TaskEventFn
 ---@param on_exit? fun(success:boolean, reason?:string)
-function TaskScheduler:start(tasks, root, start_task, on_task_event, on_exit)
-    assert(not self._base_scheduler)
+function M.start(tasks, root, start_task, on_task_event, on_exit)
+    assert(not _base_scheduler)
     local on_plan_exit = function(success, reason)
         if on_exit then on_exit(success, reason) end
     end
@@ -89,8 +85,8 @@ function TaskScheduler:start(tasks, root, start_task, on_task_event, on_exit)
         return start_task(task, on_node_exit)
     end
 
-    self._base_scheduler = Scheduler:new(nodes, start_node)
-    local scheduler = self._base_scheduler
+    _base_scheduler = Scheduler:new(nodes, start_node)
+    local scheduler = _base_scheduler
     assert(scheduler)
 
     local final_cb = vim.schedule_wrap(on_plan_exit)
@@ -110,18 +106,18 @@ function TaskScheduler:start(tasks, root, start_task, on_task_event, on_exit)
     scheduler:start(root, on_node_event, on_plan_end)
 end
 
-function TaskScheduler:terminate()
-    if self._base_scheduler then
-        self._base_scheduler:terminate()
+function M.terminate()
+    if _base_scheduler then
+        _base_scheduler:terminate()
     end
 end
 
 ---@return boolean
-function TaskScheduler:is_running()
-    if self._base_scheduler then
-        self._base_scheduler:is_running()
+function M.is_running()
+    if _base_scheduler then
+        _base_scheduler:is_running()
     end
     return false
 end
 
-return TaskScheduler
+return M
