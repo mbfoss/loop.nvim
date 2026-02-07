@@ -662,7 +662,7 @@ local function _create_page_manager()
     }
 end
 
-function M.get_page_manger_factory()
+function M.get_page_manager_factory()
     if not _page_manger_factory then
         _page_manger_factory = function()
             return _create_page_manager()

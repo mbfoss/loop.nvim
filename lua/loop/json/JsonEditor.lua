@@ -159,7 +159,7 @@ local function _show_node_help(item)
             if type(value) == "table" then
                 value = vim.inspect(value):gsub("\n", " ")
             end
-            table.insert(lines, ("  %-14s %s"):format(label .. ":", tostring(value)))
+            table.insert(lines, ("  %s: %s"):format(label, tostring(value)))
         end
 
         if type(schema.description) then

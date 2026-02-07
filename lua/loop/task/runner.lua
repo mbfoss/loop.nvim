@@ -9,6 +9,12 @@ local config        = require("loop.config")
 local variablesmgr  = require("loop.task.variablesmgr")
 local strtools      = require("loop.tools.strtools")
 
+---@type loop.ws.WorkspaceInfo?
+local _workspace_info
+
+---@type loop.PageManagerFactory?
+local _page_manager_fact
+---@
 ---@type loop.task.TasksStatusComp?,loop.PageController?,loop.PageGroup?
 local _status_comp, _status_page, _status_pagegroup
 
@@ -109,8 +115,11 @@ local function _load_variables(config_dir)
     return vars, var_errors
 end
 
+---@param ws_info loop.ws.WorkspaceInfo
 ---@param page_manager_fact loop.PageManagerFactory
-function M.init_status_page(page_manager_fact)
+function M.on_workspace_open(ws_info, page_manager_fact)
+    _workspace_info = ws_info
+    _page_manager_fact = page_manager_fact
     if (_status_comp or _status_page or _status_pagegroup) then return end
     local group = page_manager_fact().add_page_group("Status")
     assert(group, "page mgr error")
@@ -127,28 +136,34 @@ function M.init_status_page(page_manager_fact)
     _status_comp, _status_page, _status_pagegroup = comp, page_data.page, group
 end
 
----@param ws_dir string
----@param config_dir string
+function M.on_workspace_close()
+    _page_manager_fact = nil
+    _workspace_info = nil
+end
+
 ---@param mode "task"|"repeat"
 ---@param task_name string|nil
-function M.load_and_run_task(ws_dir, config_dir, mode, task_name)
+function M.load_and_run_task(mode, task_name)
+    assert(_workspace_info)
+    local config_dir = _workspace_info.config_dir
+
     taskmgr.get_or_select_task(config_dir, mode, task_name, function(root_name, all_tasks)
         if not root_name or not all_tasks then
             return
         end
         taskmgr.save_last_task_name(root_name, config_dir)
-        M.run_task(ws_dir, config_dir, all_tasks, root_name)
+        M.run_task(all_tasks, root_name)
     end)
 end
 
----@param ws_dir string
----@param config_dir string
 ---@param all_tasks loop.Task[]
 ---@param root_name string
-function M.run_task(ws_dir, config_dir, all_tasks, root_name)
-    assert(type(ws_dir) == "string")
-    assert(type(config_dir) == "string")
+function M.run_task(all_tasks, root_name)
+    assert(_workspace_info)
     assert(_status_comp and _status_page and _status_pagegroup)
+
+    local ws_dir = _workspace_info.ws_dir
+    local config_dir = _workspace_info.config_dir
 
     -- Log task start
     logs.user_log("Task started: " .. root_name, "task")

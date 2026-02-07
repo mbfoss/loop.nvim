@@ -107,6 +107,7 @@ local function _close_workspace(quiet)
     _save_workspace()
 
     extdata.on_workspace_unload(_workspace_info)
+    runner.on_workspace_close()
 
     if not quiet and _workspace_info then
         local label = _workspace_info.name or _workspace_info.ws_dir
@@ -201,8 +202,9 @@ local function _load_workspace(dir)
 
     window.load_settings(config_dir)
 
-    local page_manager_fact = window.get_page_manger_factory()
+    local page_manager_fact = window.get_page_manager_factory()
     taskmgr.reset_provider_list(dir, page_manager_fact)
+    runner.on_workspace_open(_workspace_info, page_manager_fact)
     extdata.on_workspace_load(_workspace_info, page_manager_fact)
 
     if not _save_timer then
@@ -469,16 +471,13 @@ function M.task_command(command, arg1, arg2)
         return
     end
 
-    runner.init_status_page(window.get_page_manger_factory())
-
     command = command and command:match("^%s*(.-)%s*$") or ""
     command = command ~= "" and command or "run"
-    local ws_dir = ws_info.ws_dir
     local config_dir = ws_info.config_dir
     if command == "run" then
-        runner.load_and_run_task(ws_dir, config_dir, "task", arg1)
+        runner.load_and_run_task("task", arg1)
     elseif command == "repeat" then
-        runner.load_and_run_task(ws_dir, config_dir, "repeat")
+        runner.load_and_run_task("repeat")
     elseif command == "configure" then
         taskmgr.configure_tasks(config_dir)
     elseif command == "terminate" then
@@ -567,7 +566,6 @@ end
 
 function M.show_window()
     assert(_init_done, _init_err_msg)
-    runner.init_status_page(window.get_page_manger_factory())
     window.show_window()
 end
 
@@ -578,7 +576,6 @@ end
 
 function M.toggle_window()
     assert(_init_done, _init_err_msg)
-    runner.init_status_page(window.get_page_manger_factory())
     window.toggle_window()
 end
 

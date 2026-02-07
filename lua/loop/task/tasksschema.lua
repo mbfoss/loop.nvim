@@ -27,7 +27,7 @@ local base_items = {
     description = "Task properties",
     additionalProperties = false,
     required = { "name", "type" },
-    ["x-order"] = { "name", "type", "depends_on", "depends_order", "save_buffers" },
+    ["x-order"] = { "name", "type", "concurrency", "depends_on", "depends_order", "save_buffers" },
 
     properties = {
         name = {
@@ -39,6 +39,18 @@ local base_items = {
         type = {
             type = "string",
             description = "Task type"
+        },
+
+        concurrency = {
+            type = "string",
+            description =
+            "Action to take if the task is already running\nrestart: Stop the existing task and start a new one\nrefuse: The new task is not started\nparallel: A new instance of the task is started in parallel",
+            enum = { "restart", "refuse", "parallel" }
+        },
+
+        stop_dependants = {
+            type = { "boolean", "null" },
+            description = "Stop any running task that depends on this task before starting"
         },
 
         depends_on = {
