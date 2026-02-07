@@ -11,8 +11,11 @@ local Scheduler = require("loop.tools.Scheduler")
 
 local M = {}
 
----@type loop.tools.Scheduler
-local _base_scheduler
+---@type table<number, loop.tools.Scheduler>
+local _base_schedulers = {}
+
+---@type number
+local _last_base_scheduler_id = 0
 
 ---@param trigger  loop.scheduler.exit_trigger
 ---@param param string?
@@ -85,9 +88,9 @@ function M.start(tasks, root, start_task, on_task_event, on_exit)
         return start_task(task, on_node_exit)
     end
 
-    _base_scheduler = Scheduler:new(nodes, start_node)
-    local scheduler = _base_scheduler
-    assert(scheduler)
+    local scheduler = Scheduler:new(nodes, start_node)
+    _last_base_scheduler_id = _last_base_scheduler_id + 1
+    _base_schedulers[_last_base_scheduler_id] = scheduler
 
     local final_cb = vim.schedule_wrap(on_plan_exit)
 
@@ -107,15 +110,15 @@ function M.start(tasks, root, start_task, on_task_event, on_exit)
 end
 
 function M.terminate()
-    if _base_scheduler then
-        _base_scheduler:terminate()
+    for _, s in pairs(_base_schedulers) do
+        s:terminate()
     end
 end
 
 ---@return boolean
 function M.is_running()
-    if _base_scheduler then
-        _base_scheduler:is_running()
+    for _, s in pairs(_base_schedulers) do
+        if s:is_running() then return true end
     end
     return false
 end
