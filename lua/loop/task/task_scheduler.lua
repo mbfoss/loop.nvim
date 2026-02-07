@@ -71,7 +71,6 @@ end
 ---@param on_task_event loop.TaskScheduler.TaskEventFn
 ---@param on_exit? fun(success:boolean, reason?:string)
 function M.start(tasks, root, start_task, on_task_event, on_exit)
-    assert(not _base_scheduler)
     local on_plan_exit = function(success, reason)
         if on_exit then on_exit(success, reason) end
     end

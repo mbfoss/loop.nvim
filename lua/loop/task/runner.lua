@@ -99,27 +99,14 @@ local function _print_task_tree(node, prefix, is_last)
     return line
 end
 
+---@param task loop.Task
+---@param on_exit loop.TaskExitHandler
+---@return loop.TaskControl|nil, string|nil
 local function _start_task(task, on_exit)
     logs.user_log("Starting task:\n" .. vim.inspect(task), "task")
-
-    local provider = taskmgr.get_task_type_provider(task.type)
-    if not provider then
-        return nil, "No provider registered for task type: " .. task.type
-    end
-
-    local exit_handler = vim.schedule_wrap(function(success, reason)
-        on_exit(success, reason)
-    end)
-
     assert(_page_manager_fact)
     local page_manager = _page_manager_fact()
-
-    local control, start_err = provider.start_one_task(task, page_manager, exit_handler)
-    if not control then
-        return nil, start_err or ("Failed to start task '" .. task.name .. "'")
-    end
-
-    return control
+    return taskmgr.run_one_task(task, page_manager, on_exit)
 end
 
 ---@param config_dir string
