@@ -11,7 +11,9 @@ local Scheduler = require("loop.tools.Scheduler")
 
 local M = {}
 
----@alias loop.TaskScheduler.PlanTasks table<string, { control: table, task: loop.Task }>
+---@alias loop.TaskScheduler.PlanTaskWaiter {interrupt:function, trigger:function}
+---@alias loop.TaskScheduler.PlanTask { control: loop.TaskControl, task: loop.Task, waiter:loop.TaskScheduler.PlanTaskWaiter? }
+---@alias loop.TaskScheduler.PlanTasks table<string, loop.TaskScheduler.PlanTask>
 
 ---@class loop.TaskScheduler.PlanData
 ---@field base_scheduler loop.tools.Scheduler
@@ -79,6 +81,25 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
     assert(plan_data)
     assert(not plan_data.running_tasks[task.name], "Unexpected schedule logic error: task started twice in the same plan")
 
+    local do_start_task = function()
+        local control, err = start_task(task, function(ok, reason)
+            vim.schedule(function()
+                local plan_task = plan_data.running_tasks[task.name]
+                if plan_task then
+                    plan_data.running_tasks[task.name] = nil
+                    on_exit(ok, reason)
+                    if plan_task and plan_task.waiter then
+                        plan_task.waiter.trigger()
+                    end
+                end
+            end)
+        end)
+        if control then
+            plan_data.running_tasks[task.name] = { control = control, task = task }
+        end
+        return control, err
+    end
+
     if task.concurrency == "refuse" then
         for _, plan in ipairs(_plans) do
             if plan.running_tasks[task.name] then
@@ -89,28 +110,53 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
 
     -- Handle concurrency
     if task.concurrency == "restart" then
-        ---@type loop.TaskControl[]
+        ---@type loop.TaskScheduler.PlanTask[]
         local running = {}
         for _, plan in ipairs(_plans) do
             local plan_task = plan.running_tasks[task.name]
             if plan_task then
-                table.insert(running, plan_task.control)
+                table.insert(running, plan_task)
             end
         end
         if #running > 1 then
-            return nil, "task concurrency set as 'restart' but multiple instances already running"
+            return nil, "task concurrency set as 'restart' but multiple instances are already running"
         end
         if #running == 1 then
-            -- TODO
+            ---@type loop.TaskControl?,string?,boolean
+            local new_ctrl, new_err, terminated
+            ---@type loop.TaskScheduler.PlanTask
+            local old = running[1]
+            if old.waiter then
+                old.waiter.interrupt()
+            end
+            old.waiter = {
+                interrupt = function()
+                    terminated = true
+                end,
+                trigger = function()
+                    if not terminated then
+                        new_ctrl, new_err = do_start_task()
+                        if not new_ctrl then
+                            on_exit(false, new_err)
+                        end
+                    end
+                end
+            }
+            -- stop the old one
+            old.control.terminate()
+            ---@type loop.TaskControl
+            return {
+                terminate = function()
+                    terminated = true
+                    if new_ctrl then
+                        new_ctrl.terminate()
+                    end
+                end
+            }
         end
     end
 
-    local control, err = start_task(task, on_exit)
-    if control then
-        plan_data.running_tasks[task.name] = { control = control, task = task }
-    end
-
-    return control, err
+    return do_start_task()
 end
 
 ---@param tasks loop.Task[]
@@ -154,7 +200,10 @@ function M.start(tasks, root, start_task, on_task_event, on_exit)
     ---@type loop.scheduler.exit_fn
     local on_schedule_end = function(success, trigger, param)
         local msg = success and "" or _get_failure_message(trigger, param)
-        vim.schedule_wrap(call_on_exit)(success, msg)
+        vim.schedule(function()
+            _plans[plan_id] = nil
+            call_on_exit(success, msg)
+        end)
     end
 
     scheduler:start(nodes, root, start_node, on_node_event, on_schedule_end)
