@@ -1,13 +1,13 @@
-local M             = {}
+local M                  = {}
 
-local taskmgr       = require("loop.task.taskmgr")
-local resolver      = require("loop.tools.resolver")
-local logs          = require("loop.logs")
-local TaskScheduler = require("loop.task.TaskScheduler")
-local StatusComp    = require("loop.task.StatusComp")
-local config        = require("loop.config")
-local variablesmgr  = require("loop.task.variablesmgr")
-local strtools      = require("loop.tools.strtools")
+local taskmgr            = require("loop.task.taskmgr")
+local resolver           = require("loop.tools.resolver")
+local logs               = require("loop.logs")
+local TaskScheduler      = require("loop.task.TaskScheduler")
+local StatusComp         = require("loop.task.StatusComp")
+local config             = require("loop.config")
+local variablesmgr       = require("loop.task.variablesmgr")
+local strtools           = require("loop.tools.strtools")
 
 ---@type loop.ws.WorkspaceInfo?
 local _workspace_info
@@ -18,8 +18,10 @@ local _page_manager_fact
 ---@type loop.task.TasksStatusComp?,loop.PageController?,loop.PageGroup?
 local _status_comp, _status_page, _status_pagegroup
 
----@type loop.TaskScheduler
-local _scheduler    = TaskScheduler:new()
+---@type table<number,loop.TaskScheduler>
+local _schedulers        = {}
+---@type number
+local _last_scheduler_id = 0
 
 ---@param task_name string
 ---@param name_to_task table<string, loop.Task>
@@ -100,6 +102,29 @@ local function _print_task_tree(node, prefix, is_last)
         end
     end
     return line
+end
+
+local function _start_task(task, on_exit)
+    logs.user_log("Starting task:\n" .. vim.inspect(task), "task")
+
+    local provider = taskmgr.get_task_type_provider(task.type)
+    if not provider then
+        return nil, "No provider registered for task type: " .. task.type
+    end
+
+    local exit_handler = vim.schedule_wrap(function(success, reason)
+        on_exit(success, reason)
+    end)
+
+    assert(_page_manager_fact)
+    local page_manager = _page_manager_fact()
+
+    local control, start_err = provider.start_one_task(task, page_manager, exit_handler)
+    if not control then
+        return nil, start_err or ("Failed to start task '" .. task.name .. "'")
+    end
+
+    return control
 end
 
 ---@param config_dir string
@@ -234,11 +259,16 @@ function M.run_task(all_tasks, root_name)
         end
 
         -- Start the real execution
-        _scheduler:start(
+        local scheduler = TaskScheduler:new()
+        _last_scheduler_id = _last_scheduler_id + 1
+        _schedulers[_last_scheduler_id] = scheduler
+
+        scheduler:start(
             resolved_tasks,
             root_name,
-            function() -- on start
+            function (task, on_exit)
                 _status_page.set_ui_flags(config.current.window.symbols.running)
+                return _start_task(task, on_exit)
             end,
             function(name, event, success, reason) -- on task event
                 logs.user_log(("%s: %s"):format(name, reason ~= "" and reason or event), "task")
@@ -261,14 +291,18 @@ end
 --- Check if a task plan is currently running or terminating
 ---@return boolean
 function M.have_running_task()
-    return _scheduler:is_running()
+    for _, s in pairs(_schedulers) do
+        if s:is_running() then
+            return true
+        end
+    end
+    return false
 end
 
 --- Terminate the currently running task plan (if any)
 function M.terminate_tasks()
-    if _scheduler:is_running() then
-        _scheduler:terminate()
-        logs.user_log("Task terminated by user", "task")
+    for _, s in pairs(_schedulers) do
+        s:terminate();
     end
 end
 

@@ -62,7 +62,7 @@ function M.get_composite_task_provider()
         get_task_schema = function()
             return {}
         end,
-        start_one_task = function(task, on_exit)
+        start_one_task = function(task, page_manager, on_exit)
             -- composite task does nothing by itself
             on_exit(true)
             ---@type loop.TaskControl
@@ -73,8 +73,7 @@ function M.get_composite_task_provider()
 end
 
 ---@param ws_dir string
----@param page_manager loop.PageManager
-function M.get_process_task_provider(ws_dir, page_manager)
+function M.get_process_task_provider(ws_dir)
     assert(type(ws_dir) == "string")
     ---@type loop.TaskTypeProvider
     return {
@@ -82,7 +81,7 @@ function M.get_process_task_provider(ws_dir, page_manager)
             local schema = require('loop.coretasks.processschema')
             return schema
         end,
-        start_one_task = function(task, on_exit)
+        start_one_task = function(task, page_manager, on_exit)
             ---@cast task loop.coretasks.process.Task
             return process_task.start_task(ws_dir, task, page_manager, on_exit)
         end
