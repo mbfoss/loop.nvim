@@ -33,7 +33,6 @@ function BaseBuffer:destroy()
     self._destroyed = true
     if self._buf > 0 then
         vim.api.nvim_buf_delete(self._buf, { force = true })
-        assert(self._buf == -1)
     end
 end
 

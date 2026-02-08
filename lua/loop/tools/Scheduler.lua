@@ -24,6 +24,49 @@ local class = require("loop.tools.class")
 ---@field _run_id integer
 local Scheduler = class()
 
+---@param nodes loop.scheduler.Node[]
+---@param root string
+---@return boolean, string? -- returns true + node name if a cycle is found
+local function _detect_loop(nodes, root)
+    local node_map = {}
+    for _, n in ipairs(nodes) do
+        node_map[n.id] = n
+    end
+
+    local visiting = {}
+    local visited = {}
+
+    local function dfs(node_id)
+        if visiting[node_id] then
+            return true, node_id -- cycle detected
+        end
+        if visited[node_id] then
+            return false
+        end
+
+        visiting[node_id] = true
+        local node = node_map[node_id]
+        if not node then
+            visiting[node_id] = nil
+            return false -- missing nodes are ignored here
+        end
+
+        for _, dep_id in ipairs(node.deps or {}) do
+            local has_cycle, cycle_node = dfs(dep_id)
+            if has_cycle then
+                return true, cycle_node
+            end
+        end
+
+        visiting[node_id] = nil
+        visited[node_id] = true
+        return false
+    end
+
+    return dfs(root)
+end
+
+
 --──────────────────────────────────────────────────────────────────────────────
 -- Constructor
 --──────────────────────────────────────────────────────────────────────────────
@@ -56,6 +99,16 @@ function Scheduler:start(nodes, root, start_node, on_node_event, on_exit)
         end)
         return
     end
+
+    -- Check for cycles before starting
+    local has_cycle, cycle_node = _detect_loop(nodes, root)
+    if has_cycle then
+        vim.schedule(function()
+            on_exit(false, "cycle", cycle_node)
+        end)
+        return
+    end
+
 
     self._nodes = {}
     for _, n in ipairs(nodes) do

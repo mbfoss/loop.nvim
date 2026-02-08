@@ -3,7 +3,7 @@ local M              = {}
 local taskmgr        = require("loop.task.taskmgr")
 local resolver       = require("loop.tools.resolver")
 local logs           = require("loop.logs")
-local task_scheduler = require("loop.task.tasksscheduler")
+local task_scheduler = require("loop.task.taskscheduler")
 local StatusComp     = require("loop.task.StatusComp")
 local config         = require("loop.config")
 local variablesmgr   = require("loop.task.variablesmgr")
@@ -112,10 +112,10 @@ local function _start_task(task, on_exit)
 
     local pm = _page_manager_fact()
     if task.concurrency ~= "parallel" then
-        local old_pm = _page_managers[task.name]
-        if old_pm then
-            old_pm.delete_all_groups(true)
-        end
+        --local old_pm = _page_managers[task.name]
+        --if old_pm then
+        --    old_pm.delete_all_groups(true)
+        --end
         _page_managers[task.name] = pm
     end
     return taskmgr.run_one_task(task, pm, on_exit)

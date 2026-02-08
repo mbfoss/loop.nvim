@@ -11,8 +11,7 @@ local Scheduler = require("loop.tools.Scheduler")
 
 local M = {}
 
----@alias loop.TaskScheduler.PlanTaskWaiter {interrupt:function, trigger:function}
----@alias loop.TaskScheduler.PlanTask { control: loop.TaskControl, task: loop.Task, waiter:loop.TaskScheduler.PlanTaskWaiter? }
+---@alias loop.TaskScheduler.PlanTask { control: loop.TaskControl, task: loop.Task, waiters:function[] }
 ---@alias loop.TaskScheduler.PlanTasks table<string, loop.TaskScheduler.PlanTask>
 
 ---@class loop.TaskScheduler.PlanData
@@ -79,84 +78,85 @@ end
 local function _start_plan_task(plan_id, task, start_task, on_exit)
     local plan_data = _plans[plan_id]
     assert(plan_data)
-    assert(not plan_data.running_tasks[task.name], "Unexpected schedule logic error: task started twice in the same plan")
-
-    local do_start_task = function()
-        local control, err = start_task(task, function(ok, reason)
-            vim.schedule(function()
-                local plan_task = plan_data.running_tasks[task.name]
-                if plan_task then
-                    plan_data.running_tasks[task.name] = nil
-                    on_exit(ok, reason)
-                    if plan_task and plan_task.waiter then
-                        plan_task.waiter.trigger()
-                    end
-                end
-            end)
-        end)
-        if control then
-            plan_data.running_tasks[task.name] = { control = control, task = task }
-        end
-        return control, err
-    end
 
     if task.concurrency == "refuse" then
-        for _, plan in ipairs(_plans) do
+        for _, plan in pairs(_plans) do
             if plan.running_tasks[task.name] then
                 return nil, "Task refused (already running)"
             end
         end
     end
 
-    -- Handle concurrency
-    if task.concurrency == "restart" then
-        ---@type loop.TaskScheduler.PlanTask[]
-        local running = {}
-        for _, plan in ipairs(_plans) do
-            local plan_task = plan.running_tasks[task.name]
+    local sub_control
+    local is_terminated = false
+
+    local on_task_exit = function(ok, reason)
+        vim.schedule(function()
+            local plan_task = plan_data.running_tasks[task.name]
             if plan_task then
-                table.insert(running, plan_task)
+                plan_data.running_tasks[task.name] = nil
+                on_exit(ok, reason)
+                -- Signal all waiters that this specific instance ended
+                for _, waiter in ipairs(plan_task.waiters) do
+                    waiter()
+                end
+            end
+        end)
+    end
+
+    local control = {
+        terminate = function()
+            is_terminated = true
+            if sub_control then
+                sub_control.terminate()
             end
         end
-        if #running > 1 then
-            return nil, "task concurrency set as 'restart' but multiple instances are already running"
-        end
-        if #running == 1 then
-            ---@type loop.TaskControl?,string?,boolean
-            local new_ctrl, new_err, terminated
+    }
+
+    -- Register the control early so it can be waited on by others
+    plan_data.running_tasks[task.name] = { control = control, waiters = {} }
+
+    if task.concurrency ~= "parallel" then
+        ---@type loop.TaskScheduler.PlanTask[]
+        local tasks_to_stop = {}
+        for _, plan in pairs(_plans) do
             ---@type loop.TaskScheduler.PlanTask
-            local old = running[1]
-            if old.waiter then
-                old.waiter.interrupt()
+            local pt = plan.running_tasks[task.name]
+            -- Don't terminate our own placeholder
+            if pt and pt.control ~= control then
+                table.insert(tasks_to_stop, pt)
             end
-            old.waiter = {
-                interrupt = function()
-                    terminated = true
-                end,
-                trigger = function()
-                    if not terminated then
-                        new_ctrl, new_err = do_start_task()
-                        if not new_ctrl then
-                            on_exit(false, new_err)
-                        end
+        end
+
+        if #tasks_to_stop > 0 then
+            local nb_running = #tasks_to_stop
+            local on_task_ended = function()
+                nb_running = nb_running - 1
+                if nb_running == 0 and not is_terminated then
+                    local sub_err
+                    sub_control, sub_err = start_task(task, on_task_exit)
+                    if not sub_control then
+                        on_exit(false, sub_err)
                     end
                 end
-            }
-            -- stop the old one
-            old.control.terminate()
-            ---@type loop.TaskControl
-            return {
-                terminate = function()
-                    terminated = true
-                    if new_ctrl then
-                        new_ctrl.terminate()
-                    end
-                end
-            }
+            end
+            for _, pt in ipairs(tasks_to_stop) do
+                table.insert(pt.waiters, on_task_ended)
+                pt.control.terminate()
+            end
+            -- Important: Return the control table so the scheduler has a handle
+            return control
         end
     end
 
-    return do_start_task()
+    local sub_err
+    sub_control, sub_err = start_task(task, on_task_exit)
+    if not sub_control then
+        plan_data.running_tasks[task.name] = nil -- Clean up on failure
+        return nil, sub_err
+    end
+
+    return control
 end
 
 ---@param tasks loop.Task[]
