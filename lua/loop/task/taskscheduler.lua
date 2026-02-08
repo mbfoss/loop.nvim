@@ -90,25 +90,26 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
     local sub_control
     local is_terminated = false
 
-    local on_task_exit = function(ok, reason)
-        vim.schedule(function()
-            local plan_task = plan_data.running_tasks[task.name]
-            if plan_task then
-                plan_data.running_tasks[task.name] = nil
-                on_exit(ok, reason)
-                -- Signal all waiters that this specific instance ended
-                for _, waiter in ipairs(plan_task.waiters) do
-                    waiter()
-                end
+    local function finalize_and_wake(ok, reason)
+        local plan_task = plan_data.running_tasks[task.name]
+        if plan_task then
+            plan_data.running_tasks[task.name] = nil
+            -- We schedule this to remain thread-safe/async-safe for the UI
+            vim.schedule(function() on_exit(ok, reason) end)
+            -- ake waiters immediately
+            for _, waiter in ipairs(plan_task.waiters) do
+                waiter()
             end
-        end)
+        end
     end
 
     local control = {
         terminate = function()
-            is_terminated = true
-            if sub_control then
-                sub_control.terminate()
+            if not is_terminated then
+                is_terminated = true
+                if sub_control then
+                    sub_control.terminate()
+                end
             end
         end
     }
@@ -132,11 +133,22 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
             local nb_running = #tasks_to_stop
             local on_task_ended = function()
                 nb_running = nb_running - 1
-                if nb_running == 0 and not is_terminated then
-                    local sub_err
-                    sub_control, sub_err = start_task(task, on_task_exit)
+                if nb_running == 0 then
+                    local sub_err, sub_err
+                    if not is_terminated then
+                        -- extra assersion to detect bugs
+                        for _, plan in pairs(_plans) do
+                            if plan ~= plan_data then
+                                assert(not plan.running_tasks[task.name])
+                            end
+                        end
+                        -- run the task now
+                        sub_control, sub_err = start_task(task, finalize_and_wake)
+                    else
+                        sub_err = "Interrupted by another task"
+                    end
                     if not sub_control then
-                        on_exit(false, sub_err)
+                        finalize_and_wake(false, sub_err)
                     end
                 end
             end
@@ -150,7 +162,7 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
     end
 
     local sub_err
-    sub_control, sub_err = start_task(task, on_task_exit)
+    sub_control, sub_err = start_task(task, finalize_and_wake)
     if not sub_control then
         plan_data.running_tasks[task.name] = nil -- Clean up on failure
         return nil, sub_err
