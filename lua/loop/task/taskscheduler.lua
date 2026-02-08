@@ -87,32 +87,55 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
         end
     end
 
-    local sub_control
-    local is_terminated = false
-
+    local finalized = false
     local function finalize_and_wake(ok, reason)
+        if finalized then return end
+        finalized = true
         local plan_task = plan_data.running_tasks[task.name]
         if plan_task then
             plan_data.running_tasks[task.name] = nil
             -- We schedule this to remain thread-safe/async-safe for the UI
-            vim.schedule(function() on_exit(ok, reason) end)
-            -- ake waiters immediately
-            for _, waiter in ipairs(plan_task.waiters) do
-                waiter()
-            end
+            vim.schedule(function()
+                on_exit(ok, reason)
+                for _, waiter in ipairs(plan_task.waiters) do
+                    waiter()
+                end
+            end)
         end
     end
 
+    local sub_control, sub_err
+    local is_terminated = false
+    local terminate_reason = nil
     local control = {
         terminate = function()
             if not is_terminated then
                 is_terminated = true
                 if sub_control then
                     sub_control.terminate()
+                else
+                    finalize_and_wake(false, terminate_reason or "Interrupted")
                 end
             end
         end
     }
+
+    local start_and_attach_control = function()
+        if not is_terminated then
+            -- extra assersion to detect bugs
+            for _, plan in pairs(_plans) do
+                if plan ~= plan_data then
+                    assert(not plan.running_tasks[task.name])
+                end
+            end
+            -- run the task now
+            sub_control, sub_err = start_task(task, finalize_and_wake)
+        end
+        if not sub_control then
+            terminate_reason = sub_err
+            control.terminate()
+        end
+    end
 
     -- Register the control early so it can be waited on by others
     plan_data.running_tasks[task.name] = { control = control, waiters = {} }
@@ -134,22 +157,7 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
             local on_task_ended = function()
                 nb_running = nb_running - 1
                 if nb_running == 0 then
-                    local sub_err, sub_err
-                    if not is_terminated then
-                        -- extra assersion to detect bugs
-                        for _, plan in pairs(_plans) do
-                            if plan ~= plan_data then
-                                assert(not plan.running_tasks[task.name])
-                            end
-                        end
-                        -- run the task now
-                        sub_control, sub_err = start_task(task, finalize_and_wake)
-                    else
-                        sub_err = "Interrupted by another task"
-                    end
-                    if not sub_control then
-                        finalize_and_wake(false, sub_err)
-                    end
+                    start_and_attach_control()
                 end
             end
             for _, pt in ipairs(tasks_to_stop) do
@@ -161,7 +169,6 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
         end
     end
 
-    local sub_err
     sub_control, sub_err = start_task(task, finalize_and_wake)
     if not sub_control then
         plan_data.running_tasks[task.name] = nil -- Clean up on failure

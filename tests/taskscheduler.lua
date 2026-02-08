@@ -77,10 +77,12 @@ describe("loop.task.taskscheduler", function()
             "busy",
             function(_, on_exit)
                 -- Don't call on_exit yet to keep it "running"
-                return { terminate = function()
-                    finish_first = true
-                    on_exit(true)
-                end }
+                return {
+                    terminate = function()
+                        finish_first = true
+                        on_exit(true)
+                    end
+                }
             end,
             function() end
         )
@@ -179,10 +181,12 @@ describe("loop.task.taskscheduler", function()
             tasks,
             "t1",
             function(_, on_exit)
-                return { terminate = function()
-                    t1_stopped = true
-                    on_exit(false, "term")
-                end }
+                return {
+                    terminate = function()
+                        t1_stopped = true
+                        on_exit(false, "term")
+                    end
+                }
             end,
             function() end
         )
@@ -210,7 +214,7 @@ describe("loop.task.taskscheduler - Restart Scenarios", function()
     it("verifies the new task only starts after the old task fully exits", function()
         local log = {}
         local task_def = mock_task("service")
-        
+
         -- 1. Start the first instance
         task_scheduler.start({ task_def }, "service", function(_, on_exit)
             table.insert(log, "start_1")
@@ -250,16 +254,18 @@ describe("loop.task.taskscheduler - Restart Scenarios", function()
     it("handles multiple concurrent restarts (queuing waiters)", function()
         local log = {}
         local task_def = mock_task("queued_service")
-        
+
         -- Start original
         task_scheduler.start({ task_def }, "queued_service", function(_, on_exit)
             table.insert(log, "start_orig")
-            return { terminate = function() 
-                vim.defer_fn(function() 
-                    table.insert(log, "exit_orig")
-                    on_exit(true) 
-                end, 50) 
-            end }
+            return {
+                terminate = function()
+                    vim.defer_fn(function()
+                        table.insert(log, "exit_orig")
+                        on_exit(true)
+                    end, 50)
+                end
+            }
         end, function() end)
 
         vim.wait(10)
@@ -272,8 +278,10 @@ describe("loop.task.taskscheduler - Restart Scenarios", function()
             return { terminate = function() end }
         end
 
-        task_scheduler.start({ task_def }, "queued_service", start_fn, function() end, function() final_done = final_done + 1 end)
-        task_scheduler.start({ task_def }, "queued_service", start_fn, function() end, function() final_done = final_done + 1 end)
+        task_scheduler.start({ task_def }, "queued_service", start_fn, function() end,
+            function() final_done = final_done + 1 end)
+        task_scheduler.start({ task_def }, "queued_service", start_fn, function() end,
+            function() final_done = final_done + 1 end)
 
         vim.wait(300, function() return final_done == 2 end)
 
@@ -282,8 +290,9 @@ describe("loop.task.taskscheduler - Restart Scenarios", function()
         for _, entry in ipairs(log) do
             if entry == "start_restart" then start_count = start_count + 1 end
         end
-        
-        assert.equals(2, start_count, "Both restart attempts should eventually execute")
+
+        assert.equals(2, final_done, "both tasks are expected to end")
+        assert.equals(1, start_count, "Only the last one is expected to run")
         assert.equals("exit_orig", log[2], "The first restart should wait for original exit")
     end)
 
@@ -293,10 +302,12 @@ describe("loop.task.taskscheduler - Restart Scenarios", function()
 
         -- 1. Start instance 1 that takes forever to terminate
         task_scheduler.start({ task_def }, "stuck", function(_, on_exit)
-            return { terminate = function() 
-                -- This task is "stubborn" and doesn't call on_exit immediately
-                vim.defer_fn(function() on_exit(true) end, 200)
-            end }
+            return {
+                terminate = function()
+                    -- This task is "stubborn" and doesn't call on_exit immediately
+                    vim.defer_fn(function() on_exit(true) end, 200)
+                end
+            }
         end, function() end)
 
         vim.wait(10)
@@ -312,7 +323,7 @@ describe("loop.task.taskscheduler - Restart Scenarios", function()
         task_scheduler.terminate()
 
         vim.wait(300)
-        
+
         assert.is_false(second_started, "The second task should never have started because its plan was terminated")
     end)
 

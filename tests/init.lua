@@ -15,8 +15,8 @@ assert(config.current.window)
 
 vim.cmd("runtime plugin/plenary.vim")
 
---require("tests.resolver")
---require("tests.strtools")
---require("tests.tree")
---require("tests.scheduler")
+require("tests.resolver")
+require("tests.strtools")
+require("tests.tree")
+require("tests.scheduler")
 require("tests.taskscheduler")
