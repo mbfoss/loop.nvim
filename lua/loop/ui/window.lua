@@ -235,6 +235,9 @@ local function _delete_tab(tab)
     assert(index > 0)
     _delete_tab_pages(tab)
     table.remove(_tabs_arr, index)
+    if _active_tab_idx > index and _active_tab_idx > 1 then
+        _active_tab_idx = _active_tab_idx - 1
+    end
     vim.schedule(_setup_tabs)
 end
 
