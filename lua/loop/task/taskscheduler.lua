@@ -17,6 +17,7 @@ local M = {}
 ---@class loop.TaskScheduler.PlanData
 ---@field base_scheduler loop.tools.Scheduler
 ---@field running_tasks loop.TaskScheduler.PlanTasks
+---@field task_name_to_dependents table<string, table<string,boolean>>
 
 ---@type table<number, loop.TaskScheduler.PlanData>
 local _plans = {}
@@ -40,6 +41,21 @@ local function _get_failure_message(trigger, param)
     else
         return "Task failed (" .. tostring(param) .. ")"
     end
+end
+
+---@param tasks loop.Task[]
+---@return table<string, table<string,boolean>> task_name_to_dependents
+local function _build_task_dependents(tasks)
+    local dependents_map = {}
+    for _, task in ipairs(tasks) do
+        for _, dep_name in ipairs(task.depends_on or {}) do
+            if dep_name ~= task.name then
+                dependents_map[dep_name] = dependents_map[dep_name] or {}
+                dependents_map[dep_name][task.name] = true
+            end
+        end
+    end
+    return dependents_map
 end
 
 ---@param tasks loop.Task[]
@@ -104,38 +120,44 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
         end
     end
 
-    local sub_control, sub_err
-    local is_terminated = false
-    local terminate_reason = nil
+    local control_ctx = {
+        sub_control = nil,
+        is_terminated = false,
+        terminate_reason = nil,
+    }
+    ---@type loop.TaskControl
     local control = {
         terminate = function()
-            if not is_terminated then
-                is_terminated = true
-                if sub_control then
-                    sub_control.terminate()
+            if not control_ctx.is_terminated then
+                control_ctx.is_terminated = true
+                if control_ctx.sub_control then
+                    control_ctx.sub_control.terminate()
                 else
-                    finalize_and_wake(false, terminate_reason or "Interrupted")
+                    finalize_and_wake(false, control_ctx.terminate_reason or "Interrupted")
                 end
             end
         end
     }
 
     local start_and_attach_control = function()
-        if not is_terminated then
+        local sub_err
+        if not control_ctx.is_terminated then
             -- run the task now
-            sub_control, sub_err = start_task(task, finalize_and_wake)
+            control_ctx.sub_control, sub_err = start_task(task, finalize_and_wake)
         end
-        if not sub_control then
-            terminate_reason = sub_err
+        if not control_ctx.sub_control then
+            control_ctx.terminate_reason = sub_err
             control.terminate()
         end
     end
 
     -- Register the control early so it can be waited on by others
-    plan_data.running_tasks[task.name] = { control = control, waiters = {} }
+    plan_data.running_tasks[task.name] = { control = control, task = task, waiters = {} }
 
     ---@type loop.TaskScheduler.PlanTask[]
     local tasks_to_wait = {}
+
+    -- same task concurrency
     if task.concurrency ~= "parallel" then
         for _, plan in pairs(_plans) do
             ---@type loop.TaskScheduler.PlanTask
@@ -143,6 +165,21 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
             -- Don't terminate our own placeholder
             if pt and pt.control ~= control then
                 table.insert(tasks_to_wait, pt)
+            end
+        end
+    end
+
+    -- dependants that require stopping
+    for _, plan in pairs(_plans) do
+        for _, pt in pairs(plan.running_tasks) do
+            if pt.task.stop_on_dependency_change
+                and pt.control ~= control
+                and pt.task.name ~= task.name
+            then
+                local dependants = plan_data.task_name_to_dependents[task.name]
+                if dependants and dependants[pt.task.name] then
+                    table.insert(tasks_to_wait, pt)
+                end
             end
         end
     end
@@ -187,6 +224,8 @@ function M.run_plan(tasks, root, start_task, on_task_event, on_exit)
     _last_plan_id = _last_plan_id + 1
     local plan_id = _last_plan_id
 
+    local task_name_to_dependents = _build_task_dependents(tasks)
+
     ---@type loop.scheduler.StartNodeFn
     local start_node = function(id, on_node_exit)
         local task = name_to_task[id] --[[@as loop.Task]]
@@ -197,7 +236,8 @@ function M.run_plan(tasks, root, start_task, on_task_event, on_exit)
     local scheduler = Scheduler:new()
     _plans[plan_id] = {
         base_scheduler = scheduler,
-        running_tasks = {}
+        running_tasks = {},
+        task_name_to_dependents = task_name_to_dependents
     }
 
     ---@type loop.scheduler.NodeEventFn

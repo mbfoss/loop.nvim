@@ -475,6 +475,7 @@ function M.task_command(command, arg1, arg2)
     command = command ~= "" and command or "run"
     local config_dir = ws_info.config_dir
     if command == "run" then
+        window.show_window()
         runner.load_and_run_task("task", arg1)
     elseif command == "repeat" then
         runner.load_and_run_task("repeat")
