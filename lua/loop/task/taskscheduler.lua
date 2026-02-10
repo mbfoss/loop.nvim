@@ -11,18 +11,19 @@ local Scheduler = require("loop.tools.Scheduler")
 
 local M = {}
 
----@alias loop.TaskScheduler.PlanTask { control: loop.TaskControl, task: loop.Task, waiters:function[] }
----@alias loop.TaskScheduler.PlanTasks table<string, loop.TaskScheduler.PlanTask>
-
----@class loop.TaskScheduler.PlanData
----@field base_scheduler loop.tools.Scheduler
----@field running_tasks loop.TaskScheduler.PlanTasks
-
----@type table<number, loop.TaskScheduler.PlanData>
-local _plans = {}
+---@alias loop.TaskScheduler.TaskData { control: loop.TaskControl, task: loop.Task, waiters:function[] }
 
 ---@type number
 local _last_plan_id = 0
+
+---@type number
+local _last_task_id = 0
+
+---@type table<number, loop.tools.Scheduler>
+local _plan_schedulers = {}
+
+---@type table<string, table<number, loop.TaskScheduler.TaskData>>
+local _running_tasks = {}
 
 ---@param trigger  loop.scheduler.exit_trigger
 ---@param param string?
@@ -35,10 +36,8 @@ local function _get_failure_message(trigger, param)
         return "Task interrupted"
     elseif trigger == "deps_failed" then
         return "Dependency task failed"
-    elseif trigger == "node" then
-        return param or "Task failed"
     else
-        return "Task failed (" .. tostring(param) .. ")"
+        return param or "Task failed"
     end
 end
 
@@ -70,37 +69,46 @@ local function _validate_and_build_nodes(tasks, root)
     return name_to_task, nodes, nil
 end
 
----@param plan_id number
 ---@param task loop.Task
 ---@param start_task loop.TaskScheduler.StartTaskFn
----@param on_exit fun(ok:boolean, reason:string|nil)):
+---@param on_exit fun(ok:boolean, reason:string|nil)
 ---@return loop.TaskControl?, string?
-local function _start_plan_task(plan_id, task, start_task, on_exit)
-    local plan_data = _plans[plan_id]
-    assert(plan_data)
-
+local function _start_plan_task(task, start_task, on_exit)
     if task.concurrency == "refuse" then
-        for _, plan in pairs(_plans) do
-            if plan.running_tasks[task.name] then
-                return nil, "Task refused (already running)"
-            end
+        local data = _running_tasks[task.name]
+        if data and not vim.tbl_isempty(data) then
+            return nil, "Task refused (already running)"
         end
     end
+
+    local task_name = task.name
+    _last_task_id = _last_task_id + 1
+    local task_id = _last_task_id
+
+    ---@type loop.TaskScheduler.TaskData
+    local task_data = nil
 
     local finalized = false
     local function finalize_and_wake(ok, reason)
         if finalized then return end
         finalized = true
-        local plan_task = plan_data.running_tasks[task.name]
-        if plan_task then
-            plan_data.running_tasks[task.name] = nil
-            -- We schedule this to remain thread-safe/async-safe for the UI
-            vim.schedule(function()
-                on_exit(ok, reason)
-                for _, waiter in ipairs(plan_task.waiters) do
-                    waiter()
-                end
-            end)
+        local task_runs = _running_tasks[task_name]
+        if task_runs then
+            task_runs[task_id] = nil
+            if next(task_runs) == nil then
+                _running_tasks[task_name] = nil
+            end
+            if task_data then
+                -- We schedule this to remain thread-safe/async-safe for the UI
+                vim.schedule(function()
+                    on_exit(ok, reason)
+                    local waiters = task_data.waiters
+                    task_data.waiters = {}
+                    for _, waiter in ipairs(waiters) do
+                        waiter()
+                    end
+                end)
+            end
         end
     end
 
@@ -136,31 +144,30 @@ local function _start_plan_task(plan_id, task, start_task, on_exit)
     end
 
     -- Register the control early so it can be waited on by others
-    plan_data.running_tasks[task.name] = { control = control, task = task, waiters = {} }
+    task_data = { control = control, task = task, waiters = {} }
+    _running_tasks[task_name] = _running_tasks[task_name] or {}
+    _running_tasks[task_name][task_id] = task_data
 
-    ---@type loop.TaskScheduler.PlanTask[]
+    ---@type loop.TaskScheduler.TaskData[]
     local tasks_to_wait = {}
 
     -- same task concurrency
     if task.concurrency ~= "parallel" then
-        for _, plan in pairs(_plans) do
-            ---@type loop.TaskScheduler.PlanTask
-            local pt = plan.running_tasks[task.name]
-            -- Don't terminate our own placeholder
-            if pt and pt.control ~= control then
-                table.insert(tasks_to_wait, pt)
+        local instances = _running_tasks[task_name]
+        if instances then
+            for id, data in pairs(instances) do
+                if task_id ~= id then
+                    table.insert(tasks_to_wait, data)
+                end
             end
         end
     end
 
     -- dependants that require stopping
-    for _, plan in pairs(_plans) do
-        for _, pt in pairs(plan.running_tasks) do
-            if pt.task.stop_on_dependency_change
-                and pt.control ~= control
-                and pt.task.name ~= task.name
-                and vim.tbl_contains(pt.task.depends_on, task.name) then
-                table.insert(tasks_to_wait, pt)
+    for _, instances in pairs(_running_tasks) do
+        for id, data in pairs(instances) do
+            if task_id ~= id and data.task.depends_on and vim.tbl_contains(data.task.depends_on, task_name) then
+                table.insert(tasks_to_wait, data)
             end
         end
     end
@@ -209,14 +216,11 @@ function M.run_plan(tasks, root, start_task, on_task_event, on_exit)
     local start_node = function(id, on_node_exit)
         local task = name_to_task[id] --[[@as loop.Task]]
         assert(task)
-        return _start_plan_task(plan_id, task, start_task, on_node_exit)
+        return _start_plan_task(task, start_task, on_node_exit)
     end
 
     local scheduler = Scheduler:new()
-    _plans[plan_id] = {
-        base_scheduler = scheduler,
-        running_tasks = {},
-    }
+    _plan_schedulers[plan_id] = scheduler
 
     ---@type loop.scheduler.NodeEventFn
     local function on_node_event(id, event, success, reason, param)
@@ -228,7 +232,7 @@ function M.run_plan(tasks, root, start_task, on_task_event, on_exit)
     local on_schedule_end = function(success, trigger, param)
         local msg = success and "" or _get_failure_message(trigger, param)
         vim.schedule(function()
-            _plans[plan_id] = nil
+            _plan_schedulers[plan_id] = nil
             call_on_exit(success, msg)
         end)
     end
@@ -237,15 +241,16 @@ function M.run_plan(tasks, root, start_task, on_task_event, on_exit)
 end
 
 function M.terminate()
-    for _, p in pairs(_plans) do
-        p.base_scheduler:terminate()
+    -- the schedules will terminate running tasks
+    for _, ps in pairs(_plan_schedulers) do
+        ps:terminate()
     end
 end
 
 ---@return boolean
 function M.is_running()
-    for _, p in pairs(_plans) do
-        if p.base_scheduler:is_running() then return true end
+    for _, ps in pairs(_plan_schedulers) do
+        if ps:is_running() then return true end
     end
     return false
 end
