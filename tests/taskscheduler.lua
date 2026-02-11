@@ -281,12 +281,13 @@ describe("loop.task.taskscheduler - Restart Scenarios", function()
         vim.wait(300)
         print("test2")
 
-        task_scheduler.run_plan({ task_def }, "queued_service", start_fn, function() end,
-            function() final_done = final_done + 1 end)
-        task_scheduler.run_plan({ task_def }, "queued_service", start_fn, function() end,
-            function() final_done = final_done + 1 end)
+        local count = 5
+        for _ = 1, count do
+            task_scheduler.run_plan({ task_def }, "queued_service", start_fn, function() end,
+                function() final_done = final_done + 1 end)
+        end
 
-        vim.wait(300, function() return final_done == 2 end)
+        vim.wait(300, function() return final_done == count end)
 
         -- We expect the original to exit once, and two new ones to have started
         local start_count = 0
@@ -294,7 +295,7 @@ describe("loop.task.taskscheduler - Restart Scenarios", function()
             if entry == "start_restart" then start_count = start_count + 1 end
         end
 
-        assert.equals(2, final_done, "both tasks are expected to end")
+        assert.equals(count, final_done, "both tasks are expected to end")
         assert.equals(1, start_count, "Only the last one is expected to run")
         assert.equals("exit_orig", log[2], "The first restart should wait for original exit")
     end)

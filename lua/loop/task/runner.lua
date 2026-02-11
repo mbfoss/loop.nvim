@@ -15,6 +15,9 @@ local _workspace_info
 ---@type loop.PageManagerFactory?
 local _page_manager_fact
 
+---@type table<string,loop.PageManager>
+local _last_pm_by_task = {}
+
 ---@type loop.task.TasksStatusComp?,loop.PageController?,loop.PageGroup?
 local _status_comp, _status_page, _status_pagegroup
 
@@ -113,14 +116,15 @@ local function _start_task(task, on_exit)
     logs.user_log("Starting task:\n" .. vim.inspect(task), "task")
     assert(_page_manager_fact)
 
-    local pm = _page_manager_fact()
+    local pm = _last_pm_by_task[task.name]
+    if pm and task.if_running ~= "parallel" then
+        pm.delete_all_groups(true)
+    end
+    pm = _page_manager_fact()
+    _last_pm_by_task[task.name] = pm
 
     ---@type loop.TaskExitHandler
     local on_task_exit = function(ok, reason)
-        -- TODO: add delay and store old pages in files for history inspection
-        vim.defer_fn(function()
-            pm.delete_all_groups(true)
-        end, 3000)
         on_exit(ok, reason)
     end
 
