@@ -27,7 +27,7 @@ local base_items = {
     description = "Definition of a single task",
     additionalProperties = false,
     required = { "name", "type" },
-    ["x-order"] = { "name", "type", "save_buffers", "if_running", "depends_on", "depends_order", "stop_on_dependency_change" },
+    ["x-order"] = { "name", "type", "save_buffers", "if_running", "depends_on", "depends_order" },
 
     properties = {
         -- Unique identifier for the task
@@ -54,15 +54,6 @@ Specifies what happens if the task is already running:
 - "parallel": Start a new instance alongside any existing ones
 ]],
             enum = { "restart", "refuse", "parallel", }
-        },
-
-        -- Stop if dependency restart restarts
-        stop_on_dependency_change = {
-            type = "boolean",
-            default = false,
-            description = [[
-If one of the dependencies is restarted, this task will stop first.
-]]
         },
 
         -- Tasks that must complete successfully before this task can start

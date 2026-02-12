@@ -196,19 +196,6 @@ local function _start_plan_task(task, start_task, on_exit)
         end
     end
 
-    -- dependants that require stopping
-    for _, instances in pairs(_running_tasks) do
-        for id, data in pairs(instances) do
-            if task_id ~= id
-                and not data.is_finalized
-                and data.task.stop_on_dependency_change
-                and data.task.depends_on
-                and vim.tbl_contains(data.task.depends_on, task_name) then
-                table.insert(blockers, data)
-            end
-        end
-    end
-
     if #blockers > 0 then
         -- print("new task: " .. task_name .. ", #blockers " .. tostring(#blockers) .. ", id " .. task_id)
         local nb_running = #blockers
