@@ -98,9 +98,7 @@ function TasksStatusComp:add_task(name, status)
             status = status
         }
     }
-    self:upsert_item(item, {
-        index = 1
-    })
+    self:upsert_item(item)
     return id
 end
 

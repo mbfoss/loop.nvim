@@ -1,13 +1,13 @@
-local M              = {}
+local M                = {}
 
-local taskmgr        = require("loop.task.taskmgr")
-local resolver       = require("loop.tools.resolver")
-local logs           = require("loop.logs")
-local task_scheduler = require("loop.task.taskscheduler")
-local StatusComp     = require("loop.task.StatusComp")
-local config         = require("loop.config")
-local variablesmgr   = require("loop.task.variablesmgr")
-local strtools       = require("loop.tools.strtools")
+local taskmgr          = require("loop.task.taskmgr")
+local resolver         = require("loop.tools.resolver")
+local logs             = require("loop.logs")
+local task_scheduler   = require("loop.task.taskscheduler")
+local StatusComp       = require("loop.task.StatusComp")
+local config           = require("loop.config")
+local variablesmgr     = require("loop.task.variablesmgr")
+local strtools         = require("loop.tools.strtools")
 
 ---@type loop.ws.WorkspaceInfo?
 local _workspace_info
@@ -15,10 +15,13 @@ local _workspace_info
 ---@type loop.PageManager?
 local _page_manager
 
+---@type table<string,loop.PageGroup>
+local _last_page_group = {}
+
 ---@type loop.task.TasksStatusComp?,loop.PageController?,loop.PageGroup?
 local _status_comp, _status_page, _status_pagegroup
 
-local _last_run_id   = 0
+local _last_run_id     = 0
 
 ---@param task_name string
 ---@param name_to_task table<string, loop.Task>
@@ -113,6 +116,14 @@ local function _start_task(task, on_exit)
     logs.user_log("Starting task:\n" .. vim.inspect(task), "task")
     assert(_page_manager)
 
+    if task.if_running ~= "parallel" then
+        local last_pg = _last_page_group[task.name]
+        if last_pg then
+            last_pg.delete_group()
+            _last_page_group[task.name] = nil
+        end
+    end
+
     local page_group = _page_manager.add_page_group(task.name)
     if not page_group then
         return nil, "failed to create page group"
@@ -121,6 +132,7 @@ local function _start_task(task, on_exit)
     ---@type loop.TaskExitHandler
     local on_task_exit = function(ok, reason)
         on_exit(ok, reason)
+        _last_page_group[task.name] = page_group
     end
 
     return taskmgr.run_one_task(task, page_group, on_task_exit)
@@ -222,7 +234,7 @@ function M.run_task(all_tasks, root_name)
             for _, id in pairs(run_status_items) do
                 _status_comp:remove_item(id)
             end
-        end, 300 * 1000)
+        end, 1000)
     end
 
     ---@param task_name string
