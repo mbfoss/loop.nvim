@@ -21,7 +21,7 @@ local function _build_taskfile_schema()
 
     local task_types = providers.task_types()
     for _, type in ipairs(task_types) do
-        local provider = M.get_task_type_provider(type)
+        local provider = providers.get_task_type_provider(type)
         if provider then
             assert(provider.get_task_schema, "get_task_schema() not implemented for: " .. type)
             local provider_schema = provider.get_task_schema()
@@ -54,7 +54,7 @@ end
 ---@param task_type  string
 ---@return table|nil
 local function _get_single_task_schema(task_type)
-    local provider = M.get_task_type_provider(task_type)
+    local provider = providers.get_task_type_provider(task_type)
     if not provider then
         return nil
     end
@@ -80,7 +80,7 @@ end
 ---@params task loop.Task
 ---@return string,string
 local function _task_preview(task)
-    local provider = M.get_task_type_provider(task.type)
+    local provider = providers.get_task_type_provider(task.type)
     if provider then
         local schema = _get_single_task_schema(task.type)
         return jsoncodec.to_string(task, schema), "json"
@@ -176,22 +176,6 @@ end
 ---@param ws_dir string
 function M.reset_provider_list(ws_dir)
     providers.reset_to_default(ws_dir)
-end
-
----@param name string
----@return loop.TaskTypeProvider|nil
-function M.get_task_type_provider(name)
-    return providers.get_task_type_provider(name)
-end
-
-function M.on_tasks_cleanup()
-    local names = providers.task_types()
-    for _, name in ipairs(names) do
-        local provider = M.get_task_type_provider(name)
-        if provider and provider.on_tasks_cleanup then
-            provider.on_tasks_cleanup()
-        end
-    end
 end
 
 ---@param name string
@@ -388,7 +372,7 @@ end
 ---@return loop.TaskControl|nil, string|nil
 function M.run_one_task(task, page_group, exit_handler)
     assert(task.type)
-    local provider = M.get_task_type_provider(task.type)
+    local provider = providers.get_task_type_provider(task.type)
     if not provider then
         vim.notify("Invalid task type: " .. tostring(task.type))
         return nil, "Invalid task type"

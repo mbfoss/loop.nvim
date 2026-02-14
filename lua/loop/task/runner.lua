@@ -114,6 +114,9 @@ local function _start_task(task, on_exit)
     assert(_page_manager)
 
     local page_group = _page_manager.add_page_group(task.name)
+    if not page_group then
+        return nil, "failed to create page group"
+    end
 
     ---@type loop.TaskExitHandler
     local on_task_exit = function(ok, reason)
