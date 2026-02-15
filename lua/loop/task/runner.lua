@@ -23,6 +23,9 @@ local _status_comp, _status_page, _status_pagegroup
 
 local _last_run_id     = 0
 
+---@type fun(text:string)?
+local _status_handler  = nil
+
 ---@param task_name string
 ---@param name_to_task table<string, loop.Task>
 ---@param visiting table<string, boolean>
@@ -192,6 +195,11 @@ function M.load_and_run_task(mode, task_name)
     end)
 end
 
+---@param handler fun(text:string)
+function M.set_status_handler(handler)
+    _status_handler = handler
+end
+
 ---@param all_tasks loop.Task[]
 ---@param root_name string
 function M.run_task(all_tasks, root_name)
@@ -203,8 +211,6 @@ function M.run_task(all_tasks, root_name)
 
     -- Log task start
     logs.user_log("Task started: " .. root_name, "task")
-    local symbols = config.current.window.symbols
-    --_status_page.set_ui_flags(symbols.waiting)
 
     if #all_tasks == 0 then
         vim.notify("No tasks found")
@@ -241,8 +247,20 @@ function M.run_task(all_tasks, root_name)
     ---@param status loop.comp.StatusComp.Status
     ---@param msg string?
     local function report_status(task_name, status, msg)
+        local symbols = config.current.window.symbols
         if msg then logs.user_log(("%s: %s"):format(task_name, msg), "task") end
         _status_comp:set_task_status(run_status_items[task_name], status, msg)
+        if _status_handler then
+            local nb_waiting, nb_running = _status_comp:get_stats()
+            local parts = {}
+            if nb_waiting > 0 then
+                table.insert(parts, ("%s %d"):format(symbols.waiting, nb_waiting))
+            end
+            if nb_running > 0 then
+                table.insert(parts, ("%s %d"):format(symbols.running, nb_running))
+            end
+            _status_handler(table.concat(parts, "  "))
+        end
     end
 
     local vars, _ = _load_variables(config_dir)
@@ -296,11 +314,6 @@ function M.run_task(all_tasks, root_name)
             end,
             function(success, reason) -- on exit
                 remove_status_items()
-                --local status = success and "success" or "failure"
-                --local error_msg = reason or "Unknown error"
-                --for _, task in ipairs(used_tasks) do
-                --    report_status(task.name, status, error_msg)
-                --end
             end
         )
     end)

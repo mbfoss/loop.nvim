@@ -624,6 +624,10 @@ function M.init()
 
     window.init()
 
+    runner.set_status_handler(function (text)
+        window.set_status_text(text)
+    end)
+
     vim.api.nvim_create_autocmd("VimLeavePre", {
         callback = function()
             -- Stop the timer if it's still running

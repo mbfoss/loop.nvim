@@ -64,8 +64,8 @@ local function _item_formatter(id, data)
 
     -- optional error message
     if type(data.error_msg) == "string" and #data.error_msg > 0 then
-        table.insert(chunks, {" - "})
-        table.insert(chunks, {data.error_msg, _highlights.failure })
+        table.insert(chunks, { " - " })
+        table.insert(chunks, { data.error_msg, _highlights.failure })
     end
 
     return chunks
@@ -112,6 +112,19 @@ function TasksStatusComp:set_task_status(id, status, msg)
         item.data.error_msg = msg
         self:refresh_content()
     end
+end
+
+function TasksStatusComp:get_stats()
+    local nb_waiting, nb_running = 0, 0
+    local items = self:get_items()
+    for _, item in ipairs(items) do
+        if item.data.status == "waiting" then
+            nb_waiting = nb_waiting + 1
+        elseif item.data.status == "running" then
+            nb_running = nb_running + 1
+        end
+    end
+    return nb_waiting, nb_running
 end
 
 return TasksStatusComp

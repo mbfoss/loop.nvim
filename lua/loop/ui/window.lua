@@ -38,6 +38,9 @@ local _active_tab_idx = 1
 ---@type loop.pages.Page
 local _placeholder_page
 
+---@type string
+local _status_text
+
 ---@return number
 local function _get_placeholder_buf()
     _placeholder_page = _placeholder_page or Page:new(BaseBuffer:new("loop-empty", ""))
@@ -179,16 +182,13 @@ local function _setup_tabs()
     _assign_buffer(win, active_tab, page_idx)
 
     local width = vim.api.nvim_win_get_width(win)
-    local winbar = _build_winbar(width, active_tab, page_idx)
+    local status_text = _status_text or ""
 
-
-    -- add right aligned current page/buffer info
-    --if #_active_tab.pages > 0 then
-    --    local name = _active_tab.pages[_active_tab.active_page_idx or 1]:get_name() or _active_tab.label
-    --    table.insert(winbar_parts, "%=" .. name)
-    --end
+    local remaining_with = math.max(width - #status_text, 2)
+    local winbar = _build_winbar(remaining_with, active_tab, page_idx)
+    local full_winbar = ("%s %%=%%#LoopPluginStatusText#%s"):format(winbar, status_text)
     -- set the winbar
-    vim.wo[win].winbar = winbar
+    vim.wo[win].winbar = full_winbar
 end
 
 local _throttled_setup_tabs = throttle.throttle_wrap(100, _setup_tabs)
@@ -337,19 +337,6 @@ local function _create_window()
     vim.wo[_loop_win].spell = false
 
     _setup_tabs()
-
-    vim.api.nvim_create_autocmd("WinResized", {
-        callback = function()
-            if _loop_win ~= -1 then
-                local height = vim.api.nvim_win_get_height(_loop_win)
-                local ratio = height / vim.o.lines
-                -- only save of we are not the only window vertically
-                if ratio < 0.7 then
-                    _loop_win_height_ratio = ratio
-                end
-            end
-        end,
-    })
 end
 
 -- remove winbar after split
@@ -723,6 +710,12 @@ local function _create_page_manager()
     }
 end
 
+---@param text string
+function M.set_status_text(text)
+    _status_text = text
+    _throttled_setup_tabs()
+end
+
 ---@return loop.PageManager
 function M.create_page_manager()
     return _create_page_manager()
@@ -755,10 +748,10 @@ function M.init()
 
     do
         vim.api.nvim_set_hl(0, "LoopPluginInactiveTab", { link = "WinBar" })
-        vim.api.nvim_set_hl(0, "LoopPluginTabGroup", { link = "WinBar" })
         vim.api.nvim_set_hl(0, "LoopPluginActiveTab", { link = "Special" })
         vim.api.nvim_set_hl(0, "LoopPluginEventWarn", { link = "WarningMsg" })
         vim.api.nvim_set_hl(0, "LoopPluginEventsError", { link = "ErrorMsg" })
+        vim.api.nvim_set_hl(0, "LoopPluginStatusText", { link = "Title" })
     end
 
     vim.api.nvim_create_autocmd("WinClosed", {
@@ -777,6 +770,20 @@ function M.init()
             local win = vim.api.nvim_get_current_win()
             if win ~= _loop_win then
                 _check_winbar()
+            end
+        end,
+    })
+
+    vim.api.nvim_create_autocmd("WinResized", {
+        callback = function()
+            if _loop_win ~= -1 then
+                local height = vim.api.nvim_win_get_height(_loop_win)
+                local ratio = height / vim.o.lines
+                -- only save of we are not the only window vertically
+                if ratio < 0.7 then
+                    _loop_win_height_ratio = ratio
+                end
+                _throttled_setup_tabs()
             end
         end,
     })
