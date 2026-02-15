@@ -20,10 +20,10 @@ local function _build_taskfile_schema()
     local oneOf = schema.properties.tasks.items.oneOf
 
     local task_types = providers.task_types()
-    for _, type in ipairs(task_types) do
-        local provider = providers.get_task_type_provider(type)
+    for _, task_type in ipairs(task_types) do
+        local provider = providers.get_task_type_provider(task_type)
         if provider then
-            assert(provider.get_task_schema, "get_task_schema() not implemented for: " .. type)
+            assert(provider.get_task_schema, "get_task_schema() not implemented for: " .. task_type)
             local provider_schema = provider.get_task_schema()
             if provider_schema then
                 local providers_props = provider_schema.properties or {}
@@ -37,9 +37,9 @@ local function _build_taskfile_schema()
                     required = vim.deepcopy(base_items.required),
                     ["x-order"] = base_items["x-order"] or {},
                 }
-                oneOfItem.__name = type
+                oneOfItem.__name = task_type
                 if provider_schema["x-order"] then vim.list_extend(oneOfItem["x-order"], provider_schema["x-order"]) end
-                oneOfItem.properties.type = { const = type, description = base_items.properties.type.description }
+                oneOfItem.properties.type = { const = task_type, description = base_items.properties.type.description }
                 oneOfItem.additionalProperties = false -- providers are not allowed to change this
                 for _, req in ipairs(provider_schema.required or {}) do
                     table.insert(oneOfItem.required, req)

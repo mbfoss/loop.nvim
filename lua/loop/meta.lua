@@ -36,6 +36,7 @@ error('Cannot require a meta file')
 ---@field register_task_type fun(task_type:string, provider:loop.TaskTypeProvider)
 ---@field register_task_templates fun(category:string, provider:loop.TaskTemplateProvider)
 ---@field register_user_command fun(lead_cmd:string, provider:loop.UserCommandProvider)
+---@field request_page_proup fun(name:string):loop.PageGroup?
 
 ---@class loop.TaskTypeProvider
 ---@field get_task_schema fun():table
@@ -88,7 +89,7 @@ error('Cannot require a meta file')
 
 ---@class loop.PageOpts
 ---@field type "term"|"output"|"comp"|"repl"
----@field buftype string
+---@field buftype string?
 ---@field label string
 ---@field activate boolean?
 ---@field term_args loop.tools.TermProc.StartArgs?

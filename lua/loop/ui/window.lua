@@ -95,6 +95,7 @@ local function _build_winbar(width, active_tab, page_idx)
                 table.insert(winbar_data, { 2, " " })
             end
             for idx, page in ipairs(tab.pages) do
+                local name = #tab.pages > 1 and page:get_name() or tab.label
                 local is_active_page = is_active_tab and idx == page_idx
                 local change_flag = tab.changed_pages[idx] and symbols.change or ''
                 local uiflags = (change_flag or "") .. (page:get_ui_flags() or "")
@@ -103,7 +104,7 @@ local function _build_winbar(width, active_tab, page_idx)
                 table.insert(winbar_data,
                     { 3, string.format("%%%d@v:lua._LoopPluginGlobalState.wbc@", arr_idx * 1000 + idx) })
                 table.insert(winbar_data, { 2, '[' })
-                table.insert(winbar_data, { 1, page:get_name() })
+                table.insert(winbar_data, { 1, name })
                 table.insert(winbar_data, { 2, uiflags .. ']' })
                 if is_active_page then table.insert(winbar_data, { 3, "%#LoopPluginInactiveTab#" }) end
             end

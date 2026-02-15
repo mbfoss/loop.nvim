@@ -214,7 +214,7 @@ local function _load_workspace(dir)
 
     _page_manager = window.create_page_manager()
     runner.on_workspace_open(_workspace_info, _page_manager)
-    extdata.on_workspace_load(_workspace_info)
+    extdata.on_workspace_load(_workspace_info, _page_manager)
 
     if not _save_timer then
         local config = require('loop.config')
