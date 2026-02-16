@@ -68,7 +68,7 @@ local function _get_single_task_schema(task_type)
     if provider_schema then
         if provider_schema["x-order"] then vim.list_extend(schema["x-order"], provider_schema["x-order"]) end
         schema.properties = vim.tbl_extend("error", schema.properties, provider_schema.properties or {})
-        schema.additionalProperties = provider_schema.additionalProperties or false
+        --schema.additionalProperties = provider_schema.additionalProperties or false
         for _, req in ipairs(provider_schema.required or {}) do
             table.insert(schema.required, req)
         end
