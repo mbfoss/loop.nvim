@@ -54,7 +54,7 @@ local function _normalize_text_chunks(chunks)
             table.insert(out, {
                 part, -- text
                 hl,   -- highlight
-                _nl = (i < #parts),
+                (i < #parts) -- is new line
             })
         end
     end

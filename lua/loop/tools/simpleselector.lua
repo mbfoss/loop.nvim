@@ -50,7 +50,7 @@ local function update_list(items, cur, buf, win)
 
     for i, item in ipairs(items) do
         local prefix = (i == cur) and "> " or "  "
-        lines[i] = prefix .. item.label
+        lines[i] = prefix .. item.label:gsub("\n","↵")
     end
 
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
