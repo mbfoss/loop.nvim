@@ -272,19 +272,37 @@ end
 ---@param parent_id any
 ---@param item loop.comp.ItemTree.ItemDef
 function ItemTree:upsert_item(parent_id, item)
-    local new_data = _itemdef_to_itemdata(item)
-
     local existing = self._tree:get_item(item.id)
     if existing then
-        existing.userdata = new_data.userdata
-        existing.children_callback = new_data.children_callback
+        existing.userdata = item.data
+        existing.children_callback = item.children_callback
         existing.reload_children = true
         existing.load_sequence = existing.load_sequence + 1
+        if item.expanded ~= nil then
+            existing.expanded = item.expanded
+        end
     else
+        local new_data = _itemdef_to_itemdata(item)
         self._tree:upsert_item(parent_id, item.id, new_data)
     end
 
     self:_request_render()
+end
+
+---@param item loop.comp.ItemTree.ItemDef
+---@return boolean
+function ItemTree:update_item(item)
+    local existing = self._tree:get_item(item.id)
+    if not existing then return false end
+    existing.userdata = item.data
+    existing.children_callback = item.children_callback
+    existing.reload_children = true
+    existing.load_sequence = existing.load_sequence + 1
+    if item.expanded ~= nil then
+        existing.expanded = item.expanded
+    end
+    self:_request_render()
+    return true
 end
 
 function ItemTree:get_children(parent_id)
