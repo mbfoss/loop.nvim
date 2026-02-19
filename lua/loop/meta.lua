@@ -103,6 +103,7 @@ error('Cannot require a meta file')
 ---@field term_proc loop.tools.TermProc?
 
 ---@class loop.PageGroup
+---@field have_pages fun():boolean
 ---@field expired fun():boolean
 ---@field add_page fun(opts:loop.PageOpts):loop.PageData?,string?
 ---@field delete_pages fun()

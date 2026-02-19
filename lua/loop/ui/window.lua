@@ -187,9 +187,9 @@ local function _setup_tabs()
 
     local width = vim.api.nvim_win_get_width(win)
     local status_text = _status_text or ""
-    local status = "%#LoopPluginStatusText#" .. status_text .. "%#Winbar#"
+    local status = "%#LoopPluginStatusText#" .. status_text .. "%#Winbar# "
 
-    local remaining_with = math.max(width - #status_text, 2)
+    local remaining_with = math.max(width - #status_text - 1, 1)
     local winbar = _build_winbar(remaining_with, active_tab, page_idx)
     local full_winbar = ("%s %%=%s"):format(winbar, status)
     -- set the winbar
@@ -240,29 +240,9 @@ _cycle_pages = function(action)
     _set_active_tab(tabidx, pageidx)
 end
 
----@return table<string,loop.KeyMap>
-local function get_page_keymap()
-    --- set keymaps
-    ---@type table<string,loop.KeyMap>
-    local keymaps = {
-        ["<c-p>"] = {
-            callback = function()
-                if vim.api.nvim_get_current_win() == _loop_win then
-                    _cycle_pages("prev")
-                end
-            end,
-            desc = "Move to next page",
-        },
-        ["<c-n>"] = {
-            callback = function()
-                if vim.api.nvim_get_current_win() == _loop_win then
-                    _cycle_pages("next")
-                end
-            end,
-            desc = "Move to previous page",
-        },
-    }
-    return keymaps
+---@param next boolean
+function M.cycle_pages(next)
+    _cycle_pages(next and "next" or "prev")
 end
 
 ---@param tab loop.TabInfo
@@ -551,17 +531,23 @@ local function _create_term(page, args)
 
     local TermProc = require('loop.tools.TermProc')
 
-    local proc, proc_ok, proc_err
-    vim.api.nvim_buf_call(bufnr, function()
-        proc = TermProc:new()
-        proc_ok, proc_err = proc:start(args_cpy)
-    end)
+    local proc = TermProc:new()
+    local proc_ok, proc_err = proc:start(bufnr, args_cpy)
+
+    if not proc_ok then
+        local existing = vim.api.nvim_buf_get_lines(bufnr, 0, -1, false)
+        local is_empty = (#existing == 0) or (#existing == 1 and existing[1] == "")
+        if is_empty then
+            local lines = proc_err and vim.fn.split(proc_err, "\n") or { "Unknown error" }
+            vim.bo[bufnr].modifiable = true
+            vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, lines)
+            vim.bo[bufnr].modifiable = false
+        end
+        return nil, proc_err
+    end
 
     vim.keymap.set('t', '<Esc>', function() vim.cmd('stopinsert') end, { buffer = bufnr })
 
-    if not proc_ok then
-        return nil, proc_err
-    end
     return proc, nil
 end
 
@@ -583,7 +569,7 @@ end
 ---@param activate boolean|nil
 ---@return number idx
 local function _assign_tab_page(tab, page, activate)
-    page:add_keymaps(get_page_keymap())
+    --page:add_keymaps(get_page_keymap())
     table.insert(tab.pages, page)
     local page_idx = #tab.pages
     if activate then
@@ -661,6 +647,9 @@ local function _create_page_manager()
         local deleted = false
         ---@type loop.PageGroup
         return {
+            have_pages = function()
+                return #tab.pages > 0
+            end,
             expired = function()
                 return deleted
             end,

@@ -465,7 +465,7 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "run", "repeat", "terminate", "configure" }
+        return { "run", "repeat", "terminate_all", "configure" }
     end
     return {}
 end
@@ -492,6 +492,8 @@ function M.task_command(command, arg1, arg2)
     elseif command == "configure" then
         taskmgr.configure_tasks(config_dir)
     elseif command == "terminate" then
+        runner.terminate_task(arg1)
+    elseif command == "terminate_all" then
         runner.terminate_tasks()
     else
         vim.notify('Invalid task command: ' .. command)

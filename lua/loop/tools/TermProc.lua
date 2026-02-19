@@ -44,10 +44,11 @@ end
 ---@field on_exit_handler fun(code : number)|nil
 
 ---Starts a new terminal job.
+---@param bufnr number
 ---@param args loop.tools.TermProc.StartArgs
 ---@return boolean success
 ---@return string|nil error msg or nil
-function TermProc:start(args)
+function TermProc:start(bufnr, args)
 	if self.job_id ~= -1 then
 		return false, "already started"
 	end
@@ -79,9 +80,11 @@ function TermProc:start(args)
 		return false, "command is not an executable: " .. cmd_and_args[1]
 	end
 
-	local ok, err = self:_start_term_job(cmd_and_args, env, cwd, args.output_handler,
-		args.on_exit_handler)
-
+	local ok, err
+	vim.api.nvim_buf_call(bufnr, function()
+		ok, err = self:_start_term_job(cmd_and_args, env, cwd, args.output_handler,
+			args.on_exit_handler)
+	end)
 	return ok, err
 end
 

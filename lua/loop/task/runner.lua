@@ -43,6 +43,7 @@ local _status_handler = nil
 ---@return LoopPageGroupEntry
 local function _get_pg_data(run_id, task_name)
     assert(_page_manager)
+    assert(_run_state[run_id])
     local list = _page_groups[task_name]
     if not list then
         list = {}
@@ -88,21 +89,31 @@ end
 
 ---@param run_id number
 ---@param root_name string
----@param err_msg string
-local function _report_run_failure(run_id, root_name, err_msg)
+---@param err_msg string?
+local function _report_prelaunch_error(run_id, root_name, err_msg)
     ---@type LoopPageGroupEntry
     local pg_data = _get_pg_data(run_id, root_name)
-    if pg_data and pg_data.pg then
-        local page = pg_data.pg.add_page({
-            label = "Status",
-            type = "output",
-            activate = true,
-        })
-        if page then
-            page.output_buf.add_lines(err_msg or "Task failed")
-        end
+    if pg_data then
         pg_data.task_ended = true
+        if pg_data.pg and not pg_data.pg.have_pages() then
+            local page = pg_data.pg.add_page({
+                label = "Error",
+                type = "output",
+                activate = true,
+            })
+            if page then
+                page.output_buf.add_lines(err_msg or "Task failed")
+            end
+        end
     end
+end
+
+
+---@param run_id number
+local function _on_run_end(run_id)
+    ---@type LoopPageGroupEntry
+    _run_state[run_id] = nil
+    _report_state()
 end
 
 ---@param run_id number
@@ -114,6 +125,7 @@ local function _start_task(run_id, task, on_exit)
     local pg_data = _get_pg_data(run_id, task.name)
     local page_group = pg_data and pg_data.pg
     if not page_group then
+        pg_data.task_ended = true
         return nil, "failed to create page group"
     end
     ---@type loop.TaskExitHandler
@@ -121,7 +133,21 @@ local function _start_task(run_id, task, on_exit)
         pg_data.task_ended = true
         on_exit(success, reason)
     end
-    return taskmgr.run_one_task(task, page_group, exit_handler)
+    local taskctrl, err_msg = taskmgr.run_one_task(task, page_group, exit_handler)
+    if not taskctrl and err_msg and not page_group.have_pages() then
+        local page = page_group.add_page({
+            label = "Error",
+            type = "output",
+            activate = true
+        })
+        if page then
+            page.output_buf.add_lines(err_msg or "Task failed")
+        end
+    end
+    if not taskctrl then
+        pg_data.task_ended = true
+    end
+    return taskctrl, err_msg
 end
 
 ---@param config_dir string
@@ -218,9 +244,8 @@ function M.run_task(all_tasks, root_name)
         if not resolve_ok or not resolved_tasks then
             local err_msg = resolve_error or "Failed to resolve macros in tasks"
             logs.user_log(err_msg, "task")
-            _report_run_failure(run_id, root_name, err_msg)
-            _run_state[run_id] = nil
-            _report_state()
+            _report_prelaunch_error(run_id, root_name, err_msg)
+            _on_run_end(run_id)
             return
         end
         -- Check if any task in the chain requires saving buffers
@@ -265,8 +290,7 @@ function M.run_task(all_tasks, root_name)
                 _report_state()
             end,
             function(success, reason) -- on exit
-                _run_state[run_id] = nil
-                _report_state()
+                _on_run_end(run_id, root_name, success, reason)
             end
         )
     end)
