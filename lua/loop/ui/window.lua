@@ -128,6 +128,10 @@ local function _build_winbar(width, active_tab, page_idx)
         end
     end
 
+    if visible_len == 0. then
+        return ""
+    end
+
     local winbar_parts = {}
     if visible_len > width and nb_croppable > 0 then
         local overflow = visible_len - width
@@ -191,7 +195,13 @@ local function _setup_tabs()
 
     local remaining_with = math.max(width - #status_text - 1, 1)
     local winbar = _build_winbar(remaining_with, active_tab, page_idx)
-    local full_winbar = ("%s %%=%s"):format(winbar, status)
+
+    local full_winbar
+    if winbar == "" and status_text == "" then
+        full_winbar = "No tasks"
+    else
+        full_winbar = ("%s %%=%s"):format(winbar, status)
+    end
     -- set the winbar
     vim.wo[win].winbar = full_winbar
 end

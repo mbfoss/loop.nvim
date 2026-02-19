@@ -287,6 +287,16 @@ function M.run_task(all_tasks, root_name)
     end)
 end
 
+function M.clean_pages()
+    for _, list in pairs(_page_groups) do
+        for _, pg_data in ipairs(list) do
+            if pg_data.task_ended and pg_data.pg then
+                pg_data.pg.delete_group()
+            end
+        end
+    end
+end
+
 --- Check if a task plan is currently running or terminating
 ---@return boolean
 function M.have_running_task()

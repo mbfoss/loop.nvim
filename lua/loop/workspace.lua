@@ -465,7 +465,7 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "run", "repeat", "terminate_all", "configure" }
+        return { "run", "repeat", "terminate_all", "clean", "configure" }
     end
     return {}
 end
@@ -495,6 +495,8 @@ function M.task_command(command, arg1, arg2)
         runner.terminate_task(arg1)
     elseif command == "terminate_all" then
         runner.terminate_tasks()
+    elseif command == "clean" then
+        runner.clean_pages()
     else
         vim.notify('Invalid task command: ' .. command)
     end

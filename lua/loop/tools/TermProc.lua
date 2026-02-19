@@ -56,18 +56,15 @@ function TermProc:start(bufnr, args)
 	assert(args.on_exit_handler)
 	assert(type(args.command) == 'string' or type(args.command) == 'table')
 	assert(not args.env or type(args.env) == 'table')
-	assert(args.cwd, "cwd is required")
 
-	if vim.fn.isdirectory(args.cwd) == 0 then
-		return false, string.format("CWD: '%s' is not a valid directory", tostring(args.cwd))
-	end
-
-	-- get the real path (no symlinks etc...)
-	local cwd = vim.fn.fnamemodify(vim.fn.resolve(args.cwd), ':p')
+	-- get the real path (no symlinks etc..., important for cmake)
+	local cwd = args.cwd and vim.fn.fnamemodify(vim.fn.resolve(args.cwd), ':p')
 
 	---@type table<string,string>
-	local env = vim.deepcopy(args.env or {})
-	env.PWD = cwd -- required for commands to use cwd in all cases
+	local env = args.env and vim.deepcopy(args.env) or {}
+	if cwd then
+		env.PWD = cwd -- required for commands to use cwd in all cases
+	end
 
 	---@type string[]
 	local cmd_and_args = strtools.cmd_to_string_array(args.command)
