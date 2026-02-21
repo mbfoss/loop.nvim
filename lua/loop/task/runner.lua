@@ -122,21 +122,6 @@ function M.on_workspace_close()
     _workspace_info = nil
 end
 
----@param mode "task"|"repeat"
----@param task_name string|nil
-function M.load_and_run_task(mode, task_name)
-    assert(_workspace_info)
-    local config_dir = _workspace_info.config_dir
-
-    taskmgr.get_or_select_task(config_dir, mode, task_name, function(root_name, all_tasks)
-        if not root_name or not all_tasks then
-            return
-        end
-        taskmgr.save_last_task_name(root_name, config_dir)
-        M.run_task(all_tasks, root_name)
-    end)
-end
-
 ---@param handler fun(nb_waiting:number,nb_running:number)
 function M.set_status_handler(handler)
     _status_handler = handler
@@ -144,7 +129,7 @@ end
 
 ---@param all_tasks loop.Task[]
 ---@param root_name string
-function M.run_task(all_tasks, root_name)
+function M.run_task_with_deps(all_tasks, root_name)
     assert(_workspace_info)
 
     local ws_dir = _workspace_info.ws_dir

@@ -250,6 +250,22 @@ local function _show_workspace_info_floatwin()
     floatwin.show_floatwin(str, { title = "Workspace" })
 end
 
+---@param mode "task"|"repeat"
+---@param task_name string|nil
+local function _load_and_run_task(mode, task_name)
+    assert(_workspace_info)
+    local config_dir = _workspace_info.config_dir
+
+    taskmgr.get_or_select_task(config_dir, mode, task_name, function(root_name, all_tasks)
+        if not root_name or not all_tasks then
+            return
+        end
+        taskmgr.save_last_task_name(root_name, config_dir)
+        window.show_window()
+        runner.run_task_with_deps(all_tasks, root_name)
+    end)
+end
+
 ---@param dir string?
 function M.create_workspace(dir)
     assert(_init_done, _init_err_msg)
@@ -492,9 +508,9 @@ function M.task_command(command, arg1, arg2)
     command = command ~= "" and command or "run"
     local config_dir = ws_info.config_dir
     if command == "run" then
-        runner.load_and_run_task("task", arg1)
+        _load_and_run_task("task", arg1)
     elseif command == "repeat" then
-        runner.load_and_run_task("repeat")
+        _load_and_run_task("repeat")
     elseif command == "configure" then
         taskmgr.configure_tasks(config_dir)
     elseif command == "terminate" then
