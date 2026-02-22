@@ -12,12 +12,13 @@ local M = {}
 ---@field remove_file_sign fun(id:number)
 ---@field remove_file_signs fun(file:string)
 ---@field remove_signs fun()
----@field get_signs fun(committed:boolean): loop.signs.Sign[]
----@field get_sign_by_location fun(file:string, lnum:number, committed:boolean): loop.signs.Sign?
----@field get_sign_by_id fun(id:number): loop.signs.Sign?
+---@field get_signs fun(committed:boolean): loop.signs.SignInfo[]
+---@field get_file_signs fun(file:string,committed:boolean): loop.signs.SignInfo[]
+---@field get_sign_by_location fun(file:string, lnum:number, committed:boolean): loop.signs.SignInfo?
+---@field get_sign_by_id fun(id:number): loop.signs.SignInfo?
 ---@field refresh fun()
 
----@class loop.signs.Sign
+---@class loop.signs.SignInfo
 ---@field id number
 ---@field file string
 ---@field name string
@@ -125,7 +126,7 @@ function M.define_group(group, opts)
         get_signs = function(committed)
             local marks = ext.get_extmarks(committed)
 
-            ---@type loop.signs.Sign[]
+            ---@type loop.signs.SignInfo[]
             local result = {}
 
             for _, mark in ipairs(marks) do
@@ -135,6 +136,26 @@ function M.define_group(group, opts)
                 end
             end
 
+            return result
+        end,
+
+        get_file_signs = function(file, committed)
+            local marks = ext.get_file_extmarks(file, committed)
+            ---@type loop.signs.SignInfo[]
+            local result = {}
+            for _, mark in ipairs(marks) do
+                local user = mark.user_data
+                if user and user.name then
+                    result[#result + 1] = {
+                        id = mark.id,
+                        file = mark.file,
+                        name = user.name,
+                        lnum = mark.lnum,
+                        priority = priority,
+                        user_data = user.user_data,
+                    }
+                end
+            end
             return result
         end,
 

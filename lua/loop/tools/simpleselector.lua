@@ -50,7 +50,7 @@ local function update_list(items, cur, buf, win)
 
     for i, item in ipairs(items) do
         local prefix = (i == cur) and "> " or "  "
-        lines[i] = prefix .. item.label:gsub("\n","↵")
+        lines[i] = prefix .. item.label:gsub("\n", "↵")
     end
 
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
@@ -101,10 +101,10 @@ local function update_preview(formatter, items, cur, buf)
         -- Clear previous content safely
         vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
 
+        local lines = {}
         -- Load file contents into the buffer using :read (most "native" way)
-        local ok, load_err = pcall(vim.api.nvim_buf_call, buf, function()
-            local lines = vim.fn.readfile(filepath)
-            vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+        local ok, load_err = pcall(function()
+            lines = vim.fn.readfile(filepath)
         end)
         if not ok then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
@@ -115,8 +115,14 @@ local function update_preview(formatter, items, cur, buf)
             return
         end
 
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
         -- Enable syntax highlighting
         vim.bo[buf].filetype = vim.filetype.match({ filename = filepath }) or "text"
+
+        if target_lnum > #lines then
+            return
+        end
 
         -- Try to position cursor / view at target line
         local preview_win = vim.fn.bufwinid(buf)

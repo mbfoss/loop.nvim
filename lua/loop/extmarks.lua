@@ -328,6 +328,7 @@ end
 local function _get_extmark_by_location(file, line, group, committed)
     _ensure_init()
 
+    assert(type(committed) == "boolean")
     assert(line >= 1, "line must be 1-based")
 
     local group_info = _defined_groups[group]
@@ -336,44 +337,40 @@ local function _get_extmark_by_location(file, line, group, committed)
     file = _normalize_file(file)
     local group_data = group_info.data
 
-    if committed then
-        local file_table = group_data.byfile[file]
-        if not file_table then return nil end
-
-        for id, mark in pairs(file_table) do
-            if mark.lnum == line then
-                return {
-                    id = id,
-                    file = file,
-                    lnum = mark.lnum,
-                    col = mark.col,
-                    opts = mark.opts,
-                    user_data = mark.user_data,
-                }
-            end
-        end
-
-        return nil
-    end
-
     -- live buffer lookup
-    local bufnr = _get_loaded_bufnr(file)
-    if bufnr < 0 then return nil end
-
-    local extmarks = vim.api.nvim_buf_get_extmarks(
-        bufnr,
-        group_data.ns,
-        { line - 1, 0 },
-        { line - 1, -1 },
-        { details = false }
-    )
-
-    if #extmarks == 0 then
-        return nil
+    local bufnr = committed and -1 or _get_loaded_bufnr(file)
+    if bufnr >= 0 then
+        local extmarks = vim.api.nvim_buf_get_extmarks(
+            bufnr,
+            group_data.ns,
+            { line - 1, 0 },
+            { line - 1, -1 },
+            { details = false }
+        )
+        if #extmarks == 0 then
+            return nil
+        end
+        local id = extmarks[1][1]
+        return _get_extmark_by_id(id, group)
     end
 
-    local id = extmarks[1][1]
-    return _get_extmark_by_id(id, group)
+    local file_table = group_data.byfile[file]
+    if not file_table then return nil end
+
+    for id, mark in pairs(file_table) do
+        if mark.lnum == line then
+            return {
+                id = id,
+                file = file,
+                lnum = mark.lnum,
+                col = mark.col,
+                opts = mark.opts,
+                user_data = mark.user_data,
+            }
+        end
+    end
+
+    return nil
 end
 
 ---@param group string
@@ -381,6 +378,8 @@ end
 ---@return loop.extmarks.MarkInfo[]
 local function _get_extmarks(group, committed)
     _ensure_init()
+
+    assert(type(committed) == "boolean")
 
     local group_info = _defined_groups[group]
     assert(group_info)
@@ -390,9 +389,32 @@ local function _get_extmarks(group, committed)
     ---@type loop.extmarks.MarkInfo[]
     local result = {}
 
-    if committed then
-        -- Return stored model (last synced state)
-        for file, file_table in pairs(group_data.byfile) do
+    -- Return stored model (last synced state)
+    for file, file_table in pairs(group_data.byfile) do
+        local bufnr = committed and -1 or _get_loaded_bufnr(file)
+        if bufnr >= 0 then
+            local items = vim.api.nvim_buf_get_extmarks(
+                bufnr,
+                group_data.ns,
+                0,
+                -1,
+                { details = false }
+            )
+            for _, m in ipairs(items) do
+                local id, row, col = m[1], m[2], m[3]
+                local mark = file_table[id]
+                if mark then
+                    result[#result + 1] = {
+                        id = id,
+                        file = file,
+                        lnum = row + 1,
+                        col = col,
+                        opts = mark.opts,
+                        user_data = mark.user_data,
+                    }
+                end
+            end
+        else
             for id, mark in pairs(file_table) do
                 result[#result + 1] = {
                     id = id,
@@ -404,41 +426,73 @@ local function _get_extmarks(group, committed)
                 }
             end
         end
-
-        return result
     end
 
-    -- Live buffer state
-    for file, file_table in pairs(group_data.byfile) do
-        local bufnr = _get_loaded_bufnr(file)
-        if bufnr < 0 then
-            goto continue
-        end
+    return result
+end
 
-        local is_set = vim.api.nvim_buf_get_extmarks(
-            bufnr,
-            group_data.ns,
-            0,
-            -1,
-            { details = false }
-        )
+---@param file string
+---@param group string?
+---@param committed boolean
+---@return loop.extmarks.MarkInfo[]
+local function _get_file_extmarks(file, group, committed)
+    _ensure_init()
+    assert(type(committed) == "boolean")
 
-        for _, m in ipairs(is_set) do
-            local id, row, col = m[1], m[2], m[3]
-            local mark = file_table[id]
-            if mark then
-                result[#result + 1] = {
-                    id = id,
-                    file = file,
-                    lnum = row + 1,
-                    col = col,
-                    opts = mark.opts,
-                    user_data = mark.user_data,
-                }
+    file = _normalize_file(file)
+    local result = {}
+
+    local groups = {}
+
+    if group then
+        local g_info = _defined_groups[group]
+        if not g_info then return result end
+        groups[group] = g_info
+    else
+        groups = _defined_groups
+    end
+
+    for gname, g_info in pairs(groups) do
+        local gdata = g_info.data
+        local file_table = gdata.byfile[file]
+        if file_table then
+            local bufnr = committed and -1 or _get_loaded_bufnr(file)
+            if bufnr >= 0 then
+                local items = vim.api.nvim_buf_get_extmarks(
+                    bufnr,
+                    gdata.ns,
+                    0,
+                    -1,
+                    { details = false }
+                )
+                for _, m in ipairs(items) do
+                    local id, row, col = m[1], m[2], m[3]
+                    local mark = file_table[id]
+                    if mark then
+                        result[#result + 1] = {
+                            id = mark.id,
+                            file = file,
+                            lnum = row + 1,
+                            col = col,
+                            opts = mark.opts,
+                            user_data = mark.user_data,
+                        }
+                    end
+                end
+            else
+                -- Return stored marks directly
+                for _, mark in pairs(file_table) do
+                    result[#result + 1] = {
+                        id = mark.id,
+                        file = file,
+                        lnum = mark.lnum,
+                        col = mark.col,
+                        opts = mark.opts,
+                        user_data = mark.user_data,
+                    }
+                end
             end
         end
-
-        ::continue::
     end
 
     return result
@@ -469,7 +523,8 @@ end
 ---@field remove_file_extmarks fun(file:string)
 ---@field get_extmark_by_id fun(id:number):loop.extmarks.MarkInfo?
 ---@field get_extmark_by_location fun(file:string,line:number,committed:boolean):loop.extmarks.MarkInfo?
----@field get_extmarks fun(commited:boolean):loop.extmarks.MarkInfo[]
+---@field get_extmarks fun(committed:boolean):loop.extmarks.MarkInfo[]
+---@field get_file_extmarks fun(file:string,committed:boolean):loop.extmarks.MarkInfo[]
 ---@field refresh fun()
 
 ---@param group string
@@ -512,6 +567,9 @@ function M.define_group(group, group_opts)
         end,
         get_extmarks = function(committed)
             return _get_extmarks(group, committed)
+        end,
+        get_file_extmarks = function(file, committed)
+            return _get_file_extmarks(file, group, committed)
         end,
         refresh = function()
             _refresh_group(group)
