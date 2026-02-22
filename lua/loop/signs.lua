@@ -8,12 +8,13 @@ local M = {}
 
 ---@class loop.signs.Group
 ---@field define_sign fun(name:string, text:string, texthl:string)
----@field place_file_sign fun(id:number, file:string, lnum:number, name:string,user_data:any)
+---@field set_file_sign fun(id:number, file:string, lnum:number, name:string,user_data:any)
 ---@field remove_file_sign fun(id:number)
 ---@field remove_file_signs fun(file:string)
 ---@field remove_signs fun()
 ---@field get_signs fun(committed:boolean): loop.signs.Sign[]
----@field get_sign fun(file:string, lnum:number, committed:boolean): loop.signs.Sign?
+---@field get_sign_by_location fun(file:string, lnum:number, committed:boolean): loop.signs.Sign?
+---@field get_sign_by_id fun(id:number): loop.signs.Sign?
 ---@field refresh fun()
 
 ---@class loop.signs.Sign
@@ -42,6 +43,27 @@ function M.define_group(group, opts)
         priority = priority,
     })
 
+    --------------------------------------------------------------------
+    -- Internal: convert extmark → sign
+    --------------------------------------------------------------------
+    local function _convert_mark(mark)
+        if not mark then return nil end
+
+        local user = mark.user_data
+        if not user or not user.name then
+            return nil
+        end
+
+        return {
+            id = mark.id,
+            file = mark.file,
+            name = user.name,
+            lnum = mark.lnum,
+            priority = priority,
+            user_data = user.user_data,
+        }
+    end
+
     return {
 
         ----------------------------------------------------------------
@@ -58,15 +80,15 @@ function M.define_group(group, opts)
         end,
 
         ----------------------------------------------------------------
-        -- Place sign (delegates fully to extmarks)
+        -- Place sign
         ----------------------------------------------------------------
-        place_file_sign = function(id, file, lnum, name, user_data)
+        set_file_sign = function(id, file, lnum, name, user_data)
             assert(sign_defs[name], "sign not defined")
             assert(lnum >= 1, "lnum must be 1-based")
 
             local def = sign_defs[name]
 
-            ext.place_file_extmark(
+            ext.set_file_extmark(
                 id,
                 file,
                 lnum,
@@ -76,35 +98,29 @@ function M.define_group(group, opts)
                     sign_hl_group = def.texthl,
                 },
                 {
-                    name = name, -- stored inside extmark
-                    user_data = user_data
+                    name = name,
+                    user_data = user_data,
                 }
             )
         end,
 
         ----------------------------------------------------------------
-        -- Remove single sign
+        -- Remove
         ----------------------------------------------------------------
         remove_file_sign = function(id)
             ext.remove_extmark(id)
         end,
 
-        ----------------------------------------------------------------
-        -- Remove all signs from file
-        ----------------------------------------------------------------
         remove_file_signs = function(file)
             ext.remove_file_extmarks(file)
         end,
 
-        ----------------------------------------------------------------
-        -- Remove entire group
-        ----------------------------------------------------------------
         remove_signs = function()
             ext.remove_extmarks()
         end,
 
         ----------------------------------------------------------------
-        -- Query all signs (derived from extmarks)
+        -- Get all signs
         ----------------------------------------------------------------
         get_signs = function(committed)
             local marks = ext.get_extmarks(committed)
@@ -113,16 +129,9 @@ function M.define_group(group, opts)
             local result = {}
 
             for _, mark in ipairs(marks) do
-                local user = mark.user_data
-                if user and user.name then
-                    result[#result + 1] = {
-                        id = mark.id,
-                        file = mark.file,
-                        name = user.name,
-                        lnum = mark.lnum,
-                        priority = priority,
-                        user_data = user.user_data
-                    }
+                local sign = _convert_mark(mark)
+                if sign then
+                    result[#result + 1] = sign
                 end
             end
 
@@ -130,28 +139,23 @@ function M.define_group(group, opts)
         end,
 
         ----------------------------------------------------------------
-        -- Get a single sign by file and line
+        -- Get by file + line  (NEW API)
         ----------------------------------------------------------------
-        get_sign = function(file, lnum, committed)
-            local mark = ext.get_extmark(file, lnum, committed)
-            if mark then
-                local user = mark.user_data
-                if user and user.name and mark.file == file and mark.lnum == lnum then
-                    return {
-                        id = mark.id,
-                        file = mark.file,
-                        name = user.name,
-                        lnum = mark.lnum,
-                        priority = priority,
-                        user_data = user.user_data
-                    }
-                end
-            end
-            return nil
+        get_sign_by_location = function(file, lnum, committed)
+            local mark = ext.get_extmark_by_location(file, lnum, committed)
+            return _convert_mark(mark)
         end,
 
         ----------------------------------------------------------------
-        -- Refresh extmarks
+        -- Get by ID (O(1))
+        ----------------------------------------------------------------
+        get_sign_by_id = function(id)
+            local mark = ext.get_extmark_by_id(id)
+            return _convert_mark(mark)
+        end,
+
+        ----------------------------------------------------------------
+        -- Refresh
         ----------------------------------------------------------------
         refresh = function()
             ext.refresh()
