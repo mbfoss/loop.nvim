@@ -1,0 +1,55 @@
+local class = require("loop.tools.class")
+
+---@class loop.TrackerRef
+---@field cancel fun()
+
+---@class loop.tools.Trackers
+---@field new fun(self: loop.tools.Trackers) : loop.tools.Trackers
+---@field private _next_id integer
+---@field private _items table<integer, table>
+local Trackers = class()
+
+function Trackers:init()
+    self._next_id = 0
+    self._items = {}
+end
+
+---@param callbacks table
+---@return loop.TrackerRef
+function Trackers:add_tracker(callbacks)
+    local id = self._next_id + 1
+    self._next_id = id
+    self._items[id] = callbacks
+
+    return {
+        cancel = function()
+            self._items[id] = nil
+        end,
+    }
+end
+
+---@param callback_name string
+---@param ... any
+function Trackers:_invoke(callback_name, ...)
+    local keys = vim.tbl_keys(self._items)
+    for _, k in ipairs(keys) do
+        local t = self._items[k]
+        local fn = t and t[callback_name]
+        if fn then
+            fn(...)
+        end
+    end
+end
+
+---@param callback_name string
+---@param ... any
+function Trackers:invoke(callback_name, ...)
+    local n = select("#", ...)
+    local args = {}
+    for i = 1, n do
+        args[i] = select(i, ...)
+    end
+    self:_invoke(callback_name, unpack(args, 1, n))
+end
+
+return Trackers
