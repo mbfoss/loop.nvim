@@ -6,7 +6,7 @@
 ---@field label_chunks {[1]:string, [2]:string?}[]?  optional, allows chunked labels with highlights
 ---@field file         string?
 ---@field lnum         number?
----@field virt_text_chunks?   string[][]         chunks: { { "text", "HighlightGroup?" }, ... }
+---@field virt_lines? {[1]:string, [2]:string?}[][] chunks: { { "text", "HighlightGroup?" }, ... }
 ---@field data         any                payload returned on select
 
 ---@alias loop.SelectorCallback fun(data:any|nil)
@@ -81,18 +81,19 @@ local function update_list(items, cur, buf, win)
         -- ----------------------------
         -- Virtual text
         -- ----------------------------
-        if item.virt_text_chunks and #item.virt_text_chunks > 0 then
-            local virt_chunks = { { (" "):rep(vim.fn.strdisplaywidth(prefix)) } }
-            for _, chunk in ipairs(item.virt_text_chunks) do
-                table.insert(virt_chunks, { chunk[1], chunk[2] or "Comment" })
+        if item.virt_lines and #item.virt_lines > 0 then
+            local space = (" "):rep(vim.fn.strdisplaywidth(prefix))
+            local vlines = {}
+            for _, line in ipairs(item.virt_lines) do
+                local vl = { { space } }
+                vim.list_extend(vl, line)
+                table.insert(vlines, vl)
             end
-            if #virt_chunks > 0 then
-                virt_extmarks[#virt_extmarks + 1] = {
-                    row  = i - 1,
-                    col  = 0,
-                    opts = { virt_lines = { virt_chunks }, hl_mode = "blend" }
-                }
-            end
+            virt_extmarks[#virt_extmarks + 1] = {
+                row  = i - 1,
+                col  = 0,
+                opts = { virt_lines = vlines, hl_mode = "blend" }
+            }
         end
     end
     vim.api.nvim_buf_clear_namespace(buf, NS_VIRT, 0, -1)
@@ -273,9 +274,18 @@ local function compute_width(items, padding)
 
     for _, item in ipairs(items) do
         maxw = math.max(maxw, vim.fn.strdisplaywidth(item.label))
+        if item.virt_lines then
+            for _, vl in ipairs(item.virt_lines) do
+                local w = 0
+                for _, chunk in ipairs(vl) do
+                    w = w + vim.fn.strdisplaywidth(chunk[1])
+                end
+                maxw = math.max(maxw, w)
+            end
+        end
     end
 
-    local desired = maxw + (padding or 4)
+    local desired = maxw + (padding or 2)
     return math.max(
         math.floor(cols * 0.2),
         math.min(math.floor(cols * 0.8), desired)
@@ -313,12 +323,14 @@ function M.select(opts)
     -- Layout
     --------------------------------------------------------------------------
 
-    local list_w = compute_width(items, 4)
-    local cols = vim.o.columns
+    local cols = vim.o.columns - 2
     local lines = vim.o.lines
-
     local spacing = has_preview and 2 or 0
-    local preview_w = has_preview and math.min(math.floor(cols * 0.3), cols - list_w - spacing) or 0
+
+    local max_list_w = math.max(1, (has_preview and math.floor(cols * 0.5) or cols) - spacing)
+    local list_w = math.min(max_list_w, compute_width(items, 2))
+
+    local preview_w = has_preview and math.max(1, math.min(cols - max_list_w, cols - list_w) - spacing) or 0
     local width = list_w + spacing + preview_w
 
     local height = math.max(
@@ -379,6 +391,9 @@ function M.select(opts)
         }))
         vim.wo[vwin].wrap = true
     end
+
+    vim.wo[pwin].wrap = false
+    vim.wo[lwin].wrap = true
 
     local winhl = "NormalFloat:Normal,FloatBorder:LoopTransparentBorder,CursorLine:Visual"
     for _, w in ipairs({ pwin, lwin, vwin }) do
