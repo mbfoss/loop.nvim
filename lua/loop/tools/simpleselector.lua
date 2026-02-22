@@ -2,10 +2,11 @@
 ---@brief Simple floating selector with fuzzy filtering and optional preview.
 
 ---@class loop.SelectorItem
----@field label string        Display label
----@field file string?
----@field line number?
----@field data  any           Payload returned on select
+---@field label        string             main displayed text
+---@field file         string?
+---@field lnum         number?
+---@field virt_text?   string[][]         chunks: { { "text", "HighlightGroup?" }, ... }
+---@field data         any                payload returned on select
 
 ---@alias loop.SelectorCallback fun(data:any|nil)
 
@@ -14,8 +15,8 @@
 
 local M = {}
 
--- Namespace for prompt highlighting
 local NS_PREVIEW = vim.api.nvim_create_namespace("LoopSelectorPreview")
+local NS_VIRT = vim.api.nvim_create_namespace("LoopSelectorVirtText")
 
 --------------------------------------------------------------------------------
 -- Utility functions
@@ -41,20 +42,62 @@ local function fuzzy_filter(items, query)
     return res
 end
 
----@param items loop.SelectorItem[]
 ---@param cur integer
 ---@param buf integer
 ---@param win integer
 local function update_list(items, cur, buf, win)
     local lines = {}
+    local virt_extmarks = {} -- collect extmarks to apply later
 
     for i, item in ipairs(items) do
         local prefix = (i == cur) and "> " or "  "
-        lines[i] = prefix .. item.label:gsub("\n", "↵")
+        local display_label = item.label:gsub("\n", "↵")
+
+        lines[i] = prefix .. display_label
+        local prefix_width = vim.fn.strdisplaywidth(prefix)
+        -- ──────────────────────────────────────────────────────────────
+        -- Virtual text support (multiple chunks)
+        -- ──────────────────────────────────────────────────────────────
+        if item.virt_text and #item.virt_text > 0 then
+            local chunks = {{(" "):rep(prefix_width), ""}}
+            for _, chunk in ipairs(item.virt_text) do
+                if type(chunk) == "table" and chunk[1] and type(chunk[1]) == "string" then
+                    local text = chunk[1]
+                    local hl   = chunk[2]                           -- may be nil
+                    table.insert(chunks, { text, hl or "Comment" }) -- fallback hl if missing
+                end
+            end
+            if #chunks > 0 then
+                virt_extmarks[#virt_extmarks + 1] = {
+                    row  = i - 1,
+                    col  = 0,
+                    opts = {
+                        virt_lines = { chunks },
+                        hl_mode    = "blend", -- or "combine" / "replace"
+                    }
+                }
+            end
+        end
     end
 
+    -- Apply all lines
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
+    -- Clear old virtual text extmarks
+    vim.api.nvim_buf_clear_namespace(buf, NS_VIRT, 0, -1)
+
+    -- Apply new virtual text extmarks
+    for _, mark in ipairs(virt_extmarks) do
+        vim.api.nvim_buf_set_extmark(
+            buf,
+            NS_VIRT,
+            mark.row,
+            mark.col,
+            mark.opts
+        )
+    end
+
+    -- Move cursor to selected line
     if vim.api.nvim_win_is_valid(win) then
         vim.api.nvim_win_set_cursor(win, { math.max(cur, 1), 0 })
     end
@@ -76,9 +119,9 @@ local function update_preview(formatter, items, cur, buf)
     -- ──────────────────────────────────────────────────────────────
     --  File + line → load file contents into the preview buffer
     -- ──────────────────────────────────────────────────────────────
-    if item.file and item.line then
+    if item.file and item.lnum then
         local filepath = vim.fs.normalize(item.file)
-        local target_lnum = tonumber(item.line)
+        local target_lnum = tonumber(item.lnum)
 
         if vim.fn.filereadable(filepath) ~= 1 then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
@@ -92,7 +135,7 @@ local function update_preview(formatter, items, cur, buf)
         if not target_lnum or target_lnum < 1 then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
                 "Invalid line number:",
-                filepath .. ":" .. tostring(item.line),
+                filepath .. ":" .. tostring(item.lnum),
             })
             vim.bo[buf].filetype = "text"
             return
