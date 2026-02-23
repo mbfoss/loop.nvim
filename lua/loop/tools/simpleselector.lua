@@ -328,9 +328,11 @@ function M.select(opts)
     local spacing = has_preview and 2 or 0
 
     local max_list_w = math.max(1, (has_preview and math.floor(cols * 0.5) or cols) - spacing)
+    local max_prev_w = has_preview and math.floor(cols * 0.4) - spacing or 0
+
     local list_w = math.min(max_list_w, compute_width(items, 2))
 
-    local preview_w = has_preview and math.max(1, math.min(cols - max_list_w, cols - list_w) - spacing) or 0
+    local preview_w = has_preview and math.max(1, math.min(cols - max_list_w, cols - list_w, max_prev_w)) or 0
     local width = list_w + spacing + preview_w
 
     local height = math.max(
