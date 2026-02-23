@@ -232,8 +232,23 @@ end
 ---@param c1 number
 ---@param c2 number
 ---@param alpha number
----@return string
+---@return number
 function M.blend_colors(c1, c2, alpha)
+    local function srgb_to_linear(c)
+        c = c / 255
+        if c <= 0.04045 then
+            return c / 12.92
+        end
+        return ((c + 0.055) / 1.055) ^ 2.4
+    end
+    local function linear_to_srgb(c)
+        if c <= 0.0031308 then
+            c = 12.92 * c
+        else
+            c = 1.055 * (c ^ (1 / 2.4)) - 0.055
+        end
+        return math.floor(c * 255 + 0.5)
+    end
     local function rgb(c)
         return
             bit.rshift(c, 16),
@@ -244,11 +259,14 @@ function M.blend_colors(c1, c2, alpha)
     local r1, g1, b1 = rgb(c1)
     local r2, g2, b2 = rgb(c2)
 
-    local r = math.floor(r1 * (1 - alpha) + r2 * alpha)
-    local g = math.floor(g1 * (1 - alpha) + g2 * alpha)
-    local b = math.floor(b1 * (1 - alpha) + b2 * alpha)
+    r1, g1, b1 = srgb_to_linear(r1), srgb_to_linear(g1), srgb_to_linear(b1)
+    r2, g2, b2 = srgb_to_linear(r2), srgb_to_linear(g2), srgb_to_linear(b2)
 
-    return string.format("#%02x%02x%02x", r, g, b)
+    local r = linear_to_srgb(r1 * (1 - alpha) + r2 * alpha)
+    local g = linear_to_srgb(g1 * (1 - alpha) + g2 * alpha)
+    local b = linear_to_srgb(b1 * (1 - alpha) + b2 * alpha)
+
+    return bit.lshift(r, 16) + bit.lshift(g, 8) + b
 end
 
 return M
