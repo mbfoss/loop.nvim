@@ -303,6 +303,7 @@ end
 ---@field formatter loop.PreviewFormatter|nil
 ---@field callback loop.SelectorCallback
 ---@field initial integer? -- 1-based index into items
+---@field list_wrap boolean?
 
 ---@param opts loop.selector.opts
 function M.select(opts)
@@ -395,7 +396,7 @@ function M.select(opts)
     end
 
     vim.wo[pwin].wrap = false
-    vim.wo[lwin].wrap = true
+    vim.wo[lwin].wrap = opts.list_wrap ~= false
 
     local winhl = "NormalFloat:Normal,FloatBorder:LoopTransparentBorder,CursorLine:Visual"
     for _, w in ipairs({ pwin, lwin, vwin }) do
