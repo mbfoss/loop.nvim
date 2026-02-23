@@ -12,6 +12,16 @@ local uitools = require('loop.tools.uitools')
 ---@alias JsonPrimitive string|number|boolean|nil
 ---@alias JsonValue JsonPrimitive|table<string,JsonValue>|JsonValue[]
 
+---@class loop.JsonEditor.NodeData
+---@field key string
+---@field path string
+---@field value JsonValue
+---@field value_type string
+---@field err_msg string|nil
+---@field expanded boolean?
+---@field unresolved_schema table|nil
+---@field schema table|nil
+
 ---@class loop.JsonEditorOpts
 ---@field name string?
 ---@field filepath string?
@@ -150,6 +160,7 @@ local function _show_node_help(item)
         vim.notify("No node selected", vim.log.levels.WARN)
         return
     end
+    ---@type loop.JsonEditor.NodeData
     local data = item.data
     local schema = data.unresolved_schema
     local lines = {}
@@ -260,7 +271,7 @@ local function _request_value(name, value_type, enum, default_text, raw_input, o
 end
 
 ---@param _ any
----@param data table
+---@param data loop.JsonEditor.NodeData
 ---@return string[][], string[][]
 local function _formatter(_, data)
     if not data then return {}, {} end
