@@ -232,41 +232,21 @@ end
 ---@param c1 number
 ---@param c2 number
 ---@param alpha number
----@return number
+---@return string
 function M.blend_colors(c1, c2, alpha)
-    local function srgb_to_linear(c)
-        c = c / 255
-        if c <= 0.04045 then
-            return c / 12.92
-        end
-        return ((c + 0.055) / 1.055) ^ 2.4
-    end
-    local function linear_to_srgb(c)
-        if c <= 0.0031308 then
-            c = 12.92 * c
-        else
-            c = 1.055 * (c ^ (1 / 2.4)) - 0.055
-        end
-        return math.floor(c * 255 + 0.5)
-    end
-    local function rgb(c)
-        return
-            bit.rshift(c, 16),
-            bit.band(bit.rshift(c, 8), 0xFF),
-            bit.band(c, 0xFF)
-    end
+    local r1 = bit.rshift(c1, 16)
+    local g1 = bit.band(bit.rshift(c1, 8), 0xFF)
+    local b1 = bit.band(c1, 0xFF)
 
-    local r1, g1, b1 = rgb(c1)
-    local r2, g2, b2 = rgb(c2)
+    local r2 = bit.rshift(c2, 16)
+    local g2 = bit.band(bit.rshift(c2, 8), 0xFF)
+    local b2 = bit.band(c2, 0xFF)
 
-    r1, g1, b1 = srgb_to_linear(r1), srgb_to_linear(g1), srgb_to_linear(b1)
-    r2, g2, b2 = srgb_to_linear(r2), srgb_to_linear(g2), srgb_to_linear(b2)
+    local r = math.floor(r1 * (1 - alpha) + r2 * alpha)
+    local g = math.floor(g1 * (1 - alpha) + g2 * alpha)
+    local b = math.floor(b1 * (1 - alpha) + b2 * alpha)
 
-    local r = linear_to_srgb(r1 * (1 - alpha) + r2 * alpha)
-    local g = linear_to_srgb(g1 * (1 - alpha) + g2 * alpha)
-    local b = linear_to_srgb(b1 * (1 - alpha) + b2 * alpha)
-
-    return bit.lshift(r, 16) + bit.lshift(g, 8) + b
+    return string.format("#%02x%02x%02x", r, g, b)
 end
 
 return M
