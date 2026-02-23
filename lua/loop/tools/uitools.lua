@@ -233,14 +233,16 @@ end
 ---@param c2 number
 ---@param alpha number
 ---@return string
-function M.blind_colors(c1, c2, alpha)
-    local r1 = bit.rshift(c1, 16)
-    local g1 = bit.band(bit.rshift(c1, 8), 0xFF)
-    local b1 = bit.band(c1, 0xFF)
+function M.blend_colors(c1, c2, alpha)
+    local function rgb(c)
+        return
+            bit.rshift(c, 16),
+            bit.band(bit.rshift(c, 8), 0xFF),
+            bit.band(c, 0xFF)
+    end
 
-    local r2 = bit.rshift(c2, 16)
-    local g2 = bit.band(bit.rshift(c2, 8), 0xFF)
-    local b2 = bit.band(c2, 0xFF)
+    local r1, g1, b1 = rgb(c1)
+    local r2, g2, b2 = rgb(c2)
 
     local r = math.floor(r1 * (1 - alpha) + r2 * alpha)
     local g = math.floor(g1 * (1 - alpha) + g2 * alpha)
