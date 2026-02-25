@@ -178,6 +178,7 @@ end
 ---@param dir string
 ---@return boolean
 ---@return string|nil
+---@return boolean? is_config_err
 local function _load_workspace(dir)
     assert(_init_done, _init_err_msg)
     assert(type(dir) == 'string')
@@ -192,7 +193,7 @@ local function _load_workspace(dir)
     local ws_config, config_errors = _load_workspace_config(config_dir)
     if not ws_config then
         logs.log(config_errors or "unknown error", vim.log.levels.ERROR)
-        return false, "Failed to load workspace configuration (:Loop logs for details)"
+        return false, "Configuration error", true
     end
 
     ---@type loop.ws.WorkspaceInfo
@@ -365,7 +366,7 @@ function M.open_workspace(dir, at_startup)
 
     _close_workspace()
 
-    local ok, err_msg = _load_workspace(dir)
+    local ok, err_msg, have_config_error = _load_workspace(dir)
     if ok and _workspace_info then
         -- add to recent list (MRU)
         _add_recent_workspace(dir)
@@ -378,7 +379,12 @@ function M.open_workspace(dir, at_startup)
         end
     else
         if not at_startup and err_msg then
-            vim.notify(err_msg, vim.log.levels.ERROR)
+            if have_config_error then
+                vim.notify("Workspace configuration error, opending configuration editor", vim.log.levels.ERROR)
+                _configure_workspace(dir)
+            else
+                vim.notify("Workspace not loaded (:Loop logs for details)", vim.log.levels.ERROR)
+            end
         end
         logs.user_log("Workspace not loaded, " .. err_msg, "workspace")
     end

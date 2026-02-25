@@ -276,14 +276,14 @@ local function compute_width(items, padding)
     local maxw = 0
 
     for _, item in ipairs(items) do
-        maxw = math.max(maxw, vim.fn.strdisplaywidth(item.label))
+        maxw = math.max(maxw, vim.fn.strdisplaywidth(item.label) + 1)
         if item.virt_lines then
             for _, vl in ipairs(item.virt_lines) do
                 local w = 0
                 for _, chunk in ipairs(vl) do
                     w = w + vim.fn.strdisplaywidth(chunk[1])
                 end
-                maxw = math.max(maxw, w)
+                maxw = math.max(maxw, w + 1)
             end
         end
     end

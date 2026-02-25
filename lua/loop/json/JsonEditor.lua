@@ -856,11 +856,7 @@ function JsonEditor:_get_object_new_value(item, schema, callback)
         jsoncodec.order_keys(suggested_keys, schema)
     end
 
-    if #suggested_keys == 0 then
-        vim.notify("No additional properties")
-    end
-
-    local on_confirm = function(key)
+    local on_key_selected = function(key)
         if not key or key == "" then return end
         if obj[key] ~= nil then
             vim.notify("Key already exists", vim.log.levels.WARN)
@@ -906,32 +902,68 @@ function JsonEditor:_get_object_new_value(item, schema, callback)
                 end
             end
         end
-
         -- fallback: additionalProperties
         local ap = schema.additionalProperties
         with_schema(type(ap) == "table" and ap or {})
     end
-
-    local choices = {}
-    for _, key in ipairs(suggested_keys) do
-        local name, desc = key, key_descriptions[key]
-        local desc_lines = desc and vim.split(desc, "\n", { trimempty = true })
-        local desc_chunks = desc_lines and vim.tbl_map(function(a)
-            return { { a, "Comment" } }
-        end, desc_lines)
-        ---@type loop.SelectorItem
-        local choice = {
-            label = name,
-            virt_lines = desc_chunks,
-            data = name
-        }
-        table.insert(choices, choice)
+    local function select_additional_key()
+        floatwin.input_at_cursor({
+                prompt = "Property name"
+            },
+            function(value)
+                if value then
+                    on_key_selected(value)
+                end
+            end)
     end
-    selector.select({
-        items = choices,
-        prompt = "Select property",
-        callback = on_confirm
-    })
+    local with_additiona_props = (schema.additionalProperties == true or schema.patternProperties)
+    if #suggested_keys == 0 then
+        if with_additiona_props then
+            select_additional_key()
+        else
+            vim.notify("No additional properties")
+        end
+    else
+        local choices = {}
+        for _, key in ipairs(suggested_keys) do
+            local name, desc = key, key_descriptions[key]
+            local desc_lines = desc and vim.split(desc, "\n", { trimempty = true })
+            local desc_chunks = desc_lines and vim.tbl_map(function(a)
+                return { { a, "Comment" } }
+            end, desc_lines)
+            ---@type loop.SelectorItem
+            local choice = {
+                label = name,
+                virt_lines = desc_chunks,
+                data = {
+                    name = name,
+                }
+            }
+            table.insert(choices, choice)
+        end
+        if with_additiona_props then
+            table.insert(choices, {
+                label = "<Additional property>",
+                virt_lines = { { { "Enter a custom property name", "Comment" } } },
+                data = {
+                    custom = true
+                }
+            })
+        end
+        selector.select({
+            items = choices,
+            prompt = "Select property",
+            callback = function(data)
+                if data then
+                    if data.name then
+                        on_key_selected(data.name)
+                    elseif data.custom then
+                        select_additional_key()
+                    end
+                end
+            end
+        })
+    end
 end
 
 function JsonEditor:_push_undo()

@@ -25,7 +25,7 @@ local schema = {
                     description = "Optional name/identifier for this configuration entry",
                 },
                 save = {
-                    type = { "object", "nil" },
+                    type = { "object", "null" },
                     description = "File saving/filtering options",
                     default = {},
                     ["x-order"] = { "include", "exclude", "follow_symlinks" },
