@@ -149,19 +149,36 @@ function ReplBuffer:_cycle_next()
 	if #c.cycle_list == 0 then return end
 
 	c.cycle_idx = c.cycle_idx + 1
-	if c.cycle_idx > #c.cycle_list then c.cycle_idx = 1 end
+	if c.cycle_idx > #c.cycle_list then
+		c.cycle_idx = 1
+	end
 
 	local item = c.cycle_list[c.cycle_idx]
 	local suggestion = type(item) == "table" and item.text or item
 
-	local prefix, _ = c.line_before_cycle:match("(.-)([^%s]*)$")
-	local new_before = (prefix or "") .. suggestion
+	local original_left = c.line_before_cycle
+	local right = c.tail_after_cycle
 
-	self._current_line = new_before .. c.tail_after_cycle
+	local new_before
+
+	-- CASE 0: beginning of line → replace whole line
+	if original_left == "" then
+		new_before = suggestion
+
+	-- CASE 1: suggestion completes entire left side
+	elseif suggestion:sub(1, #original_left) == original_left then
+		new_before = suggestion
+
+	-- CASE 2: replace only last word
+	else
+		local prefix = original_left:match("^(.-)%S*$") or ""
+		new_before = prefix .. suggestion
+	end
+
+	self._current_line = new_before .. right
 	self._cursor_pos = #new_before + 1
 	self:_redraw_line()
 end
-
 ---Primary input state machine
 ---@private
 ---@param data string

@@ -71,9 +71,7 @@ function M.get_at_path(root, path)
             if not idx then
                 return nil, ("Invalid array index '%s' at segment %d"):format(key, i)
             end
-            current = current[idx + 1] or current[idx] -- depends on your indexing convention
-            -- NOTE: JSON arrays are 0-based, Lua arrays are 1-based
-            -- so typically: current = current[idx + 1]
+            current = current[idx]
         else
             current = current[key]
         end
