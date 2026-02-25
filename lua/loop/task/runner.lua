@@ -76,6 +76,18 @@ local function _start_task(task, page_group, on_exit)
     logs.user_log("Starting task:\n" .. vim.inspect(task), "task")
     ---@type loop.TaskExitHandler
     local exit_handler = function(success, reason)
+        if not success and reason then
+            if not page_group.is_expired() and not page_group.have_pages() then
+                local page = page_group.add_page({
+                    label = "Error",
+                    type = "output",
+                    activate = true,
+                })
+                if page then
+                    page.output_buf.add_lines(reason)
+                end
+            end
+        end
         _expire_page_group(task.name, page_group)
         on_exit(success, reason)
     end
@@ -163,7 +175,7 @@ function M.run_task_with_deps(all_tasks, root_name)
     ---@param err_msg string
     local function on_run_failed(err_msg)
         logs.user_log(err_msg, "task")
-        if not root_page_group or (not root_page_group.is_expired and not root_page_group.have_pages()) then
+        if not root_page_group or (not root_page_group.is_expired() and not root_page_group.have_pages()) then
             root_page_group = _page_manager and _page_manager.add_page_group(root_name)
             if root_page_group then
                 local page = root_page_group.add_page({

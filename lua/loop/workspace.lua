@@ -243,11 +243,10 @@ local function _show_workspace_info_floatwin()
         return
     end
     local info = _workspace_info
-    local save_config = vim.fn.copy(info.config.save)
     local schema = require('loop.ws.schema')
     ---@diagnostic disable-next-line: inject-field
-    local str = ("Name: %s\nDirectory: %s\nFiles:\n%s"):format(info.name, info.ws_dir,
-        jsoncodec.to_string(save_config, schema))
+    local str = ("Directory:\n%s\n\nSettings:\n%s"):format(info.ws_dir,
+        jsoncodec.to_string(info.config, schema.properties.workspace))
     floatwin.show_floatwin(str, { title = "Workspace" })
 end
 
@@ -380,7 +379,7 @@ function M.open_workspace(dir, at_startup)
     else
         if not at_startup and err_msg then
             if have_config_error then
-                vim.notify("Workspace configuration error, opending configuration editor", vim.log.levels.ERROR)
+                vim.notify("Workspace configuration error, opening configuration editor", vim.log.levels.ERROR)
                 _configure_workspace(dir)
             else
                 vim.notify("Workspace not loaded (:Loop logs for details)", vim.log.levels.ERROR)
@@ -388,6 +387,10 @@ function M.open_workspace(dir, at_startup)
         end
         logs.user_log("Workspace not loaded, " .. err_msg, "workspace")
     end
+end
+
+function M.close_workspace()
+    _close_workspace()
 end
 
 function M.configure_workspace()
@@ -461,7 +464,7 @@ end
 ---@return string[]
 function M.workspace_subcommands(args)
     if #args == 0 then
-        return { "info", "create", "open", "configure", "save" }
+        return { "info", "create", "open", "close", "configure", "save" }
     end
     return {}
 end
@@ -478,6 +481,10 @@ function M.workspace_command(command)
     end
     if command == "open" then
         M.open_workspace(nil, false)
+        return
+    end
+    if command == "close" then
+        M.close_workspace()
         return
     end
     if command == "configure" then

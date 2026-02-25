@@ -451,7 +451,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
     if vim.islist(tbl) then
         for i, v in ipairs(tbl) do
             local str_i = tostring(i)
-            local p = validator.join_path(path, str_i)
+            local p = jsontools.join_path(path, str_i)
             local item_schema = parent_schema and parent_schema.items or nil
             jsontools.merge_additional_properties(item_schema, parent_schema)
 
@@ -484,7 +484,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
             if k == "$schema" then goto continue end
 
             local v = tbl[k]
-            local p = validator.join_path(path, k)
+            local p = jsontools.join_path(path, k)
 
             local prop_schema, unresoved_schema, resolved_schema
             if parent_schema and parent_schema.properties and parent_schema.properties[k] then
@@ -546,7 +546,7 @@ function JsonEditor:_request_value(path, name, value_type, schema, default_text,
     if schema and schema["x-valueSelector"] then
         local value_selector_fn_path = schema["x-valueSelector"]
         _call_lua_function(value_selector_fn_path, function(value)
-            if value and validator.validate(schema, value) == nil then
+            if value then
                 on_confirm(value)
             end
         end, vim.deepcopy(self._data), path)
@@ -635,7 +635,7 @@ end
 ---@param path string
 ---@param new_value any
 function JsonEditor:_set_value(path, new_value)
-    local parts = validator.split_path(path) ---@type string[]
+    local parts = jsontools.split_path(path) ---@type string[]
     local obj = nil
     local key = nil
 
@@ -672,10 +672,10 @@ function JsonEditor:_add_new(item, where)
     if where == "under" then
         parent = item
     else
-        local parts = validator.split_path(item.data.path)
+        local parts = jsontools.split_path(item.data.path)
         if #parts < 2 then return end
         local item_key = table.remove(parts, #parts)
-        local parent_path = validator.join_path_parts(parts)
+        local parent_path = jsontools.join_path_parts(parts)
         local par_item = self._itemtree:get_item(parent_path)
         if not par_item then return end
         parent = par_item
@@ -746,7 +746,7 @@ function JsonEditor:_delete(item)
         return
     end
 
-    local parts = validator.split_path(item.data.path) ---@type string[]
+    local parts = jsontools.split_path(item.data.path) ---@type string[]
     if #parts == 0 then return end
 
     local key = parts[#parts] ---@type string
