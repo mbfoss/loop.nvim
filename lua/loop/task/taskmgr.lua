@@ -37,6 +37,7 @@ local function _build_taskfile_schema()
                 if provider_schema["x-order"] then vim.list_extend(oneOfItem["x-order"], provider_schema["x-order"]) end
                 oneOfItem.properties.type = { const = task_type, description = base_items.properties.type.description }
                 oneOfItem.additionalProperties = false -- providers are not allowed to change this
+                oneOfItem["x-valueSelector"] = schema.properties.tasks.items["x-valueSelector"]
                 for _, req in ipairs(provider_schema.required or {}) do
                     table.insert(oneOfItem.required, req)
                 end
@@ -100,8 +101,8 @@ local function _load_tasks_from_str(content, tasktype_to_schema)
     local data = data_or_err
     do
         local schema = require("loop.task.tasksschema").base_schema
-        local errors = jsonvalidator.validate(schema, data)
-        if errors and #errors > 0 then
+        local valid, errors = jsonvalidator.validate(schema, data)
+        if not valid then
             local strs = jsonvalidator.errors_to_string_arr(errors)
             table.insert(strs, 1, "Failed to load tasks schema")
             return nil, strs
@@ -118,8 +119,8 @@ local function _load_tasks_from_str(content, tasktype_to_schema)
         if not schema then
             return nil, { "No schema for task type: " .. task.type }
         end
-        local errors = jsonvalidator.validate(schema, task)
-        if errors and #errors > 0 then
+        local valid, errors = jsonvalidator.validate(schema, task)
+        if not valid then
             local strs = jsonvalidator.errors_to_string_arr(errors)
             table.insert(strs, 1, "Failed to load task: " .. task.name)
             return nil, strs

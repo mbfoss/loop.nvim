@@ -19,7 +19,6 @@ local uitools = require('loop.tools.uitools')
 ---@field value_type string
 ---@field err_msg string|nil
 ---@field schema table|nil
----@field unresoved_schema table|nil
 
 ---@class loop.JsonEditorOpts
 ---@field name string?
@@ -33,6 +32,7 @@ local uitools = require('loop.tools.uitools')
 ---@field _filepath string
 ---@field _data table
 ---@field _schema table|nil
+---@field _schema_map table<string,any>
 ---@field _fold_cache table<string, boolean>
 ---@field _undo_stack table[]
 ---@field _redo_stack table[]
@@ -418,21 +418,23 @@ function JsonEditor:_reload_data()
         end
     end
     self._data = data
+    self._validation_errors = {}
+    if self._schema then
+        local valid, validation_errors, schema_map = validator.validate(self._schema, self._data,
+            { build_schema_map = true })
+        self._schema_map = schema_map or {}
+        if not valid then
+            self._validation_errors = validation_errors
+        end
+    end
     self:_reload_tree()
 end
 
 function JsonEditor:_reload_tree()
-    self._validation_errors = {}
     ---@type table<string, string>
     local errors = {}
-    if self._schema then
-        local validation_errors = validator.validate(self._schema, self._data)
-        if validation_errors and #validation_errors > 0 then
-            self._validation_errors = validation_errors
-            for _, e in ipairs(validation_errors) do
-                errors[e.path] = e.err_msg:gsub("\n", " ")
-            end
-        end
+    for _, e in ipairs(self._validation_errors) do
+        errors[e.path] = e.err_msg:gsub("\n", " ")
     end
     self:_upsert_tree_items(self._data, "", nil, self._schema, errors)
 end
@@ -452,26 +454,20 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
         for i, v in ipairs(tbl) do
             local str_i = tostring(i)
             local p = jsontools.join_path(path, str_i)
-            local item_schema = parent_schema and parent_schema.items or nil
-            jsontools.merge_additional_properties(item_schema, parent_schema)
-
-            local unresoved_schema = item_schema
-            local resolved_schema = validator.resolve_oneof_schema(v, item_schema) or item_schema
-
+            local schema = self._schema_map[p]
             local e = errors[p]
-
+            if not e and not schema then e = "No schema" end
             ---@type loop.comp.ItemTree.ItemDef
             local item = {
                 id = p,
                 expanded = self._fold_cache[p] ~= false,
                 data = {
-                    key              = "[" .. str_i .. "]",
-                    path             = p,
-                    value            = v,
-                    err_msg          = e,
-                    value_type       = jsontools.value_type(v),
-                    schema           = resolved_schema,
-                    unresoved_schema = unresoved_schema,
+                    key        = "[" .. str_i .. "]",
+                    path       = p,
+                    value      = v,
+                    err_msg    = e,
+                    value_type = jsontools.value_type(v),
+                    schema     = schema,
                 },
             }
             table.insert(items, item)
@@ -485,30 +481,21 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
 
             local v = tbl[k]
             local p = jsontools.join_path(path, k)
-
-            local prop_schema, unresoved_schema, resolved_schema
-            if parent_schema and parent_schema.properties and parent_schema.properties[k] then
-                prop_schema = parent_schema.properties[k]
-                jsontools.merge_additional_properties(prop_schema, parent_schema)
-                unresoved_schema = prop_schema
-                resolved_schema = validator.resolve_oneof_schema(v, prop_schema) or prop_schema
-            end
-
+            local schema = self._schema_map[p]
             local e = errors[p]
-
+            if not e and not schema then e = "No schema" end
             ---@type loop.comp.ItemTree.ItemDef
             local item = {
                 id = p,
                 parent_id = parent_id,
                 expanded = self._fold_cache[p] ~= false,
                 data = {
-                    key              = k,
-                    path             = p,
-                    value            = v,
-                    err_msg          = e,
-                    value_type       = jsontools.value_type(v),
-                    schema           = resolved_schema,
-                    unresoved_schema = unresoved_schema,
+                    key        = k,
+                    path       = p,
+                    value      = v,
+                    err_msg    = e,
+                    value_type = jsontools.value_type(v),
+                    schema     = schema
                 },
             }
             table.insert(items, item)
@@ -604,7 +591,7 @@ end
 ---@param multiline? boolean
 function JsonEditor:_edit_value(item, multiline)
     local path = item.data.path ---@type string
-    local schema = item.data.unresoved_schema ---@type table
+    local schema = item.data.schema ---@type table
     local current_value = item.data.value ---@type any
     if current_value == nil then
         return
@@ -840,8 +827,8 @@ function JsonEditor:_get_object_new_value(item, schema, callback)
 
     if schema.oneOf then
         for _, subschema in ipairs(schema.oneOf) do
-            local errs = validator.validate(subschema, obj)
-            if not errs or #errs == 0 then
+            local valid = validator.validate(subschema, obj)
+            if valid then
                 if subschema.properties then
                     for k, ps in pairs(subschema.properties) do
                         add_candidate(k, ps, subschema)

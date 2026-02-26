@@ -168,8 +168,8 @@ local function _load_workspace_config(config_dir)
     end
     local config = data_or_err
     local schema = require('loop.ws.schema')
-    local errors = jsonvalidator.validate(schema, config)
-    if errors then
+    local valid, errors = jsonvalidator.validate(schema, config)
+    if not valid then
         return nil, jsonvalidator.errors_to_string(errors)
     end
     return config.workspace
