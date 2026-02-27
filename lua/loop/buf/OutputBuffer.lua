@@ -63,43 +63,60 @@ function OutputBuffer:add_lines(lines)
     if self:is_destroyed() then return end
     local bufnr = self:get_or_create_buf()
 
-    if type(lines) == 'string' then
+    if type(lines) == "string" then
         lines = { lines }
     end
 
-    local line_count = vim.api.nvim_buf_line_count(bufnr)
+    vim.bo[bufnr].modifiable = true
 
     local on_last_line, winid = self:_is_on_last_line()
 
-    -- Determine where to insert
-    local start_line
-    if line_count == 1 and vim.api.nvim_buf_get_lines(bufnr, 0, 1, false)[1] == "" then
-        -- replace first empty line
-        start_line = 0
-        vim.bo[bufnr].modifiable = true
-        vim.api.nvim_buf_set_lines(bufnr, 0, 1, false, lines)
-        vim.bo[bufnr].modifiable = false
-    else
-        -- append at end
-        start_line = line_count
-        vim.bo[bufnr].modifiable = true
-        vim.api.nvim_buf_set_lines(bufnr, start_line, start_line, false, lines)
-        vim.bo[bufnr].modifiable = false
-    end
+    local line_count = vim.api.nvim_buf_line_count(bufnr)
+    
+    -- ------------------------------------------------------------
+    -- 1. REMOVE excess lines FIRST (preserve trailing empty line)
+    -- ------------------------------------------------------------
+    local total_after_add = line_count - 1 + #lines + 1 -- replace empty + add new empty
+    if total_after_add > self._max_lines then
+        local excess = total_after_add - self._max_lines
 
-    if self._auto_scroll and on_last_line and winid > 0 then
+        -- never delete the trailing empty line
+        local delete_to = math.min(excess, line_count - 1)
+
+        if delete_to > 0 then
+            vim.api.nvim_buf_set_lines(bufnr, 0, delete_to, false, {})
+
+            -- adjust cursor if needed
+            local win = vim.fn.bufwinid(bufnr)
+            if win ~= -1 then
+                local cursor = vim.api.nvim_win_get_cursor(win)
+                local new_line = math.max(1, cursor[1] - delete_to)
+                vim.api.nvim_win_set_cursor(win, { new_line, cursor[2] })
+            end
+        end
+
         line_count = vim.api.nvim_buf_line_count(bufnr)
-        vim.api.nvim_win_set_cursor(winid, { line_count, 0 })
     end
 
-    -- After insertion
-    local new_line_count = vim.api.nvim_buf_line_count(bufnr)
-    -- Trim excess lines from the top (like terminal scrollback)
-    if new_line_count > self._max_lines then
-        local excess = new_line_count - self._max_lines
-        vim.bo[bufnr].modifiable = true
-        vim.api.nvim_buf_set_lines(bufnr, 0, excess, false, {})
-        vim.bo[bufnr].modifiable = false
+    -- ------------------------------------------------------------
+    -- 2. REPLACE the trailing empty line with new content
+    -- ------------------------------------------------------------
+    local insert_at = line_count - 1
+    vim.api.nvim_buf_set_lines(bufnr, insert_at, line_count, false, lines)
+
+    -- ------------------------------------------------------------
+    -- 3. ALWAYS append a new empty line at the end
+    -- ------------------------------------------------------------
+    vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, { "" })
+
+    vim.bo[bufnr].modifiable = false
+
+    -- ------------------------------------------------------------
+    -- 4. Auto-scroll (only if user was already at bottom)
+    -- ------------------------------------------------------------
+    if self._auto_scroll and on_last_line and winid > 0 then
+        local new_count = vim.api.nvim_buf_line_count(bufnr)
+        vim.api.nvim_win_set_cursor(winid, { new_count, 0 })
     end
 
     self:request_change_notif()
