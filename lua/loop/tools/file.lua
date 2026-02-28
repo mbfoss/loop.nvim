@@ -56,115 +56,103 @@ function M.read_content(filepath)
     return read_ok, content_or_err
 end
 
----@param path string: Path to the file
----@param opts { max_size: number?, timeout: number? }
----@param callback function: function(err, data)
----@return fun() is_aborted
+---@param path string
+---@param opts { max_size: number?, timeout: number? }?
+---@param callback fun(err:string|nil, data:string|nil)
+---@return fun() abort
 function M.async_load_text_file(path, opts, callback)
-    local max_size = (opts.max_size or 1024) * 1024 -- Default 1MB
-    local timeout_ms = opts.timeout or 3000         -- Default 3s
+    opts = opts or {}
 
+    local max_size = (opts.max_size or 1024) * 1024 -- MB → bytes
+    local timeout_ms = opts.timeout or 3000
+    local uv = vim.uv
     ---@diagnostic disable-next-line: undefined-field
-    local timer = vim.uv.new_timer()
-    local fd = nil
+    local timer = uv.new_timer()
+    local fd
     local chunks = {}
     local total_read = 0
-    local is_aborted = false
+    local offset = 0
 
-    -- Helper to clean up resources
-    local function cleanup()
-        if timer and timer:is_active() then
-            timer:stop()
-            timer:close()
-            timer = nil
+    local finished = false
+    local aborted = false
+    ------------------------------------------------------------------------
+    local function finish(err, data)
+        if finished then
+            return
         end
-        if fd then
-            ---@diagnostic disable-next-line: undefined-field
-            vim.uv.fs_close(fd)
-            fd = nil
-        end
+        finished = true
+        vim.schedule(function()
+            if not aborted then
+                if timer and timer:is_active() then
+                    timer:stop()
+                    timer:close()
+                    timer = nil
+                end
+                if fd then
+                    ---@diagnostic disable-next-line: undefined-field
+                    uv.fs_close(fd)
+                    fd = nil
+                end
+                callback(err, data)
+            end
+        end)
     end
-
-    -- Timeout logic
-    timer:start(timeout_ms, 0, function()
-        if not is_aborted then
-            is_aborted = true
-            vim.schedule(function()
-                cleanup()
-                callback("Timeout", nil)
-            end)
-        end
-    end)
-    
-    -- Open the file
+    ------------------------------------------------------------------------
+    timer:start(timeout_ms, 0, function() finish("Timeout", nil) end)
+    ------------------------------------------------------------------------
     ---@diagnostic disable-next-line: undefined-field
-    vim.uv.fs_open(path, "r", 438, function(err, opened_fd)
-        if err then
-            if is_aborted then return end
-            return vim.schedule(function()
-                cleanup()
-                callback("Could not open file: " .. err, nil)
-            end)
+    uv.fs_open(path, "r", 438, function(open_err, opened_fd)
+        if open_err then
+            return finish("Could not open file: " .. open_err, nil)
         end
-
         fd = opened_fd
-
-        -- Check file stats for size and binary check
+        ------------------------------------------------------------------------
         ---@diagnostic disable-next-line: undefined-field
-        vim.uv.fs_fstat(fd, function(stat_err, stat)
-            if is_aborted then return end
-            if stat_err or is_aborted then return end
+        uv.fs_fstat(fd, function(stat_err, stat)
+            if stat_err then
+                return finish("Stat error: " .. stat_err, nil)
+            end
 
             if stat.size > max_size then
-                return vim.schedule(function()
-                    cleanup()
-                    callback("File exceeds max size limit", nil)
-                end)
+                return finish("File exceeds max size limit", nil)
             end
-
-            -- Start recursive chunk reading
-            local function read_next_chunk()
-                if is_aborted then return end
-
+            ------------------------------------------------------------------------
+            local function read_next()
                 ---@diagnostic disable-next-line: undefined-field
-                vim.uv.fs_read(fd, 8192, -1, function(read_err, data)
+                uv.fs_read(fd, 8192, offset, function(read_err, data)
                     if read_err then
-                        return vim.schedule(function()
-                            cleanup()
-                            callback("Read error: " .. read_err, nil)
-                        end)
+                        return finish("Read error: " .. read_err, nil)
                     end
 
-                    if data and #data > 0 then
-                        -- Check for null bytes (basic binary detection)
-                        if data:find("\0") then
-                            return vim.schedule(function()
-                                cleanup()
-                                callback("Binary file", nil)
-                            end)
-                        end
-
-                        table.insert(chunks, data)
-                        total_read = total_read + #data
-                        read_next_chunk() -- Tail call for next chunk
-                    else
-                        -- End of file reached successfully
-                        vim.schedule(function()
-                            local full_content = table.concat(chunks)
-                            cleanup()
-                            callback(nil, full_content)
-                        end)
+                    if not data or #data == 0 then
+                        -- EOF
+                        return finish(nil, table.concat(chunks))
                     end
+
+                    -- Binary detection
+                    if data:find("\0", 1, true) then
+                        return finish("Binary file", nil)
+                    end
+
+                    total_read = total_read + #data
+                    if total_read > max_size then
+                        return finish("File exceeds max size limit", nil)
+                    end
+
+                    chunks[#chunks + 1] = data
+                    offset = offset + #data
+
+                    read_next()
                 end)
             end
 
-            read_next_chunk()
+            read_next()
         end)
     end)
-
+    ------------------------------------------------------------------------
     return function()
-        is_aborted = true
-        cleanup()
+        aborted = true
+        finish("Aborted", nil)
     end
 end
 
