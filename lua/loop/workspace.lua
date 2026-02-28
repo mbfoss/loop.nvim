@@ -10,6 +10,7 @@ local runner = require("loop.task.runner")
 local jsoncodec = require('loop.json.codec')
 local jsonvalidator = require('loop.json.validator')
 local filetools = require('loop.tools.file')
+local flock = require('loop.tools.flock')
 local wssaveutil = require('loop.ws.saveutil')
 local floatwin = require('loop.tools.floatwin')
 local selector = require('loop.tools.selector')
@@ -123,8 +124,14 @@ local function _close_workspace(quiet)
         _page_manager.delete_groups()
         _page_manager.expire(true)
     end
+
+    local config_dir = _workspace_info.config_dir
+
     _workspace_info = nil
     statusline.set_workspace_name(nil)
+
+    local lockfile_path = vim.fs.joinpath(config_dir, "wslock")
+    flock.unlock(lockfile_path)
 end
 
 ---@param ws_dir string
@@ -188,6 +195,11 @@ local function _load_workspace(dir)
     local config_dir = _get_config_dir(dir)
     if not filetools.dir_exists(config_dir) then
         return false, "No workspace in " .. dir
+    end
+
+    local lockfile_path = vim.fs.joinpath(config_dir, "wslock")
+    if not flock.lock(lockfile_path) then
+        return false, "Workspace already open in another process"
     end
 
     local ws_config, config_errors = _load_workspace_config(config_dir)
@@ -382,7 +394,7 @@ function M.open_workspace(dir, at_startup)
                 vim.notify("Workspace configuration error, opening configuration editor", vim.log.levels.ERROR)
                 _configure_workspace(dir)
             else
-                vim.notify("Workspace not loaded (:Loop logs for details)", vim.log.levels.ERROR)
+                vim.notify("Workspace not loaded (:Loop log for details)", vim.log.levels.ERROR)
             end
         end
         logs.user_log("Workspace not loaded, " .. err_msg, "workspace")
