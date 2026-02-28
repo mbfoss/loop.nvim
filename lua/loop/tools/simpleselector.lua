@@ -1,3 +1,5 @@
+local filetools = require("loop.tools.file")
+
 ---@mod loop.selector
 ---@brief Simple floating selector with fuzzy filtering and optional preview.
 
@@ -139,6 +141,7 @@ end
 ---@param items loop.SelectorItem[]
 ---@param cur integer                        current selected index (1-based)
 ---@param buf integer                        preview buffer handle
+---@return fun()? cancel
 local function update_preview(formatter, items, cur, buf)
     -- Guard: no valid item
     local item = items[cur]
@@ -154,7 +157,6 @@ local function update_preview(formatter, items, cur, buf)
     if item.file and item.lnum then
         local filepath = vim.fs.normalize(item.file)
         local target_lnum = tonumber(item.lnum)
-
         if vim.fn.filereadable(filepath) ~= 1 then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
                 "File not readable:",
@@ -163,7 +165,6 @@ local function update_preview(formatter, items, cur, buf)
             vim.bo[buf].filetype = "text"
             return
         end
-
         if not target_lnum or target_lnum < 1 then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
                 "Invalid line number:",
@@ -172,57 +173,43 @@ local function update_preview(formatter, items, cur, buf)
             vim.bo[buf].filetype = "text"
             return
         end
-
         -- Clear previous content safely
-        vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
-
-        local lines = {}
-        -- Load file contents into the buffer using :read (most "native" way)
-        local ok, load_err = pcall(function()
-            lines = vim.fn.readfile(filepath)
-        end)
-        if not ok then
-            vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
-                "Failed to load file into preview buffer:",
-                vim.inspect(load_err),
-            })
-            vim.bo[buf].filetype = "text"
-            return
-        end
-
-        vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-
-        -- Enable syntax highlighting
-        vim.bo[buf].filetype = vim.filetype.match({ filename = filepath }) or "text"
-
-        if target_lnum > #lines then
-            return
-        end
-
-        -- Try to position cursor / view at target line
-        local preview_win = vim.fn.bufwinid(buf)
-        if preview_win ~= -1 then
-            local set_ok = pcall(vim.api.nvim_win_set_cursor, preview_win, { target_lnum, 0 })
-            if set_ok then
-                vim.api.nvim_win_call(preview_win, function()
-                    vim.cmd("normal! zz") -- center the target line
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Loading..." })
+        return filetools.async_load_text_file(filepath, { max_size = 50 * 1024 * 1024, timeout = 3000 },
+            function(load_err, content)
+                if not content then
+                    vim.api.nvim_buf_set_lines(buf, 0, -1, false,
+                        { ("Failed to load preview (%s)"):format(load_err) })
+                    vim.bo[buf].filetype = "text"
+                    return
+                end
+                -- Instead of split + set_lines:
+                vim.api.nvim_buf_call(buf, function()
+                    vim.api.nvim_paste(content, true, -1)
                 end)
-            else
-                -- Line might be out of range → fall back to first line
-                pcall(vim.api.nvim_win_set_cursor, preview_win, { 1, 0 })
-            end
-        end
-
-        -- Brief visual feedback: highlight target line
-        pcall(vim.api.nvim_buf_clear_namespace, buf, NS_PREVIEW, 0, -1)
-        -- Highlight the target line fully (works for single-line too)
-        vim.api.nvim_buf_set_extmark(buf, NS_PREVIEW, target_lnum - 1, 0, {
-            end_row = target_lnum, -- makes it "multiline" → enables hl_eol
-            hl_group = "CursorLine",
-            hl_eol = true,
-            hl_mode = "blend",
-        })
-        return
+                -- Try to position cursor / view at target line
+                local preview_win = vim.fn.bufwinid(buf)
+                if preview_win ~= -1 then
+                    local set_ok = pcall(vim.api.nvim_win_set_cursor, preview_win, { target_lnum, 0 })
+                    if set_ok then
+                        vim.api.nvim_win_call(preview_win, function()
+                            vim.cmd("normal! zz") -- center the target line
+                        end)
+                    else
+                        -- Line might be out of range → fall back to first line
+                        pcall(vim.api.nvim_win_set_cursor, preview_win, { 1, 0 })
+                    end
+                end
+                -- Brief visual feedback: highlight target line
+                pcall(vim.api.nvim_buf_clear_namespace, buf, NS_PREVIEW, 0, -1)
+                -- Highlight the target line fully (works for single-line too)
+                vim.api.nvim_buf_set_extmark(buf, NS_PREVIEW, target_lnum - 1, 0, {
+                    end_row = target_lnum, -- makes it "multiline" → enables hl_eol
+                    hl_group = "CursorLine",
+                    hl_eol = true,
+                    hl_mode = "blend",
+                })
+            end)
     end
 
     -- ──────────────────────────────────────────────────────────────
@@ -330,6 +317,7 @@ function M.select(opts)
     if #items == 0 then
         return
     end
+
     local title = (prompt and prompt ~= "") and (" %s "):format(prompt) or ""
     local has_preview = opts.file_preview or type(opts.formatter) == "function"
 
@@ -433,8 +421,13 @@ function M.select(opts)
     local filtered = vim.deepcopy(items)
     local cur = math.max(1, math.min(opts.initial or 1, #items))
     local closed = false
+    local async_preview_cancel
 
     local function close(result)
+        if async_preview_cancel then
+            async_preview_cancel()
+            async_preview_cancel = nil
+        end
         if closed then return end
         closed = true
         if vim.api.nvim_get_current_win() == pwin then
@@ -456,7 +449,13 @@ function M.select(opts)
 
     local function update_content()
         update_list(filtered, cur, lbuf, lwin)
-        if vbuf then update_preview(formatter, filtered, cur, vbuf) end
+        if vbuf then
+            if async_preview_cancel then
+                async_preview_cancel()
+                async_preview_cancel = nil
+            end
+            async_preview_cancel = update_preview(formatter, filtered, cur, vbuf)
+        end
     end
 
     local key_opts = { buffer = pbuf, nowait = true, silent = true }
@@ -519,6 +518,19 @@ function M.select(opts)
         once = true,
         callback = function() close(nil) end,
     })
+
+    if type(vbuf) == "number" and vbuf > 0 then
+        vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
+            buffer = vbuf,
+            once = true,
+            callback = function(ev)
+                if async_preview_cancel then
+                    async_preview_cancel()
+                    async_preview_cancel = nil
+                end
+            end,
+        })
+    end
 
     vim.api.nvim_set_current_win(pwin)
     vim.schedule(function()
