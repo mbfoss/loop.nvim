@@ -8,7 +8,7 @@ Workspace and task management for Neovim.
 - **Tasks** — Run shell commands or composite workflows. Dependencies run in sequence or parallel.
 - **Macros** — `${macro}` substitution in commands (paths, env vars, prompts, workspace variables).
 - **UI** — Built-in window for task output and status.
-- **Extensions** — Add task types and templates via plugins (e.g. [loop-cmake.nvim](https://github.com/mbfoss/loop-cmake.nvim)).
+- **Extensions** — Add task types and templates via plugins (For Building, Debugging etc...)
 
 ## Requirements
 
@@ -55,7 +55,7 @@ Workspaces in the current directory are opened automatically on startup.
 
 ```lua
 require("loop").setup({
-    selector = "builtin",   -- or "ui_select"
+    selector = "builtin",
     autosave_interval = 5,   -- minutes (0 to disable)
     window = {
         symbols = {
@@ -145,12 +145,10 @@ lualine_c = { function() return require("loop.statusline").status() end, "filena
 
 ## Extensions
 
-- [loop-cmake.nvim](https://github.com/mbfoss/loop-cmake.nvim) — CMake tasks
-- [loop-debug.nvim](https://github.com/mbfoss/loop-debug.nvim) — Debug tasks
+- [loop-build.nvim](https://github.com/mbfoss/loop-build.nvim) — Defines a "build" task type and provides templates for various build tasks
+- [loop-debug.nvim](https://github.com/mbfoss/loop-debug.nvim) — Defines a "debug" task type and provides templates for various debug tasks
+- [loop-cmake.nvim](https://github.com/mbfoss/loop-cmake.nvim) — Provides task templates generated automatically from CMake files
 
-## Documentation
-
-`:help loop` or [doc/loop.txt](doc/loop.txt)
 
 ## License
 
