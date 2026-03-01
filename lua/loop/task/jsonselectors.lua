@@ -24,13 +24,14 @@ function M.select_tasktype(callback, data, path)
         if type == cur_type then initial = #choices end
     end
     selector.select({
-        prompt = "Select task type",
-        items = choices,
-        initial = initial,
-        callback = function(name)
+            prompt = "Select task type",
+            items = choices,
+            initial = initial,
+        },
+        function(name)
             if name then callback(name) end
         end
-    })
+    )
 end
 
 ---@params task loop.Task
@@ -66,12 +67,13 @@ function M.select_taskname(callback, data, path)
             callback(nil)
         else
             selector.select({
-                prompt = "Select dependency",
-                items = choices,
-                callback = function(name)
+                    prompt = "Select dependency",
+                    items = choices,
+                },
+                function(name)
                     if name then callback(name) end
                 end
-            })
+            )
         end
     else
         callback(nil)

@@ -307,13 +307,13 @@ end
 ---@field items loop.SelectorItem[]
 ---@field file_preview boolean?
 ---@field formatter loop.PreviewFormatter|nil
----@field callback loop.SelectorCallback
 ---@field initial integer? -- 1-based index into items
 ---@field list_wrap boolean?
 
 ---@param opts loop.selector.opts
-function M.select(opts)
-    local prompt, items, formatter, callback = opts.prompt, opts.items, opts.formatter, opts.callback
+---@param callback loop.SelectorCallback
+function M.select(opts, callback)
+    local prompt, items, formatter = opts.prompt, opts.items, opts.formatter
     if #items == 0 then
         return
     end

@@ -328,7 +328,7 @@ function JsonEditor:open(winid)
     local opts = {
         formatter = _formatter,
         render_delay_ms = 40,
-         header = {{name, "Title"}, {" (press g? for help)", "COmment"}}
+        header = { { name, "Title" }, { " (press g? for help)", "COmment" } }
     }
     ---@diagnostic disable-next-line: undefined-field
     self._itemtree = ItemTreeComp:new(opts)
@@ -565,15 +565,16 @@ function JsonEditor:_request_value(path, name, value_type, schema, default_text,
             })
         end
         selector.select({
-            prompt = "Select value",
-            items = choices,
-            initial = initial,
-            callback = function(data)
+                prompt = "Select value",
+                items = choices,
+                initial = initial,
+            },
+            function(data)
                 if data ~= nil then
                     on_confirm(data)
                 end
             end
-        })
+        )
         return
     end
     local on_input = function(txt)
@@ -787,14 +788,15 @@ function JsonEditor:_get_new_value(path, schema, callback)
             table.insert(choices, { label = t, data = t })
         end
         selector.select({
-            prompt = "Select item type",
-            items = choices,
-            callback = function(data)
+                prompt = "Select item type",
+                items = choices,
+            },
+            function(data)
                 if data then
                     get_value(data)
                 end
             end
-        })
+        )
     end
 end
 
@@ -868,12 +870,13 @@ function JsonEditor:_get_object_new_value(item, schema, callback)
                 })
             end
             selector.select({
-                prompt = "Select schema for '" .. key .. "'",
-                items = choices,
-                callback = function(data)
+                    prompt = "Select schema for '" .. key .. "'",
+                    items = choices,
+                },
+                function(data)
                     if data then with_schema(data) end
                 end
-            })
+            )
             return
         end
 
@@ -945,9 +948,10 @@ function JsonEditor:_get_object_new_value(item, schema, callback)
             })
         end
         selector.select({
-            items = choices,
-            prompt = "Select property",
-            callback = function(data)
+                items = choices,
+                prompt = "Select property",
+            },
+            function(data)
                 if data then
                     if data.name then
                         on_key_selected(data.name)
@@ -956,7 +960,7 @@ function JsonEditor:_get_object_new_value(item, schema, callback)
                     end
                 end
             end
-        })
+        )
     end
 end
 

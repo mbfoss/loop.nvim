@@ -357,15 +357,16 @@ function M.open_workspace(dir, at_startup)
         end
 
         selector.select({
-            prompt = "Open workspace",
-            items = items,
-            callback = function(choice)
+                prompt = "Open workspace",
+                items = items
+            },
+            function(choice)
                 if choice then
                     -- async open of selected workspace
                     M.open_workspace(choice, false)
                 end
             end
-        })
+        )
         return
     end
 
@@ -514,9 +515,38 @@ end
 ---@return string[]
 function M.task_subcommands(args)
     if #args == 0 then
-        return { "run", "repeat", "terminate_all", "configure" }
+        return { "run", "repeat", "terminate", "terminate_all", "configure" }
     end
     return {}
+end
+
+local function _select_and_terminate_task()
+    local active_tasks = runner.get_active_tasks()
+    if #active_tasks == 0 then return end
+    local choices = {}
+    for _, data in ipairs(active_tasks) do
+        local virt_lines
+        if data.root ~= data.name then
+            virt_lines = { { { ("Triggered by `%s`"):format(data.root), "Comment" }, } }
+        end
+        ---@type loop.SelectorItem
+        local choice = {
+            label = data.name,
+            virt_lines = virt_lines,
+            data = data.ctrl
+        }
+        table.insert(choices, choice)
+    end
+    selector.select({
+            prompt = "Terminate task",
+            items = choices
+        },
+        function(ctrl)
+            if ctrl then
+                ---@cast ctrl loop.TaskControl
+                ctrl.terminate()
+            end
+        end)
 end
 
 ---@param command string|nil
@@ -539,7 +569,7 @@ function M.task_command(command, arg1, arg2)
     elseif command == "configure" then
         taskmgr.configure_tasks(config_dir)
     elseif command == "terminate" then
-        runner.terminate_task(arg1)
+        _select_and_terminate_task()
     elseif command == "terminate_all" then
         runner.terminate_tasks()
     else
@@ -696,10 +726,10 @@ function M.init()
                 _save_timer:close()
             end
 
-            if runner.have_running_task() then
+            if runner.have_running_tasks() then
                 runner.terminate_tasks()
                 local max_waits = 100 -- 10 seconds max
-                while max_waits > 0 and runner.have_running_task() do
+                while max_waits > 0 and runner.have_running_tasks() do
                     max_waits = max_waits - 1
                     vim.wait(100)
                 end

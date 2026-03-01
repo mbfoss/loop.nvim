@@ -35,10 +35,10 @@ local function _build_taskfile_schema()
                 oneOfItem.properties = vim.tbl_extend("error", oneOfItem.properties, providers_props)
                 oneOfItem.__name = task_type
                 if provider_schema["x-order"] then vim.list_extend(oneOfItem["x-order"], provider_schema["x-order"]) end
-                oneOfItem.properties.type = { 
-                    const = task_type, 
+                oneOfItem.properties.type = {
+                    const = task_type,
                     description = base_items.properties.type.description,
-                    ["x-valueSelector"] =  base_items.properties.type["x-valueSelector"]
+                    ["x-valueSelector"] = base_items.properties.type["x-valueSelector"]
                 }
                 oneOfItem.additionalProperties = false -- providers are not allowed to change this
                 oneOfItem["x-valueSelector"] = schema.properties.tasks.items["x-valueSelector"]
@@ -232,15 +232,16 @@ local function _select_task(args, task_handler)
         table.insert(choices, item)
     end
     selector.select({
-        prompt = args.prompt,
-        items = choices,
-        formatter = _task_preview,
-        callback = function(task)
+            prompt = args.prompt,
+            items = choices,
+            formatter = _task_preview,
+        },
+        function(task)
             if task then
                 task_handler(task)
             end
         end
-    })
+    )
 end
 
 ---@param config_dir string
@@ -266,9 +267,10 @@ function M.select_task_template(handler)
         table.insert(category_choices, item)
     end
     selector.select({
-        prompt = "Task category",
-        items = category_choices,
-        callback = function(provider)
+            prompt = "Task category",
+            items = category_choices,
+        },
+        function(provider)
             if provider then
                 local templates = provider.get_task_templates()
                 local choices = {}
@@ -281,16 +283,17 @@ function M.select_task_template(handler)
                     table.insert(choices, item)
                 end
                 selector.select({
-                    prompt = "Select template",
-                    items = choices,
-                    formatter = _task_preview,
-                    callback = function(task)
+                        prompt = "Select template",
+                        items = choices,
+                        formatter = _task_preview,
+                    },
+                    function(task)
                         if task then handler(task) end
                     end
-                })
+                )
             end
         end
-    })
+    )
 end
 
 ---@param config_dir string

@@ -137,10 +137,11 @@ end
 ]]
 
 ---@param opts loop.selector.opts
-function M.select(opts)
+---@param callback loop.SelectorCallback
+function M.select(opts, callback)
     local type = config.current.selector
     if type == "builtin" then
-        return simple_selector.select(opts)
+        return simple_selector.select(opts, callback)
     end
     vim.ui.select(opts.items, {
         prompt = opts.prompt,
@@ -149,7 +150,7 @@ function M.select(opts)
         end,
     }, function(choice)
         if choice ~= nil then -- false is a valid choice
-            opts.callback(choice.data)
+            callback(choice.data)
         end
     end)
 end
