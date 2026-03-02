@@ -119,8 +119,7 @@ function TermProc:_start_term_job(cmd_and_args, env, cwd, output_handler, on_exi
 		return false, "Failed to start terminal job"
 	end
 
-	local full_cmd = table.concat(cmd_and_args, " ")
-	vim.api.nvim_chan_send(self.job_id, string.format("%s\r\n", full_cmd))
+	--Calling nvim_chan_send(). here to print the process name This does not work because it will send the text to the program as input (pty = true)
 
 	return true, nil
 end

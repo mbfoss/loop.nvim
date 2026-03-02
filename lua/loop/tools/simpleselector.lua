@@ -174,7 +174,7 @@ local function update_preview(formatter, items, cur, buf)
             return
         end
         -- Clear previous content safely
-        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "Loading..." })
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
         return filetools.async_load_text_file(filepath, { max_size = 50 * 1024 * 1024, timeout = 3000 },
             function(load_err, content)
                 if not content then

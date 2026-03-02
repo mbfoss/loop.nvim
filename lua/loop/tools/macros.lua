@@ -106,15 +106,23 @@ function M.prompt(ctx, prompt, default, completion)
     prompt = prompt .. ': '
     vim.schedule(function()
         vim.ui.input({ prompt = prompt, default = default, completion = completion }, function(input)
-            -- Resume the coroutine with the user's input
             coroutine.resume(co, input)
         end)
     end)
 
-    -- Pause execution here until user presses Enter/Esc
     local result = coroutine.yield()
 
-    if not result then return nil, "Prompt cancelled" end
+    -- 1. Handle cancellation (Esc/Ctrl-C) immediately
+    if result == nil then return nil, "Prompt cancelled" end
+
+    -- 2. Handle path normalization for files/dirs
+    if completion == "file" or completion == "dir" then
+        -- Check if the path is NOT absolute
+        if vim.fn.isabsolutepath(result) == 0 then
+            return vim.fs.joinpath(vim.fn.getcwd(), result)
+        end
+    end
+
     return result
 end
 
