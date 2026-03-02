@@ -251,4 +251,20 @@ function M.blend_colors(c1, c2, alpha)
     return string.format("#%02x%02x%02x", r, g, b)
 end
 
+---@param winid number
+---@return boolean
+function M.is_win_full_height(winid)
+    if not vim.api.nvim_win_is_valid(winid) then return false end
+    local win_height = vim.api.nvim_win_get_height(winid)
+    local total_height = vim.o.lines - vim.o.cmdheight
+    if vim.o.laststatus > 0 then
+        total_height = total_height - 1 -- account for statusline
+    end
+    local winbar = vim.wo[winid].winbar
+    if winbar ~= "" then
+        total_height = total_height - 1 -- account for winbar
+    end
+    return win_height == total_height
+end
+
 return M

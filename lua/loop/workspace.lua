@@ -96,7 +96,7 @@ local function _save_workspace()
         return false
     end
     assert(_init_done, _init_err_msg)
-    window.save_settings(_workspace_info.config_dir)
+    window.save_layout(_workspace_info.config_dir)
     extdata.save(_workspace_info)
     return true
 end
@@ -224,7 +224,7 @@ local function _load_workspace(dir)
 
     statusline.set_workspace_name(_workspace_info.name)
 
-    window.load_settings(config_dir)
+    window.load_layout(config_dir)
 
     taskmgr.reset_providers(dir)
 
@@ -615,7 +615,7 @@ end
 
 function M.ui_subcommands(args)
     if #args == 0 then
-        return { "toggle", "show", "hide", "clean" }
+        return { "toggle", "show", "hide", "clean", "save_layout" }
     end
     return {}
 end
@@ -655,6 +655,10 @@ function M.ui_command(command)
         M.hide_window()
     elseif command == "clean" then
         if _page_manager then _page_manager.delete_expired_groups() end
+    elseif command == "save_layout" then
+        if _workspace_info then
+            window.save_layout(_workspace_info.config_dir)
+        end
     else
         vim.notify("Invalid command: " .. command)
     end

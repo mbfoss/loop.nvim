@@ -324,6 +324,14 @@ local function _create_window()
     _setup_tabs()
 end
 
+local function _apply_window_height()
+    if _loop_win ~= -1 and _loop_win_height_ratio then
+        if not uitools.is_win_full_height(_loop_win) then
+            vim.api.nvim_win_set_height(_loop_win, math.floor(vim.o.lines * _loop_win_height_ratio))
+        end
+    end
+end
+
 -- remove winbar after split
 local function _check_winbar()
     local winid = vim.api.nvim_get_current_win()
@@ -732,13 +740,23 @@ function M.create_page_manager()
 end
 
 ---@param config_dir string
-function M.save_settings(config_dir)
+function M.save_layout(config_dir)
+    if _loop_win == -1 then
+        return
+    end
+    local height = vim.api.nvim_win_get_height(_loop_win)
+    local ratio = height / vim.o.lines
+    -- only save of we are not the only window vertically
+    if ratio > 0.7 then
+        return
+    end
+    _loop_win_height_ratio = ratio
     local window_config = { height = _loop_win_height_ratio }
     jsoncodec.save_to_file(vim.fs.joinpath(config_dir, "window.json"), window_config)
 end
 
 ---@param config_dir string
-function M.load_settings(config_dir)
+function M.load_layout(config_dir)
     local loaded, conf = jsoncodec.load_from_file(vim.fs.joinpath(config_dir, "window.json"))
     if loaded then
         _loop_win_height_ratio = conf.height
@@ -764,12 +782,30 @@ function M.init()
         vim.api.nvim_set_hl(0, "LoopPluginStatusText", { link = "DiagnosticInfo" })
     end
 
+    vim.api.nvim_create_autocmd("WinNew", {
+        callback = function(args)
+            local new_winid = vim.api.nvim_get_current_win()
+            if vim.api.nvim_win_get_config(new_winid).relative ~= "" then
+                return -- ignore floating windows
+            end
+            vim.schedule(function()
+                _apply_window_height()
+            end)
+        end,
+    })
+
     vim.api.nvim_create_autocmd("WinClosed", {
         callback = function(args)
             local closed_winid = tonumber(args.match)
             if closed_winid == _loop_win then
                 _loop_win = -1
             end
+            if not closed_winid or vim.api.nvim_win_get_config(closed_winid).relative ~= "" then
+                return -- ignore floating windows
+            end
+            vim.schedule(function()
+                _apply_window_height()
+            end)
         end,
     })
 
@@ -787,14 +823,14 @@ function M.init()
     vim.api.nvim_create_autocmd("WinResized", {
         callback = function()
             if _loop_win ~= -1 then
-                local height = vim.api.nvim_win_get_height(_loop_win)
-                local ratio = height / vim.o.lines
-                -- only save of we are not the only window vertically
-                if ratio < 0.7 then
-                    _loop_win_height_ratio = ratio
-                end
                 _throttled_setup_tabs()
             end
+        end,
+    })
+
+    vim.api.nvim_create_autocmd("VimResized", {
+        callback = function()
+            _apply_window_height()
         end,
     })
 end
