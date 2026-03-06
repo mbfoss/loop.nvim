@@ -123,7 +123,7 @@ workspace.json fields:
 ==============================================================================
 WORKSPACES                                                 *loop-workspaces*
 
-- `.nvimloop/` directory marks a workspace root.
+- `.loop/` directory marks a workspace root.
 - Contains `workspace.json`, `tasks.json`, and other configuration files.
 - Workspaces are auto-loaded on VimEnter if present in cwd,
 

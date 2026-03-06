@@ -1,6 +1,6 @@
 local class        = require('loop.tools.class')
 local ItemListComp = require('loop.comp.ItemList')
-local config       = require("loop.config")
+local loopconfig   = require("loop").loopconfig
 
 ---@alias loop.task.TasksStatusComp.Item loop.comp.ItemList.Item
 
@@ -28,7 +28,7 @@ local _line_id = 0
 ---@return loop.comp.ItemList.Chunk[]
 local function _item_formatter(id, data)
     local chunks = {}
-    local symbols = config.current.window.symbols
+    local symbols = loopconfig.window.symbols
 
     if data.log_message then
         local hl = data.log_level == vim.log.levels.ERROR and _highlights.failure or nil

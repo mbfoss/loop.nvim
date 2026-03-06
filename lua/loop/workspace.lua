@@ -1,25 +1,25 @@
-local M = {}
+local M             = {}
 
-local loopconfig = require("loop.config")
-local logs = require('loop.logs')
-local taskmgr = require("loop.task.taskmgr")
-local variablesmgr = require("loop.task.variablesmgr")
-local window = require("loop.ui.window")
-local statusline = require("loop.statusline")
-local runner = require("loop.task.runner")
-local jsoncodec = require('loop.json.codec')
+local loopconfig    = require("loop").config
+local logs          = require('loop.logs')
+local taskmgr       = require("loop.task.taskmgr")
+local variablesmgr  = require("loop.task.variablesmgr")
+local window        = require("loop.ui.window")
+local statusline    = require("loop.statusline")
+local runner        = require("loop.task.runner")
+local jsoncodec     = require('loop.json.codec')
 local jsonvalidator = require('loop.json.validator')
-local filetools = require('loop.tools.file')
-local flock = require('loop.tools.flock')
-local wssaveutil = require('loop.ws.saveutil')
-local floatwin = require('loop.tools.floatwin')
-local selector = require('loop.tools.selector')
-local extdata = require("loop.extdata")
-local JsonEditor = require('loop.json.JsonEditor')
+local filetools     = require('loop.tools.file')
+local flock         = require('loop.tools.flock')
+local wssaveutil    = require('loop.ws.saveutil')
+local floatwin      = require('loop.tools.floatwin')
+local selector      = require('loop.tools.selector')
+local extdata       = require("loop.extdata")
+local JsonEditor    = require('loop.json.JsonEditor')
 
-local _init_done = false
-local _init_err_msg = "init() not called"
+vim.notify("Workspace module loaded")
 
+local _init_done    = false
 
 ---@class loop.ws.WorkspaceInfo
 ---@field name string
@@ -35,11 +35,10 @@ local _init_err_msg = "init() not called"
 ---@field save_timer any
 
 ---@type loop.ws.WorkspaceData?
-local _ws_data    = nil
+local _ws_data      = nil
 
 -- New: recent workspaces persistence
-local MAX_RECENTS = 50
-
+local MAX_RECENTS   = 50
 local function _get_recent_file()
     local data_dir = vim.fn.stdpath('data')
     return vim.fs.joinpath(data_dir, "loop", "recent_workspaces.json")
@@ -84,7 +83,7 @@ local function _notify_no_ws()
 end
 
 local function _get_config_dir(workspace_dir)
-    local dir = vim.fs.joinpath(workspace_dir, ".nvimloop")
+    local dir = vim.fs.joinpath(workspace_dir, loopconfig.workspace_data_dir or ".loop")
     return dir
 end
 
@@ -92,7 +91,6 @@ local function _save_workspace()
     if not _ws_data then
         return false
     end
-    assert(_init_done, _init_err_msg)
     window.save_layout(_ws_data.config_dir)
     extdata.save(_ws_data.config_dir)
     return true
@@ -211,7 +209,6 @@ end
 ---@return "ok"|"no_ws"|"locked"|"badconfig"|"unexpected"
 ---@return string? error_msg
 local function _load_workspace(dir)
-    assert(_init_done, _init_err_msg)
     assert(type(dir) == 'string')
 
     dir = vim.fn.fnamemodify(dir, ":p")
@@ -269,8 +266,7 @@ local function _load_workspace(dir)
     extdata.on_workspace_load(ws_info, _ws_data.page_manager)
 
     assert(not _ws_data.save_timer)
-    local config = require('loop.config')
-    local save_interval = (config.current.autosave_interval or 5) * 60 * 1000
+    local save_interval = (loopconfig.autosave_interval or 5) * 60 * 1000
     if save_interval > 0 then
         -- Create and start the repeating timer
         ---@diagnostic disable-next-line: undefined-field
@@ -317,9 +313,42 @@ local function _load_and_run_task(mode, task_name)
     end)
 end
 
+
+local function _ensure_init()
+    if _init_done then return end
+    _init_done = true
+
+    assert(not _G._LoopPluginGlobalState)
+    _G._LoopPluginGlobalState = {}
+    _G._LoopPluginGlobalState.wbc = window.winbar_click
+
+    window.init()
+
+    runner.set_status_handler(function(nb_waiting, nb_running)
+        local symbols = loopconfig.window.symbols
+        local parts = {}
+        if nb_waiting > 0 then
+            table.insert(parts, ("%s %d"):format(symbols.waiting, nb_waiting))
+        end
+
+        if nb_running > 0 then
+            table.insert(parts, ("%s %d"):format(symbols.running, nb_running))
+        end
+        window.set_status_text(table.concat(parts, " "))
+    end)
+
+    vim.api.nvim_create_autocmd("VimLeavePre", {
+        callback = function()
+            _close_workspace(true)
+        end,
+    })
+end
+
+----------------- PUBLIC FUNCTIONS -----------------
+
 ---@param dir string?
 function M.create_workspace(dir)
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
 
     dir = dir or vim.fn.getcwd()
     local config_dir = _get_config_dir(dir)
@@ -358,7 +387,7 @@ end
 ---@param dir string?
 ---@param at_startup boolean
 function M.open_workspace(dir, at_startup)
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
 
     -- If no dir provided, present recent workspaces via selector
     if not dir or dir == "" then
@@ -451,10 +480,12 @@ function M.open_workspace(dir, at_startup)
 end
 
 function M.close_workspace()
+    _ensure_init()
     _close_workspace()
 end
 
 function M.configure_workspace()
+    _ensure_init()
     if not _ws_data then
         _notify_no_ws()
         return
@@ -464,6 +495,7 @@ end
 
 ---@return string[]
 function M.get_commands()
+    _ensure_init()
     local cmds = { "workspace", "log", "ui", "page" }
     if _ws_data then
         vim.list_extend(cmds, { "task", "var" })
@@ -476,6 +508,7 @@ end
 ---@param rest string[]
 ---@param opts vim.api.keyset.create_user_command.command_args
 function M.run_command(cmd, rest, opts)
+    _ensure_init()
     if cmd == "workspace" then
         M.workspace_command(unpack(rest))
     elseif cmd == "ui" then
@@ -504,6 +537,7 @@ end
 ---@param rest string[]
 ---@return string[]
 function M.get_subcommands(cmd, rest)
+    _ensure_init()
     if cmd == "task" then
         return M.task_subcommands(rest)
     elseif cmd == "workspace" then
@@ -526,6 +560,7 @@ end
 ---@param args string[]
 ---@return string[]
 function M.workspace_subcommands(args)
+    _ensure_init()
     if #args == 0 then
         return { "info", "create", "open", "close", "configure", "save" }
     end
@@ -534,6 +569,7 @@ end
 
 ---@param command string|nil
 function M.workspace_command(command)
+    _ensure_init()
     if not command or command == "" or command == "info" then
         _show_workspace_info_floatwin()
         return
@@ -564,6 +600,7 @@ end
 ---@param args string[]
 ---@return string[]
 function M.task_subcommands(args)
+    _ensure_init()
     if #args == 0 then
         return { "run", "repeat", "terminate", "terminate_all", "configure" }
     end
@@ -603,7 +640,7 @@ end
 ---@param arg1 string
 ---@param arg2? string|nil
 function M.task_command(command, arg1, arg2)
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
     if not _ws_data then
         _notify_no_ws()
         return
@@ -638,7 +675,7 @@ end
 
 ---@param command string|nil
 function M.var_command(command)
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
     if not _ws_data then
         _notify_no_ws()
         return
@@ -667,6 +704,7 @@ function M.ui_subcommands(args)
 end
 
 function M.page_subcommands(args)
+    _ensure_init()
     if #args == 0 then
         return { "switch", "open" }
     end
@@ -683,6 +721,7 @@ function M.page_subcommands(args)
 end
 
 function M.page_command(command, arg1, arg2)
+    _ensure_init()
     if not command or command == "" or command == "switch" then
         M.switch_page(arg1, arg2)
     elseif command == "open" then
@@ -693,6 +732,7 @@ function M.page_command(command, arg1, arg2)
 end
 
 function M.ui_command(command)
+    _ensure_init()
     if not command or command == "toggle" then
         M.toggle_window()
     elseif command == "show" then
@@ -711,40 +751,41 @@ function M.ui_command(command)
 end
 
 function M.show_window()
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
     window.show_window()
 end
 
 function M.hide_window()
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
     window.hide_window()
 end
 
 function M.toggle_window()
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
     window.toggle_window()
 end
 
 function M.switch_page(group_label, page_label)
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
     window.open_page(nil, group_label, page_label)
 end
 
 ---@param group_label string|nil
 ---@param page_label string|nil
 function M.open_page(group_label, page_label)
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
     window.open_page(vim.api.nvim_get_current_win(), group_label, page_label)
 end
 
 function M.logs_command()
-    assert(_init_done, _init_err_msg)
+    _ensure_init()
     logs.show_logs()
 end
 
 ---@param quiet boolean?
 ---@return boolean,number,string?
 function M.save_workspace_buffers(quiet)
+    _ensure_init()
     if not _ws_data then
         if not quiet then _notify_no_ws() end
         return false, 0, "No active workspace"
@@ -755,37 +796,6 @@ function M.save_workspace_buffers(quiet)
         return false, 0, err
     end
     return true, wssaveutil.save_workspace_buffers(_ws_data.ws_dir, _ws_data.ws_config)
-end
-
-function M.winbar_click(id, clicks, button, mods)
-    assert(_init_done, _init_err_msg)
-    window.winbar_click(id, clicks, button, mods)
-end
-
-function M.init()
-    assert(not _init_done, "init already done")
-    _init_done = true
-
-    window.init()
-
-    runner.set_status_handler(function(nb_waiting, nb_running)
-        local symbols = loopconfig.current.window.symbols
-        local parts = {}
-        if nb_waiting > 0 then
-            table.insert(parts, ("%s %d"):format(symbols.waiting, nb_waiting))
-        end
-
-        if nb_running > 0 then
-            table.insert(parts, ("%s %d"):format(symbols.running, nb_running))
-        end
-        window.set_status_text(table.concat(parts, " "))
-    end)
-
-    vim.api.nvim_create_autocmd("VimLeavePre", {
-        callback = function()
-            _close_workspace(true)
-        end,
-    })
 end
 
 return M

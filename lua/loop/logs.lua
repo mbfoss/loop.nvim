@@ -1,13 +1,13 @@
 local M = {}
 
-local config = require('loop.config')
+local loopconfig = require('loop').config
 
 -- Log history storage
 ---@type {text: string, level: integer|nil, timestamp: number, category: string|nil}[]
 local _log_history = {}
 
 local function _get_log_count()
-    return (config.current and config.current.logs_count) or 50
+    return (loopconfig and loopconfig.logs_count) or 50
 end
 
 ---@param text string|string[]
@@ -80,7 +80,7 @@ function M.show_logs()
     local lines = {}
     for _, log in ipairs(logs) do
         -- Skip technical debug logs unless in debug mode
-        if log.level == vim.log.levels.DEBUG and not (config.current and config.current.debug) then
+        if log.level == vim.log.levels.DEBUG and not (loopconfig and loopconfig.debug) then
             -- Only show user logs
             if not log.category and not (log.level and log.level >= vim.log.levels.WARN) then
                 goto continue

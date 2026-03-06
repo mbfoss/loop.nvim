@@ -42,7 +42,7 @@ luac.out
 .DS_Store
 /standalone
 .vscode
-/lua/.nvimloop
+/lua/.loop
 /lua/.luacheckrc
-/.nvimloop
+/.loop
 .luacheckrc

@@ -4,7 +4,7 @@ Workspace and task management for Neovim.
 
 ## Features
 
-- **Workspaces** — Project roots marked by `.nvimloop/`. Per-workspace config, variables, and state.
+- **Workspaces** — Project roots marked by `.loop/`. Per-workspace config, variables, and state.
 - **Tasks** — Run shell commands or composite workflows. Dependencies run in sequence or parallel.
 - **Macros** — `${macro}` substitution in commands (paths, env vars, prompts, workspace variables).
 - **UI** — Built-in window for task output and status.
@@ -74,7 +74,7 @@ Workspace config (`workspace.json`), tasks (`tasks.json`), and variables (`varia
 
 ```lua
 require("loop").setup({
-    selector = "builtin",
+    workspace_data_dir = ".loop", -- workspace data directory
     autosave_interval = 5,   -- minutes (0 to disable)
     window = {
         symbols = {

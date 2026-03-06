@@ -1,5 +1,5 @@
 local M = {}
-local config = require("loop.config")
+local loopconfig = require('loop').config
 local Page = require('loop.ui.Page')
 local throttle = require('loop.tools.throttle')
 local uitools = require('loop.tools.uitools')
@@ -81,7 +81,7 @@ end
 ---@param page_idx number
 ---@return string
 local function _build_winbar(width, active_tab, page_idx)
-    local symbols = config.current.window.symbols
+    local symbols = loopconfig.window.symbols
     local winbar_data = { { 3, "%#LoopPluginInactiveTab#" } }
     local tabidx = 0
 
@@ -513,7 +513,7 @@ local function _create_term(page, args)
 
     args_cpy.on_exit_handler = function(code)
         args.on_exit_handler(code)
-        local symbols = config.current.window.symbols
+        local symbols = loopconfig.window.symbols
         page:set_ui_flags(code == 0 and symbols.success or symbols.failure)
         local buf = page:get_buf()
         if buf ~= -1 then
