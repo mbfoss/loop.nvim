@@ -141,11 +141,12 @@ function M.order_keys(keys, schema)
 end
 
 ---@param filepath string
----@param data any
+---@param data table
+---@param schema table?
 ---@return boolean
 ---@return string | nil
-function M.save_to_file(filepath, data)
-    local json = json_encode_pretty(data, nil)
+function M.save_to_file(filepath, data, schema)
+    local json = json_encode_pretty(data, schema)
     assert(type(json) == 'string')
     local fd = io.open(filepath, "w")
     if not fd then

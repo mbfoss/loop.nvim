@@ -882,7 +882,7 @@ function JsonEditor:_get_object_new_value(item, schema, callback)
             local choices = {}
             for _, info in ipairs(schemas) do
                 table.insert(choices, {
-                    label = info.parent.__name or "<schema>",
+                    label = info.parent["x-schemaName"] or "<schema>",
                     data = info.schema,
                 })
             end
@@ -1014,7 +1014,7 @@ function JsonEditor:redo()
 end
 
 function JsonEditor:save()
-    local ok, err = jsoncodec.save_to_file(self._filepath, self._data)
+    local ok, err = jsoncodec.save_to_file(self._filepath, self._data, self._schema)
     if not ok then
         vim.notify("Save failed: " .. tostring(err), vim.log.levels.ERROR)
     else

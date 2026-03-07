@@ -1,5 +1,4 @@
 local schema = {
-    __name = "Command",
     description = "Executes a process or shell command as a task",
     required = { "command" },
     ["x-order"] = { "command", "cwd", "env" },

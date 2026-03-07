@@ -187,6 +187,47 @@ local function _validate(schema, data, path, errors, schema_map)
         return false
     end
 
+    -- if / then / else
+    if schema["if"] then
+        local tmp_errors = {}
+        local cond_ok = _validate(schema["if"], data, path, tmp_errors, nil)
+
+        if cond_ok then
+            if schema["then"] then
+                local ok = _validate(schema["then"], data, path, errors, schema_map)
+                if not ok then return false end
+            end
+        else
+            if schema["else"] then
+                local ok = _validate(schema["else"], data, path, errors, schema_map)
+                if not ok then return false end
+            end
+        end
+    end
+
+    -- allOf
+    if schema.allOf then
+        local no_errors = true
+        local collected_maps = {}
+        for _, sub in ipairs(schema.allOf) do
+            local tmp_schema_map = schema_map and {}
+            local ok = _validate(sub, data, path, errors, tmp_schema_map)
+            if not ok then
+                no_errors = false
+            elseif schema_map and tmp_schema_map then
+                table.insert(collected_maps, tmp_schema_map)
+            end
+        end
+        if not no_errors then
+            return false
+        end
+        if schema_map then
+            for _, m in ipairs(collected_maps) do
+                vim.tbl_extend("force", schema_map, m)
+            end
+        end
+    end
+
     -- oneOf (best-match selection)
     if schema.oneOf then
         local best_errors = nil
@@ -211,7 +252,7 @@ local function _validate(schema, data, path, errors, schema_map)
             end
         end
         if schema_map and best_schema_map then
-            for sub_path,sub_schema in pairs(best_schema_map) do
+            for sub_path, sub_schema in pairs(best_schema_map) do
                 schema_map[sub_path] = sub_schema
             end
             vim.tbl_extend("force", schema_map, best_schema_map)

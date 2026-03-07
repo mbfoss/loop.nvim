@@ -16,8 +16,7 @@ local base_schema = {
             items = {
                 description = "Single task definition entry",
                 ["x-valueSelector"] = "loop.task.jsonhooks.select_taskobj",
-                -- Providers will populate this with concrete task schemas
-                oneOf = vim.empty_dict(),
+                -- conditional tasks schema will be filled here programmatically
             },
         },
     },

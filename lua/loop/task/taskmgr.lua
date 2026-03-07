@@ -17,41 +17,67 @@ local function _build_taskfile_schema()
     local base_items = schema_data.base_items
 
     local schema = vim.deepcopy(base_schema)
-    local oneOf = schema.properties.tasks.items.oneOf
+
+    local items = schema.properties.tasks.items
+    items.allOf = items.allOf or {}
 
     local task_types = providers.task_types()
+
     for _, task_type in ipairs(task_types) do
         local provider = providers.get_task_type_provider(task_type)
+
         if provider then
-            assert(provider.get_task_schema, "get_task_schema() not implemented for: " .. task_type)
+            assert(provider.get_task_schema,
+                "get_task_schema() not implemented for: " .. task_type)
+
             local provider_schema = provider.get_task_schema()
+
             if provider_schema then
                 local providers_props = provider_schema.properties or {}
                 assert(type(providers_props) == "table")
+
+                -- prevent overriding base props
                 for name, _ in pairs(providers_props) do
-                    assert(not base_items.properties[name], ("task provider '%' defines a reserved property: '%s'"))
+                    assert(
+                        not base_items.properties[name],
+                        ("task provider '%s' defines a reserved property: '%s'")
+                        :format(task_type, name)
+                    )
                 end
-                local oneOfItem = vim.deepcopy(base_items)
-                oneOfItem.properties = vim.tbl_extend("error", oneOfItem.properties, providers_props)
-                oneOfItem.__name = task_type
-                if provider_schema["x-order"] then vim.list_extend(oneOfItem["x-order"], provider_schema["x-order"]) end
-                oneOfItem.properties.type = {
+
+                local then_schema = vim.fn.deepcopy(base_items)
+                then_schema.properties = vim.tbl_extend("error", then_schema.properties, providers_props)
+                if provider_schema["x-order"] then vim.list_extend(then_schema["x-order"], provider_schema["x-order"]) end
+                then_schema.properties.type = {
                     const = task_type,
                     description = base_items.properties.type.description,
                     ["x-valueSelector"] = base_items.properties.type["x-valueSelector"]
                 }
-                oneOfItem.additionalProperties = false -- providers are not allowed to change this
-                oneOfItem["x-valueSelector"] = schema.properties.tasks.items["x-valueSelector"]
+                then_schema.additionalProperties = false -- providers are not allowed to change this
+                then_schema["x-valueSelector"] = schema.properties.tasks.items["x-valueSelector"]
                 for _, req in ipairs(provider_schema.required or {}) do
-                    table.insert(oneOfItem.required, req)
+                    table.insert(then_schema.required, req)
                 end
-                table.insert(oneOf, oneOfItem)
+
+                if provider_schema["x-order"] then
+                    then_schema["x-order"] = provider_schema["x-order"]
+                end
+
+                table.insert(items.allOf, {
+                    ["if"] = {
+                        type = "object",
+                        properties = {
+                            type = { const = task_type }
+                        }
+                    },
+                    ["then"] = then_schema
+                })
             end
         end
     end
+
     return schema
 end
-
 ---@param task_type  string
 ---@return table|nil
 local function _get_single_task_schema(task_type)
@@ -177,6 +203,7 @@ end
 function M.clear_providers()
     providers.clear_all()
 end
+
 ---@param ws_dir string
 function M.reset_providers(ws_dir)
     providers.reset_to_default(ws_dir)
