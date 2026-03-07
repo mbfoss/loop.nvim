@@ -20,15 +20,12 @@ local JsonEditor    = require('loop.json.JsonEditor')
 local _init_done    = false
 
 ---@class loop.ws.WorkspaceInfo
----@field name string
 ---@field ws_dir string
 ---@field config_dir string
 
 ---@class loop.ws.WorkspaceData
----@field name string
 ---@field ws_dir string
 ---@field config_dir string
----@field ws_config loop.WorkspaceConfig?
 ---@field page_manager loop.PageManager
 ---@field save_timer any
 
@@ -130,8 +127,7 @@ local function _close_workspace(quiet)
         flock.unlock(lockfile_path)
 
         if not quiet then
-            local label = _ws_data.name or _ws_data.ws_dir
-            logs.user_log("Workspace closed: " .. label, "workspace")
+            logs.user_log("Workspace closed", "workspace")
             vim.notify("Workspace closed")
         end
     end
@@ -140,9 +136,10 @@ local function _close_workspace(quiet)
     statusline.set_workspace_name(nil)
 end
 
----@param config_dir string
+---@param ws_dir string
 ---@return loop.WorkspaceConfig?,string?
-local function _load_workspace_config(config_dir)
+local function _load_workspace_config(ws_dir)
+    local config_dir = _get_config_dir(ws_dir)
     local config_file = vim.fs.joinpath(config_dir, "workspace.json")
     if not filetools.file_exists(config_file) then
         return nil, "workspace.json not found"
@@ -161,24 +158,12 @@ local function _load_workspace_config(config_dir)
     return config.workspace
 end
 
-----@return boolean,string?
-local function _reload_workspace_config()
-    if not _ws_data then return false, "No active workspace" end
-    local ws_config, config_errors = _load_workspace_config(_ws_data.config_dir)
-    if ws_config then
-        _ws_data.name = ws_config.name or vim.fn.fnamemodify(_ws_data.ws_dir, ":p:h:t")
-        statusline.set_workspace_name(_ws_data.name)
-    end
-    _ws_data.ws_config = ws_config
-    return ws_config ~= nil, config_errors
-end
-
 ---@param ws_dir string
-local function _configure_workspace(ws_dir)
+---@return string,table
+local function _get_or_create_ws_config_file(ws_dir)
     local config_dir = _get_config_dir(ws_dir)
     local schema = require('loop.ws.schema')
     local filepath = vim.fs.joinpath(config_dir, "workspace.json")
-
     if not filetools.file_exists(filepath) then
         local schema_filepath = vim.fs.joinpath(config_dir, 'wsschema.json')
         if not filetools.file_exists(schema_filepath) then
@@ -190,21 +175,28 @@ local function _configure_workspace(ws_dir)
         data["workspace"].name = vim.fn.fnamemodify(ws_dir, ":p:h:t")
         jsoncodec.save_to_file(filepath, data)
     end
+    return filepath, schema
+end
 
+---@param ws_dir string
+local function _configure_workspace(ws_dir)
+    local filepath, schema = _get_or_create_ws_config_file(ws_dir)
     local editor = JsonEditor:new({
         name = "Workspace configuration",
         filepath = filepath,
         schema = schema,
     })
-
     editor:set_on_save_handler(function()
-        _reload_workspace_config()
+        local config = _load_workspace_config(ws_dir)
+        if config and config.name then
+            statusline.set_workspace_name(config.name)
+        end
     end)
     editor:open()
 end
 
 ---@param dir string
----@return "ok"|"no_ws"|"locked"|"badconfig"|"unexpected"
+---@return "ok"|"no_ws"|"locked"|"unexpected"
 ---@return string? error_msg
 local function _load_workspace(dir)
     assert(type(dir) == 'string')
@@ -228,33 +220,18 @@ local function _load_workspace(dir)
         end
     end
 
-    local ws_config, config_errors = _load_workspace_config(config_dir)
-    if not ws_config then
-        flock.unlock(lockfile_path)
-        return "badconfig", config_errors
-    end
-
     ---@type loop.ws.WorkspaceData
     _ws_data = {
-        name = ws_config.name,
         ws_dir = dir,
         config_dir = config_dir,
-        ws_config = ws_config,
         page_manager = window.create_page_manager(),
     }
 
-    if not _ws_data.name or _ws_data.name == "" then
-        _ws_data.name = vim.fn.fnamemodify(dir, ":p:h:t")
-    end
-
     ---@type loop.ws.WorkspaceInfo
     local ws_info = {
-        name = _ws_data.name,
         ws_dir = _ws_data.ws_dir,
         config_dir = _ws_data.config_dir,
     }
-
-    statusline.set_workspace_name(_ws_data.name)
 
     window.load_layout(config_dir)
 
@@ -264,7 +241,7 @@ local function _load_workspace(dir)
     extdata.on_workspace_load(ws_info, _ws_data.page_manager)
 
     assert(not _ws_data.save_timer)
-    local save_interval = (loopconfig.autosave_interval or 5) * 60 * 1000
+    local save_interval = (loopconfig.state_autosave_interval or 5) * 60 * 1000
     if save_interval > 0 then
         -- Create and start the repeating timer
         ---@diagnostic disable-next-line: undefined-field
@@ -276,6 +253,11 @@ local function _load_workspace(dir)
         )
     end
 
+    local ws_config = _load_workspace_config(dir)
+    if ws_config and ws_config.name then
+        statusline.set_workspace_name(ws_config.name)
+    end
+
     return "ok", nil
 end
 
@@ -284,14 +266,15 @@ local function _show_workspace_info_floatwin()
         vim.notify("No active workspace")
         return
     end
-    if not _ws_data.ws_config then
+    local ws_config, _ = _load_workspace_config(_ws_data.ws_dir)
+    if not ws_config then
         vim.notify("Invalid workspace configuration")
         return
     end
     local schema = require('loop.ws.schema')
     ---@diagnostic disable-next-line: inject-field
     local str = ("Directory:\n%s\n\nSettings:\n%s"):format(_ws_data.ws_dir,
-        jsoncodec.to_string(_ws_data.ws_config, schema.properties.workspace))
+        jsoncodec.to_string(ws_config, schema.properties.workspace))
     floatwin.show_floatwin(str, { title = "Workspace" })
 end
 
@@ -376,10 +359,16 @@ function M.create_workspace(dir)
 
     vim.fn.mkdir(config_dir, "p")
 
-    local ws_name = vim.fn.fnamemodify(dir, ":p:h:t")
-    logs.user_log("Workspace created: " .. ws_name, "workspace")
+    _get_or_create_ws_config_file(dir)
 
-    _configure_workspace(dir)
+    _load_workspace(dir)
+
+    logs.user_log("Workspace created in " .. dir, "workspace")
+
+    -- open configuration
+    vim.schedule(function()
+        _configure_workspace(dir)
+    end)
 end
 
 ---@param dir string?
@@ -448,11 +437,9 @@ function M.open_workspace(dir, at_startup)
     if status == "ok" and _ws_data then
         -- add to recent list (MRU)
         _add_recent_workspace(dir)
-
-        local label = _ws_data.name
-        logs.user_log("Workspace opened: " .. label, "workspace")
+        logs.user_log("Workspace opened: " .. dir, "workspace")
         if not at_startup then
-            vim.notify("Workspace opened: " .. label)
+            vim.notify("Workspace opened: " .. dir)
         end
     else
         if err_msg then
@@ -788,12 +775,16 @@ function M.save_workspace_buffers(quiet)
         if not quiet then _notify_no_ws() end
         return false, 0, "No active workspace"
     end
-    if not _ws_data.ws_config then
-        local err = "Invalid workspace configuration"
-        if not quiet then vim.notify(err) end
-        return false, 0, err
+    local ws_config, config_err = _load_workspace_config(_ws_data.ws_dir)
+    if not ws_config then
+        local err_str = "Invalid workspace configuration"
+        if config_err then
+            err_str = ("%s\n%s"):format(err_str, config_err)
+        end
+        if not quiet then vim.notify(err_str) end
+        return false, 0, err_str
     end
-    return true, wssaveutil.save_workspace_buffers(_ws_data.ws_dir, _ws_data.ws_config)
+    return true, wssaveutil.save_workspace_buffers(_ws_data.ws_dir, ws_config)
 end
 
 return M

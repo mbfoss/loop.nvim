@@ -28,7 +28,6 @@ error('Cannot require a meta file')
 ---@field keys fun():string[]
 
 ---@class loop.ExtensionData
----@field ws_name string
 ---@field ws_dir string
 ---@field state loop.ExtensionState
 ---@field get_config_file_path fun(key:string,fileext:string?):string

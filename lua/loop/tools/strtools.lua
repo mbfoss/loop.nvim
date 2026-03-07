@@ -18,6 +18,16 @@ function M.special_marker3()
 	return "\240\159\188\130"
 end
 
+---@param lines string[] list of strings (may contain newlines)
+---@return string[] flattened list of strings (no embedded newlines)
+function M.prepare_buffer_lines(lines)
+    local out = {}
+    for _, line in ipairs(lines) do
+        vim.list_extend(out, vim.fn.split(line, "\n", true))
+    end
+    return out
+end
+
 ---@param str string
 ---@param max_len number
 ---@return string preview

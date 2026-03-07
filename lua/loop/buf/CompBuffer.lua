@@ -4,15 +4,14 @@ local throttle = require('loop.tools.throttle')
 
 
 ---@class loop.comp.CompBuffer:loop.comp.BaseBuffer
----@field new fun(self: loop.comp.CompBuffer, type : string, name:string): loop.comp.CompBuffer
+---@field new fun(self: loop.comp.CompBuffer, opts : loop.comp.BaseBufferOpts): loop.comp.CompBuffer
 ---@field _renderer loop.CompRenderer|nil
 ---@field _render_schdl_pending boolean?
 local CompBuffer = class(BaseBuffer)
 
----@param type string
----@param name string
-function CompBuffer:init(type, name)
-    BaseBuffer.init(self, type, name)
+---@param opts loop.comp.BaseBufferOpts
+function CompBuffer:init(opts)
+    BaseBuffer.init(self, opts)
     self._throttled_render = throttle.throttle_wrap(100, function()
         self:_immediate_render()
     end)

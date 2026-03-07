@@ -19,7 +19,7 @@ local M = {}
 ---@field window loop.Config.Window?
 ---@field macros table<string,(fun(ctx:loop.TaskContext,...):any,string|nil)>?
 ---@field debug boolean? Enable debug/verbose mode for development
----@field autosave_interval integer? Auto-save interval in minutes (default: 5 minutes).
+---@field state_autosave_interval integer? Auto-save interval in minutes (default: 5 minutes).
 ---@field logs_count integer? Number of recent logs to show with :Loop logs (default: 50).
 
 -- IMPORTANT: keep this module light for lazy loading
@@ -39,8 +39,8 @@ local function _get_default_config()
         },
         macros = {},
         debug = false,
-        autosave_interval = 5, -- 5 minutes
-        logs_count = 50,       -- Number of recent logs to show
+        state_autosave_interval = 5, -- 5 minutes
+        logs_count = 50,             -- Number of recent logs to show
     }
 end
 

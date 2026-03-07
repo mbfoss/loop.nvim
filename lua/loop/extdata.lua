@@ -150,7 +150,6 @@ function M.on_workspace_load(wsinfo, page_manager)
 		_extension_contexts[name] = ext_context
 		---@type loop.ExtensionData
 		local ext_data = {
-			ws_name = wsinfo.name,
 			ws_dir = wsinfo.ws_dir,
 			get_config_file_path = function(key, fileext)
 				return _get_config_file_path(wsinfo.config_dir, name, key, fileext)

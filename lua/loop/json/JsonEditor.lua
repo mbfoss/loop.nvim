@@ -338,8 +338,13 @@ function JsonEditor:open(winid)
         end,
     })
 
-    local filetype = "loop-jsoneditor"
-    local buf = CompBuffer:new(filetype, name)
+    local buftype = "loop-jsoneditor"
+    local buf = CompBuffer:new({
+        buftype = buftype,
+        name = name,
+        bufhidden = "hide",
+        listed = true,
+    })
 
     local function with_current_item(fn)
         local item = self._itemtree:get_cur_item()
@@ -391,7 +396,7 @@ function JsonEditor:open(winid)
     local bufid = buf:get_or_create_buf()
     local tgtwin = winid
     if not tgtwin or tgtwin < 0 then
-        tgtwin = _get_existing_window(filetype)
+        tgtwin = _get_existing_window(buftype)
         if tgtwin == -1 then
             tgtwin = uitools.get_regular_window()
         end

@@ -1,15 +1,15 @@
 local class = require('loop.tools.class')
+local strtools = require('loop.tools.strtools')
 local BaseBuffer = require('loop.buf.BaseBuffer')
 
 ---@class loop.comp.OutputBuffer:loop.comp.BaseBuffer
----@field new fun(self: loop.comp.OutputBuffer, type:string, name:string): loop.comp.OutputBuffer
+---@field new fun(self: loop.comp.OutputBuffer,opts:loop.comp.BaseBufferOpts): loop.comp.OutputBuffer
 ---@field _auto_scroll boolean
 local OutputBuffer = class(BaseBuffer)
 
----@param type string
----@param name string
-function OutputBuffer:init(type, name)
-    BaseBuffer.init(self, type, name)
+---@param opts loop.comp.BaseBufferOpts
+function OutputBuffer:init(opts)
+    BaseBuffer.init(self, opts)
     self._auto_scroll = true
     self._max_lines = 10000
 end
@@ -67,12 +67,14 @@ function OutputBuffer:add_lines(lines)
         lines = { lines }
     end
 
+    lines = strtools.prepare_buffer_lines(lines)
+
     vim.bo[bufnr].modifiable = true
 
     local on_last_line, winid = self:_is_on_last_line()
 
     local line_count = vim.api.nvim_buf_line_count(bufnr)
-    
+
     -- ------------------------------------------------------------
     -- 1. REMOVE excess lines FIRST (preserve trailing empty line)
     -- ------------------------------------------------------------

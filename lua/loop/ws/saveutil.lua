@@ -62,8 +62,13 @@ end
 
 ---@param ws_dir string
 ---@param ws_config loop.WorkspaceConfig
+---@return number
 function M.save_workspace_buffers(ws_dir, ws_config)
 	local filter = ws_config.save
+	if not filter or not filter.include or #filter.include == 0 then
+		return 0
+	end
+
 	-- Get absolute, normalized root
 	local root_path = vim.fs.normalize(ws_dir)
 	---@diagnostic disable-next-line: undefined-field

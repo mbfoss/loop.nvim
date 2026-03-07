@@ -58,7 +58,7 @@ local function update_list(items, cur, buf, win)
         -- ----------------------------
         -- Efficiently build display_label from label_chunks
         -- ----------------------------
-        lines[i] = prefix .. item.label
+        lines[i] = prefix .. select(1, item.label:gsub("\n", ""))
         -- ----------------------------
         -- Inline highlights
         -- ----------------------------
@@ -160,7 +160,7 @@ local function update_preview(formatter, items, cur, buf)
         if vim.fn.filereadable(filepath) ~= 1 then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
                 "File not readable:",
-                filepath,
+                filepath:gsub("\n", ""),
             })
             vim.bo[buf].filetype = "text"
             return
@@ -168,7 +168,7 @@ local function update_preview(formatter, items, cur, buf)
         if not target_lnum or target_lnum < 1 then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
                 "Invalid line number:",
-                filepath .. ":" .. tostring(item.lnum),
+                (filepath .. ":" .. tostring(item.lnum)):gsub("\n", ""),
             })
             vim.bo[buf].filetype = "text"
             return
@@ -219,7 +219,7 @@ local function update_preview(formatter, items, cur, buf)
         if not ok then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
                 "Formatter error:",
-                vim.inspect(text), -- error message
+                vim.inspect(text):gsub("\n", ""), -- error message
             })
             vim.bo[buf].filetype = "lua"
             return

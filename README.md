@@ -1,3 +1,15 @@
+> [!WARNING]
+> 🚧 **Work in Progress**
+>
+> This plugin is currently under active development.
+>
+> - APIs and configuration may change
+> - Breaking changes can occur without notice
+>
+> Use with caution until a stable release is announced.
+> Issues, suggestions, and contributions are welcome while the project evolves.
+
+
 # loop.nvim
 
 Workspace and task management for Neovim.
@@ -20,34 +32,23 @@ Neovim >= 0.10
 ```lua
 {
     "mbfoss/loop.nvim",
-    event = "VimEnter",
+    lazy = false, -- Loop will lazy load itself
     config = function()
         require("loop").setup({})
     end,
 }
 ```
 
-**packer.nvim**
-```lua
-use {
-    "mbfoss/loop.nvim",
-    event = "VimEnter",
-    config = function()
-        require("loop").setup()
-    end,
-}
-```
 
 Run `:helptags ALL` after installing.
 
 ## Quick Start
 
-1. `:Loop workspace create` — Create a workspace in the current directory.
-2. `:Loop workspace open` — Open a workspace (or pick from recent).
-3. `:Loop task configure` — Edit `tasks.json` to add tasks.
-4. `:Loop task run` — Run a task (or `:Loop task run Build` to run by name).
-5. `:Loop var configure` — Edit workspace variables.
-6. `:Loop ui toggle` — Show or hide the Loop UI.
+1. Create a workspace in the current directory (`:Loop workspace create`). The confiration editor will open.
+2. Adjust the configuration as required (`:Loop workspace configure` to reopen the configuration editor)
+3. Use `:Loop task configure` to open the task list editor and create new tasks.
+4. Use `:Loop task run` to run tasks.
+5. Use `:Loop ui` to show or hide the Loop window (task output).
 
 Workspaces in the current directory are opened automatically on startup when neovim is started without arguments.
 
@@ -75,7 +76,7 @@ Workspace config (`workspace.json`), tasks (`tasks.json`), and variables (`varia
 ```lua
 require("loop").setup({
     workspace_data_dir = ".loop", -- workspace data directory
-    autosave_interval = 5,   -- minutes (0 to disable)
+    state_autosave_interval = 5,   -- minutes (0 to disable)
     window = {
         symbols = {
             change  = "●",

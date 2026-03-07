@@ -23,6 +23,7 @@ local schema = {
                     type = { "object", "null" },
                     description = "File saving/filtering options",
                     default = {},
+                    required = { "include", "exclude", "follow_symlinks" },
                     ["x-order"] = { "include", "exclude", "follow_symlinks" },
                     properties = {
                         include = {

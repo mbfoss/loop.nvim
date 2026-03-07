@@ -4,7 +4,7 @@ local uitools = require('loop.tools.uitools')
 local BaseBuffer = require('loop.buf.BaseBuffer')
 
 ---@class loop.comp.ReplBuffer : loop.comp.BaseBuffer
----@field new fun(self: loop.comp.ReplBuffer, type : string, name:string): loop.comp.ReplBuffer
+---@field new fun(self: loop.comp.ReplBuffer, opts:loop.comp.BaseBufferOpts): loop.comp.ReplBuffer
 ---@field private _chan number|nil The terminal channel ID
 ---@field private _current_line string Current raw string in the input buffer
 ---@field private _cursor_pos number 1-indexed position of the cursor
@@ -35,11 +35,9 @@ local COLORS = {
 	CYAN  = "\27[36m",
 }
 
----Initializes a new ReplBuffer
----@param type string
----@param name string
-function ReplBuffer:init(type, name)
-	BaseBuffer.init(self, type, name)
+---@param opts loop.comp.BaseBufferOpts
+function ReplBuffer:init(opts)
+	BaseBuffer.init(self, opts)
 	self._chan = nil
 	self._current_line = ""
 	self._cursor_pos = 1

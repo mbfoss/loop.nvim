@@ -7,15 +7,27 @@ local throttle = require('loop.tools.throttle')
 ---@class loop.comp.Tracker
 ---@field on_change fun()|nil
 
+---@class loop.comp.BaseBufferOpts
+---@field name string
+---@field buftype string
+---@field listed boolean
+---@field bufhidden "hide"|"delete"
+
 ---@class loop.comp.BaseBuffer
----@field new fun(self: loop.comp.BaseBuffer, type : string, name:string): loop.comp.BaseBuffer
+---@field new fun(self: loop.comp.BaseBuffer, opts:loop.comp.BaseBufferOpts): loop.comp.BaseBuffer
 local BaseBuffer = class()
 
----@param type string
----@param name string
-function BaseBuffer:init(type, name)
-    self._type = type
-    self._name = name
+---@param opts loop.comp.BaseBufferOpts
+function BaseBuffer:init(opts)
+    vim.validate("opts", opts, "table")
+    vim.validate("opts.name", opts.name, "string")
+    vim.validate("opts.buftype", opts.buftype, "string")
+    vim.validate("opts.listed", opts.listed, "boolean")
+    vim.validate("opts.bufhidden", opts.bufhidden, "string")
+    self._type = opts.buftype
+    self._name = opts.name
+    self._listed = opts.listed
+    self._bufhidden_action = opts.bufhidden
     self._keymaps = {}
     self._buf = -1
 
@@ -145,12 +157,12 @@ function BaseBuffer:_setup_buf()
     do
         local b = vim.bo[buf]
         b.buftype = "nofile"
-        b.bufhidden = "hide"
+        b.bufhidden = self._bufhidden_action
         b.filetype = self._type
         b.modifiable = false
         b.swapfile = false
-        b.undolevels = -1   -- buffer can't become "modified"
-        b.buflisted = false -- hide from :ls
+        b.undolevels = -1          -- buffer can't become "modified"
+        b.buflisted = self._listed -- hide from :ls
     end
 
     vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {

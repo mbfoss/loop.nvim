@@ -44,7 +44,12 @@ local _status_text
 
 ---@return number
 local function _get_placeholder_buf()
-    _placeholder_page = _placeholder_page or Page:new(BaseBuffer:new("loop-empty", ""))
+    _placeholder_page = _placeholder_page or Page:new(BaseBuffer:new({
+        name = "",
+        buftype = "loop-empty",
+        bufhidden = "delete",
+         listed = false
+    }))
     local buf = _placeholder_page:get_or_create_buf()
     return buf
 end
@@ -549,7 +554,7 @@ local function _create_term(page, args)
 
     local TermProc = require('loop.tools.TermProc')
 
-    logger.log({"Starting term proc", vim.inspect(args_cpy)}, vim.log.levels.DEBUG)
+    logger.log({ "Starting term proc", vim.inspect(args_cpy) }, vim.log.levels.DEBUG)
 
     local proc = TermProc:new()
     local proc_ok, proc_err = proc:start(bufnr, args_cpy)
@@ -620,7 +625,7 @@ end
 ---@return loop.PageData?,string?
 local function _add_tab_page(tab, opts)
     if opts.type == "term" then
-        local basebuf = BaseBuffer:new("loop-term", opts.label)
+        local basebuf = BaseBuffer:new({ buftype = "loop-term", name = opts.label, listed = false, bufhidden = "hide" })
         local page = Page:new(basebuf)
         _assign_tab_page(tab, page, opts.activate)
         local proc, err = _create_term(page, opts.term_args)
@@ -631,7 +636,7 @@ local function _add_tab_page(tab, opts)
         return { page = page:make_controller(), term_proc = proc }
     end
     if opts.type == "output" then
-        local output_buf = OutputBuffer:new("loop-output", opts.label)
+        local output_buf = OutputBuffer:new({ buftype = "loop-output", name = opts.label, listed = false, bufhidden = "hide" })
         local page = Page:new(output_buf)
         _assign_tab_page(tab, page, opts.activate)
         local ctrl = output_buf:make_controller()
@@ -639,7 +644,7 @@ local function _add_tab_page(tab, opts)
         return { page = page:make_controller(), base_buf = ctrl, output_buf = ctrl }
     end
     if opts.type == "comp" then
-        local comp_buf = CompBuffer:new("loop-comp", opts.label)
+        local comp_buf = CompBuffer:new({ buftype = "loop-comp", name = opts.label, listed = false, bufhidden = "hide" })
         local page = Page:new(comp_buf)
         _assign_tab_page(tab, page, opts.activate)
         local ctrl = comp_buf:make_controller()
@@ -647,7 +652,7 @@ local function _add_tab_page(tab, opts)
         return { page = page:make_controller(), base_buf = ctrl, comp_buf = ctrl }
     end
     if opts.type == "repl" then
-        local repl_buf = ReplBuffer:new("loop-repl", opts.label)
+        local repl_buf = ReplBuffer:new({ buftype = "loop-repl", name = opts.label, listed = false, bufhidden = "hide" })
         local page = Page:new(repl_buf)
         _assign_tab_page(tab, page, opts.activate)
         ---@type loop.PageData
