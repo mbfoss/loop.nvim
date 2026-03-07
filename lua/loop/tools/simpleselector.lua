@@ -45,6 +45,23 @@ local function fuzzy_filter(items, query)
     return res
 end
 
+---@param pbuf number
+---@param total number
+---@param cur number
+local function update_pos_hint(pbuf, total, cur)
+    vim.api.nvim_buf_clear_namespace(pbuf, NS_VIRT, 0, -1)
+    -- Right-padded virtual count (Telescope-style)
+    if total > 0 then
+        local count_text = string.format("%d/%d", cur, total)
+        -- Set virtual text on the first line of the list window (prompt line is usually separate)
+        vim.api.nvim_buf_set_extmark(pbuf, NS_VIRT, 0, 0, {
+            virt_text = { { count_text, "Comment" } }, -- highlight group
+            virt_text_pos = "right_align",
+            hl_mode = "blend",
+        })
+    end
+end
+
 ---@param items loop.SelectorItem[]
 ---@param cur integer
 ---@param buf integer
@@ -448,6 +465,7 @@ function M.select(opts, callback)
 
     local last_preview_item = nil
     local function update_content()
+        update_pos_hint(pbuf, #filtered, cur)
         update_list(filtered, cur, lbuf, lwin)
         if not vbuf then return end
         local item = filtered[cur]
