@@ -7,7 +7,7 @@ local jsoncodec = require('loop.json.codec')
 
 ---@class loop.ExtentionContext
 ---@field ext_name string
----@field page_groups string<string,loop.PageGroup>
+---@field page_groups table<string,loop.PageGroup>
 ---@field state table
 ---@field cmd_providers table<string,loop.UserCommandProvider>
 ---@
@@ -84,20 +84,37 @@ end
 
 ---@param ext_context loop.ExtentionContext
 ---@param page_manager loop.PageManager
----@return fun(name:string):loop.PageGroup?
-local function _make_request_page_group_fn(ext_context, page_manager)
-	return function(name)
-		---@type loop.PageGroup?
-		local group = ext_context.page_groups[name]
+---@return fun(start_args:loop.tools.TermProc.StartArgs):loop.tools.TermProc?,string?
+local function _get_run_process_fn(ext_context, page_manager)
+	return function(start_args)
+		local name = start_args.name or ext_context.ext_name
+		local group = ext_context.page_groups[name] ---@type loop.PageGroup?
 		if group and group.is_expired() then
 			group.delete_group()
+			ext_context.page_groups[name] = nil
 			group = nil
 		end
-		if not group then
-			group = page_manager.add_page_group(name)
-			ext_context.page_groups[name] = group
+		if group then
+			return nil, "task already running"
 		end
-		return group
+		group = page_manager.add_page_group(name)
+		if not group then
+			return nil, "Failed to create term page"
+		end
+		ext_context.page_groups[name] = group
+		local start_args_cpy = vim.fn.copy(start_args)
+		start_args_cpy.on_exit_handler = function(code)
+			if start_args then
+				group.expire()
+				start_args.on_exit_handler(code)
+			end
+		end
+		local page_data, err_str = group.add_page({
+			label = name,
+			type = "term",
+			term_args = start_args_cpy,
+		})
+		return page_data and page_data.term_proc, err_str
 	end
 end
 
@@ -160,7 +177,7 @@ function M.on_workspace_load(wsinfo, page_manager)
 			end,
 			register_task_type = _register_task_type_provider,
 			register_task_templates = _register_task_template_provider,
-			request_page_proup = _make_request_page_group_fn(ext_context, page_manager),
+			run_process = _get_run_process_fn(ext_context, page_manager),
 		}
 		_extension_data[name] = ext_data
 		local ext = extensions.get_extension(name)
@@ -200,6 +217,18 @@ function M.save(config_dir)
 		end
 		local filepath = vim.fs.joinpath(config_dir, "state." .. name .. ".json")
 		jsoncodec.save_to_file(filepath, state)
+	end
+end
+
+function M.clean_page_groups()
+	for _, ext_context in pairs(_extension_contexts) do
+		local group_names = vim.tbl_keys(ext_context.page_groups)
+		for _, name in ipairs(group_names) do
+			local group = ext_context.page_groups[name]
+			if group.is_deleted() then
+				ext_context.page_groups[name] = nil
+			end
+		end
 	end
 end
 

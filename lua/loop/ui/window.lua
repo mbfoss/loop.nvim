@@ -48,7 +48,7 @@ local function _get_placeholder_buf()
         name = "",
         filetype = "loop-empty",
         bufhidden = "hide",
-         listed = false
+        listed = false
     }))
     local buf = _placeholder_page:get_or_create_buf()
     return buf
@@ -636,7 +636,8 @@ local function _add_tab_page(tab, opts)
         return { page = page:make_controller(), term_proc = proc }
     end
     if opts.type == "output" then
-        local output_buf = OutputBuffer:new({ filetype = "loop-output", name = opts.label, listed = false, bufhidden = "hide" })
+        local output_buf = OutputBuffer:new({ filetype = "loop-output", name = opts.label, listed = false, bufhidden =
+        "hide" })
         local page = Page:new(output_buf)
         _assign_tab_page(tab, page, opts.activate)
         local ctrl = output_buf:make_controller()
@@ -677,6 +678,9 @@ local function _create_page_manager()
             end,
             is_expired = function()
                 return expired
+            end,
+            is_deleted = function()
+                return deleted
             end,
             add_page = function(opts)
                 if expired or deleted then return nil end

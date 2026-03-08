@@ -34,7 +34,7 @@ error('Cannot require a meta file')
 ---@field register_task_type fun(task_type:string, provider:loop.TaskTypeProvider)
 ---@field register_task_templates fun(category:string, provider:loop.TaskTemplateProvider)
 ---@field register_user_command fun(lead_cmd:string, provider:loop.UserCommandProvider)
----@field request_page_proup fun(name:string):loop.PageGroup?
+---@field run_process fun(start_args:loop.tools.TermProc.StartArgs):loop.tools.TermProc?,string?
 
 ---@class loop.TaskTypeProvider
 ---@field get_task_schema fun():table
@@ -108,6 +108,7 @@ error('Cannot require a meta file')
 ---@field delete_group fun()
 ---@field expire fun(delete_pages:boolean?)
 ---@field is_expired fun():boolean
+---@field is_deleted fun():boolean
 
 ---@class loop.PageManager
 ---@field add_page_group fun(label:string):loop.PageGroup|nil

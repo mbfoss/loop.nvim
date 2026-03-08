@@ -721,6 +721,7 @@ function M.ui_command(command)
         M.hide_window()
     elseif command == "clean" then
         if _ws_data and _ws_data.page_manager then _ws_data.page_manager.delete_expired_groups() end
+        extdata.clean_page_groups()
     elseif command == "save_layout" then
         if _ws_data then
             window.save_layout(_ws_data.config_dir)
