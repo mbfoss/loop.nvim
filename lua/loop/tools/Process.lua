@@ -85,11 +85,7 @@ function Process:_spawn()
 
         self._kill_timer = fntools.stop_and_close_timer(self._kill_timer)
         -- Clean shutdown of readers
-
-        if self.stdout and self.stdout:is_active() then self.stdout:read_stop() end
-        if self.stderr and self.stderr:is_active() then self.stderr:read_stop() end
         self:_close_all()
-
         if self.on_exit then
             self.on_exit(code, signal)
         end
@@ -153,6 +149,7 @@ end
 function Process:kill(timeout_ms)
     if self.exited or self.killed then return end
     self.killed = true
+    _safe_close(self.stdin)
     if self.handle and not self.handle:is_closing() then
         self.handle:kill("SIGTERM")
     end
@@ -167,7 +164,6 @@ function Process:kill(timeout_ms)
             self.handle:kill("SIGKILL")
         end
     end
-    self:_close_all()
 end
 
 -------------------------------------------------
@@ -178,11 +174,6 @@ function Process:_close_all()
     _safe_close(self.stdout)
     _safe_close(self.stderr)
     _safe_close(self.handle)
-
-    self.stdin = nil
-    self.stdout = nil
-    self.stderr = nil
-    self.handle = nil
 end
 
 return Process

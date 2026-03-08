@@ -56,7 +56,7 @@ end
 ---@param query string
 ---@param grep_opts loop.livegrep.opts
 ---@param fetch_opts loop.selector.AsyncFetcherOpts
----@param callback fun(items:table[])
+---@param callback fun(items:table[]?)
 ---@return fun() cancel
 local function async_grep_search(query, grep_opts, fetch_opts, callback)
     local cmd, args = get_grep_cmd(query, grep_opts)
@@ -64,11 +64,14 @@ local function async_grep_search(query, grep_opts, fetch_opts, callback)
     local process
 
     local max_results = grep_opts.max_results or 10000
-
+    local read_stop = false
 
     local buffered_feed = strtools.create_line_buffered_feed(function(lines)
         local items = {}
         for _, line in ipairs(lines) do
+            if read_stop then
+                return
+            end
             -- Pattern matches filename:line:column:text OR filename:line:text
             -- rg: file:line:col:content | grep: file:line:content
             local file, lnum, col, text = line:match("^(.-):(%d+):(%d+):(.*)$")
@@ -83,7 +86,7 @@ local function async_grep_search(query, grep_opts, fetch_opts, callback)
                 ---@type loop.SelectorItem
                 local item = {
                     -- Display label: "path/to/file:12: content of the line"
-                    label_chunks = { { text, nil } },
+                    label_chunks = { { vim.fn.trim(text, "", 0), nil } },
                     virt_lines = { { { location, "Comment" } } },
                     file = abs_path,
                     lnum = tonumber(lnum),
@@ -95,6 +98,7 @@ local function async_grep_search(query, grep_opts, fetch_opts, callback)
             end
             if count >= max_results then -- Cap results for performance
                 process:kill()
+                read_stop = true
                 break
             end
         end
@@ -108,22 +112,26 @@ local function async_grep_search(query, grep_opts, fetch_opts, callback)
         cwd = grep_opts.cwd,
         args = args,
         on_output = function(data, is_stderr)
-            if count >= max_results then
+            if read_stop then
                 return
             end
-            if not data then return end
-            if is_stderr and #data > 0 then
+            if not data then
+                return
+            end
+            if is_stderr then
                 vim.notify_once(data, vim.log.levels.ERROR)
                 return
             end
             buffered_feed(data)
         end,
         on_exit = function(code, signal)
+            callback(nil)
         end
     })
 
     local start_ok, start_err = process:start()
     if not start_ok and start_err and #start_err > 0 then
+        callback(nil)
         vim.notify_once(start_err, vim.log.levels.ERROR)
     end
 
@@ -141,16 +149,15 @@ function M.live_grep(opts)
     return simple_selector.select({
         prompt = "Live Grep",
         file_preview = true,
-        async_fetch = function(query, fetch_opts, cb)
+        async_fetch = function(query, fetch_opts, callback)
             if not query or #query < 1 then -- Optimization: don't grep for 1 char
-                cb({})
+                callback()
                 return function() end
             end
-
             return async_grep_search(query, {
                 cwd = cwd,
                 exclude_globs = opts.exclude_globs or {},
-            }, fetch_opts, cb)
+            }, fetch_opts, callback)
         end
     }, function(selected)
         if selected then

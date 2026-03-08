@@ -1,6 +1,7 @@
 local filetools  = require("loop.tools.file")
 local fntools    = require('loop.tools.fntools')
 local throttle   = require('loop.tools.throttle')
+local Spinner    = require("loop.tools.Spinner")
 
 ---@mod loop.selector
 ---@brief Simple floating selector with fuzzy filtering and optional preview.
@@ -22,6 +23,7 @@ local M          = {}
 
 local NS_PREVIEW = vim.api.nvim_create_namespace("LoopSelectorPreview")
 local NS_VIRT    = vim.api.nvim_create_namespace("LoopSelectorVirtText")
+local NS_SPINNER = vim.api.nvim_create_namespace("LoopSelectorSpinner")
 
 --------------------------------------------------------------------------------
 -- Utility functions
@@ -60,6 +62,7 @@ local function _update_pos_hint(pbuf, total, cur)
             virt_text = { { count_text, "Comment" } }, -- highlight group
             virt_text_pos = "right_align",
             hl_mode = "blend",
+            priority=1,
         })
     end
 end
@@ -465,7 +468,7 @@ end
 ---@field list_width number
 ---@fiel list_height number
 
----@alias loop.selector.AsyncFetcher (fun(query:string,  opts:loop.selector.AsyncFetcherOpts, callback:fun(new_items:loop.SelectorItem[])):fun())?
+---@alias loop.selector.AsyncFetcher (fun(query:string,  opts:loop.selector.AsyncFetcherOpts, callback:fun(new_items:loop.SelectorItem[]?)):fun())?
 
 ---@class loop.selector.opts
 ---@field prompt string
@@ -580,9 +583,44 @@ function M.select(opts, callback)
     local closed = false
     local async_preview_cancel
     local async_fetch_cancel
+    local async_fetch_context = 0
     local vimreisze_autocmd_id
+    local spinner
+
+    local function render_spinner(frame)
+        if not vim.api.nvim_buf_is_valid(pbuf) then
+            return
+        end
+        vim.api.nvim_buf_clear_namespace(pbuf, NS_SPINNER, 0, -1)
+        vim.api.nvim_buf_set_extmark(pbuf, NS_SPINNER, 0, 0, {
+            virt_text = { { frame .. " ", "Comment" } },
+            virt_text_pos = "right_align",
+            hl_mode = "blend",
+            priority=2,
+        })
+    end
+    local function start_spinner()
+        if spinner then return end
+        spinner = Spinner:new({
+            interval = 80,
+            on_update = function(frame)
+                render_spinner(frame)
+            end
+        })
+        spinner:start()
+    end
+    local function stop_spinner()
+        if spinner then
+            spinner:stop()
+            spinner = nil
+        end
+        if vim.api.nvim_buf_is_valid(pbuf) then
+            vim.api.nvim_buf_clear_namespace(pbuf, NS_SPINNER, 0, -1)
+        end
+    end
 
     local function close(result)
+        stop_spinner()
         if vimreisze_autocmd_id then
             vim.api.nvim_del_autocmd(vimreisze_autocmd_id)
             vimreisze_autocmd_id = nil
@@ -640,7 +678,7 @@ function M.select(opts, callback)
         function()
             if not closed then
                 filtered = _fuzzy_filter(items, query)
-                cur =  math.max(1, math.min(cur, #filtered))
+                cur = math.max(1, math.min(cur, #filtered))
                 update_content()
             end
         end)
@@ -752,13 +790,21 @@ function M.select(opts, callback)
                 async_fetch_cancel()
                 async_fetch_cancel = nil
             end
+            stop_spinner()
             if opts.async_fetch then
+                async_fetch_context = async_fetch_context + 1
+                local context = async_fetch_context
+                start_spinner()
                 async_fetch_cancel = opts.async_fetch(query, {
                         list_width = math.max(1, layout.list_width - 3),
                         list_height = math.max(1, layout.list_height),
                     },
                     function(new_items)
-                        if closed then return end
+                        if closed or context ~= async_fetch_context then return end
+                        if new_items == nil then
+                             stop_spinner()
+                            return
+                        end
                         _process_labels(new_items)
                         vim.list_extend(items, new_items)
                         refilter()

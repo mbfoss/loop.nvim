@@ -5,6 +5,12 @@ local uitools = require("loop.tools.uitools")
 local strtools = require("loop.tools.strtools")
 local simple_selector = require('loop.tools.simpleselector')
 
+---@class loop.filepicker.fdopts
+---@field cwd string The root directory for the search
+---@field include_globs string[] List of glob patterns to include (filtered in Lua)
+---@field exclude_globs string[] List of glob patterns for fd to ignore
+---@field max_results number?
+
 ---@param query string
 ---@param opts loop.filepicker.fdopts
 ---@return string, string[],boolean
@@ -51,15 +57,10 @@ local function get_search_cmd(query, opts)
     return "find", args, false
 end
 
----@class loop.filepicker.fdopts
----@field cwd string The root directory for the search
----@field include_globs string[] List of glob patterns to include (filtered in Lua)
----@field exclude_globs string[] List of glob patterns for fd to ignore
-
 ---@param query string User input for literal string matching
 ---@param fd_opts loop.filepicker.fdopts Configuration for fd and filtering
 ---@param fetch_opts loop.selector.AsyncFetcherOpts Layout constraints from the UI
----@param callback fun(items:loop.SelectorItem[]) Called when new items are ready
+---@param callback fun(items:loop.SelectorItem[]?) Called when new items are ready
 ---@return fun() cancel Function to kill the underlying process
 local function async_fd_search(query, fd_opts, fetch_opts, callback)
     assert(fd_opts.cwd, "CWD must be provided for file searching")
@@ -81,63 +82,79 @@ local function async_fd_search(query, fd_opts, fetch_opts, callback)
     local include_matchers = to_matchers(fd_opts.include_globs)
     local exclude_matchers = (not exclude_globs_handled) and to_matchers(fd_opts.exclude_globs) or {}
 
-    local count = 0
     local process
+    local read_stop = false
+    local count = 0
+    local max_results = fd_opts.max_results or 10000
+
+    local buffered_feed = strtools.create_line_buffered_feed(function(lines)
+        local items = {}
+        for _, line in ipairs(lines) do
+            if read_stop then
+                return
+            end
+            line = line:gsub("^%.[/]", "")
+            local excluded = false
+            for i = 1, #exclude_matchers do
+                if exclude_matchers[i]:match(line) then
+                    excluded = true
+                    break
+                end
+            end
+            if not excluded then
+                -- LPeg Matching Logic
+                local allowed = (#include_matchers == 0)
+                if not allowed then
+                    for i = 1, #include_matchers do
+                        if include_matchers[i]:match(line) then
+                            allowed = true
+                            break
+                        end
+                    end
+                end
+                if allowed then
+                    if count < max_results then
+                        local path = vim.fs.joinpath(fd_opts.cwd, line)
+                        table.insert(items, {
+                            label = strtools.smart_crop_path(line, fetch_opts.list_width),
+                            file = path,
+                            data = path,
+                        })
+                        count = count + 1
+                    else
+                        process:kill()
+                        read_stop = true
+                        break
+                    end
+                end
+            end
+        end
+        if #items > 0 then
+            vim.schedule(function()
+                callback(items)
+            end)
+        end
+    end)
+
     process = Process:new(cmd, {
         cwd = fd_opts.cwd,
         cmd = cmd,
         args = args,
         on_output = function(data, is_stderr)
-            if not data then return end
-            if is_stderr and #data > 0 then
+            if read_stop then
+                return
+            end
+            if not data then
+                return
+            end
+            if is_stderr then
                 vim.notify_once(data, vim.log.levels.ERROR)
                 return
             end
-            local items = {}
-            for line in data:gmatch("[^\r\n]+") do
-                line = line:gsub("^%.[/]", "")
-                local excluded = false
-                for i = 1, #exclude_matchers do
-                    if exclude_matchers[i]:match(line) then
-                        excluded = true
-                        break
-                    end
-                end
-                if not excluded then
-                    -- LPeg Matching Logic
-                    local allowed = (#include_matchers == 0)
-                    if not allowed then
-                        for i = 1, #include_matchers do
-                            if include_matchers[i]:match(line) then
-                                allowed = true
-                                break
-                            end
-                        end
-                    end
-                    if allowed then
-                        if count < 1000 then
-                            local path = vim.fs.joinpath(fd_opts.cwd, line)
-                            table.insert(items, {
-                                label = strtools.smart_crop_path(line, fetch_opts.list_width),
-                                file = path,
-                                data = path,
-                            })
-                            count = count + 1
-                        else
-                            process:kill()
-                            break
-                        end
-                    end
-                end
-            end
-
-            if #items > 0 then
-                vim.schedule(function()
-                    callback(items)
-                end)
-            end
+            buffered_feed(data)
         end,
         on_exit = function(code, signal)
+            callback(nil)
             -- Optional exit handling
         end,
     })
@@ -166,20 +183,19 @@ function M.open(opts)
     local selector_opts = {
         prompt = "Files",
         file_preview = true,
-        async_fetch = function(query, fetch_opts, cb)
+        async_fetch = function(query, fetch_opts, callback)
             -- We only search if there is a query, or you can remove this check
             -- to show all files in the CWD on open.
             if not query or query == "" then
-                cb({})
+                callback()
                 return function() end
             end
-
             local fd_opts = {
                 cwd = opts.cwd or vim.fn.getcwd(),
                 include_globs = opts.include_globs or {},
                 exclude_globs = opts.exclude_globs or { ".git", "node_modules", "target" },
             }
-            return async_fd_search(query, fd_opts, fetch_opts, cb)
+            return async_fd_search(query, fd_opts, fetch_opts, callback)
         end
     }
 
