@@ -1,4 +1,5 @@
-local filetools = require("loop.tools.file")
+local filetools  = require("loop.tools.file")
+local fntools    = require('loop.tools.fntools')
 
 ---@mod loop.selector
 ---@brief Simple floating selector with fuzzy filtering and optional preview.
@@ -16,10 +17,10 @@ local filetools = require("loop.tools.file")
 ---@alias loop.PreviewFormatter fun(data:any):(string, string|nil)
 --- Returns preview text and optional filetype
 
-local M = {}
+local M          = {}
 
 local NS_PREVIEW = vim.api.nvim_create_namespace("LoopSelectorPreview")
-local NS_VIRT = vim.api.nvim_create_namespace("LoopSelectorVirtText")
+local NS_VIRT    = vim.api.nvim_create_namespace("LoopSelectorVirtText")
 
 --------------------------------------------------------------------------------
 -- Utility functions
@@ -75,7 +76,7 @@ local function update_list(items, cur, buf, win)
         -- ----------------------------
         -- Efficiently build display_label from label_chunks
         -- ----------------------------
-        lines[i] = prefix .. select(1, item.label:gsub("\n", ""))
+        lines[i] = prefix .. (item.label:gsub("\n", ""))
         -- ----------------------------
         -- Inline highlights
         -- ----------------------------
@@ -171,29 +172,28 @@ local function update_preview(formatter, items, cur, buf)
     -- ──────────────────────────────────────────────────────────────
     --  File + line → load file contents into the preview buffer
     -- ──────────────────────────────────────────────────────────────
-    if item.file and item.lnum then
+    if item.file then
         local filepath = vim.fs.normalize(item.file)
-        local target_lnum = tonumber(item.lnum)
+        local target_lnum = item.lnum and tonumber(item.lnum)
         if vim.fn.filereadable(filepath) ~= 1 then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
                 "File not readable:",
-                filepath:gsub("\n", ""),
+                (filepath:gsub("\n", "")),
             })
             vim.bo[buf].filetype = "text"
             return
         end
-        if not target_lnum or target_lnum < 1 then
-            vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
-                "Invalid line number:",
-                (filepath .. ":" .. tostring(item.lnum)):gsub("\n", ""),
-            })
-            vim.bo[buf].filetype = "text"
-            return
-        end
+        local content_set = false
+        ---@type table?
+        local antiflicker_timer = vim.defer_fn(function()
+            if not content_set then
+                vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
+            end
+        end, 500)
         -- Clear previous content safely
-        vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
-        return filetools.async_load_text_file(filepath, { max_size = 50 * 1024 * 1024, timeout = 3000 },
+        local cancel_fn = filetools.async_load_text_file(filepath, { max_size = 50 * 1024 * 1024, timeout = 3000 },
             function(load_err, content)
+                content_set = true
                 if not content then
                     vim.api.nvim_buf_set_lines(buf, 0, -1, false,
                         { ("Failed to load preview (%s)"):format(load_err) })
@@ -203,29 +203,41 @@ local function update_preview(formatter, items, cur, buf)
                 -- Instead of split + set_lines:
                 local lines = vim.split(content, "\n")
                 vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-                -- Try to position cursor / view at target line
-                local preview_win = vim.fn.bufwinid(buf)
-                if preview_win ~= -1 then
-                    local set_ok = pcall(vim.api.nvim_win_set_cursor, preview_win, { target_lnum, 0 })
-                    if set_ok then
-                        vim.api.nvim_win_call(preview_win, function()
-                            vim.cmd("normal! zz") -- center the target line
-                        end)
-                    else
-                        -- Line might be out of range → fall back to first line
-                        pcall(vim.api.nvim_win_set_cursor, preview_win, { 1, 0 })
+                vim.api.nvim_buf_set_name(buf, "loopsel://" .. item.file)
+                -- Set lines and trigger filetype detection
+                vim.api.nvim_buf_call(buf, function()
+                    -- Trigger Neovim's filetype detection
+                    vim.cmd("filetype detect") -- auto-detects based on buffer name and content
+                end)
+                if target_lnum and target_lnum > 0 then
+                    -- Try to position cursor / view at target line
+                    local preview_win = vim.fn.bufwinid(buf)
+                    if preview_win ~= -1 then
+                        local set_ok = pcall(vim.api.nvim_win_set_cursor, preview_win, { target_lnum, 0 })
+                        if set_ok then
+                            vim.api.nvim_win_call(preview_win, function()
+                                vim.cmd("normal! zz") -- center the target line
+                            end)
+                        else
+                            -- Line might be out of range → fall back to first line
+                            pcall(vim.api.nvim_win_set_cursor, preview_win, { 1, 0 })
+                        end
                     end
+                    -- Brief visual feedback: highlight target line
+                    pcall(vim.api.nvim_buf_clear_namespace, buf, NS_PREVIEW, 0, -1)
+                    -- Highlight the target line fully (works for single-line too)
+                    vim.api.nvim_buf_set_extmark(buf, NS_PREVIEW, target_lnum - 1, 0, {
+                        end_row = target_lnum, -- makes it "multiline" → enables hl_eol
+                        hl_group = "CursorLine",
+                        hl_eol = true,
+                        hl_mode = "blend",
+                    })
                 end
-                -- Brief visual feedback: highlight target line
-                pcall(vim.api.nvim_buf_clear_namespace, buf, NS_PREVIEW, 0, -1)
-                -- Highlight the target line fully (works for single-line too)
-                vim.api.nvim_buf_set_extmark(buf, NS_PREVIEW, target_lnum - 1, 0, {
-                    end_row = target_lnum, -- makes it "multiline" → enables hl_eol
-                    hl_group = "CursorLine",
-                    hl_eol = true,
-                    hl_mode = "blend",
-                })
             end)
+        return function()
+            antiflicker_timer = fntools.stop_and_close_timer(antiflicker_timer)
+            cancel_fn()
+        end
     end
 
     -- ──────────────────────────────────────────────────────────────
@@ -236,7 +248,7 @@ local function update_preview(formatter, items, cur, buf)
         if not ok then
             vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
                 "Formatter error:",
-                vim.inspect(text):gsub("\n", ""), -- error message
+                (vim.inspect(text):gsub("\n", "")), -- error message
             })
             vim.bo[buf].filetype = "lua"
             return
@@ -314,9 +326,24 @@ local function compute_width(items, padding)
     )
 end
 
+local function merge_items(existing, new_items)
+    local seen = {}
+    for _, item in ipairs(existing) do
+        seen[item.label] = true
+    end
+    for _, item in ipairs(new_items) do
+        if not seen[item.label] then
+            table.insert(existing, item)
+        end
+    end
+    return existing
+end
+
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------
+
+---@alias loop.selector.AsyncFetcher (fun(query:string, callback:fun(new_items:loop.SelectorItem[])):fun())?
 
 ---@class loop.selector.opts
 ---@field prompt string
@@ -325,6 +352,7 @@ end
 ---@field formatter loop.PreviewFormatter|nil
 ---@field initial integer? -- 1-based index into items
 ---@field list_wrap boolean?
+---@field async_fetch loop.selector.AsyncFetcher? -- optional async incremental fetch
 
 ---@param opts loop.selector.opts
 ---@param callback loop.SelectorCallback
@@ -379,7 +407,7 @@ function M.select(opts, callback)
     for _, b in ipairs({ pbuf, lbuf, vbuf }) do
         if b then
             vim.bo[b].buftype = "nofile"
-            vim.bo[b].bufhidden = "delete"
+            vim.bo[b].bufhidden = "wipe"
         end
     end
 
@@ -438,11 +466,16 @@ function M.select(opts, callback)
     local cur = math.max(1, math.min(opts.initial or 1, #items))
     local closed = false
     local async_preview_cancel
+    local async_fetch_cancel
 
     local function close(result)
         if async_preview_cancel then
             async_preview_cancel()
             async_preview_cancel = nil
+        end
+        if async_fetch_cancel then
+            async_fetch_cancel()
+            async_fetch_cancel = nil
         end
         if closed then return end
         closed = true
@@ -532,6 +565,19 @@ function M.select(opts, callback)
             -- now recompute filtered list
             filtered, cur = recompute(items, query, cur)
             update_content()
+            -- Async incremental fetch
+            if async_fetch_cancel then
+                async_fetch_cancel()
+                async_fetch_cancel = nil
+            end
+            if opts.async_fetch then
+                async_fetch_cancel = opts.async_fetch(query, function(new_items)
+                    if closed then return end
+                    items = merge_items(items, new_items)
+                    filtered, cur = recompute(items, query, cur)
+                    vim.schedule(update_content)
+                end)
+            end
         end,
     })
 
@@ -549,6 +595,10 @@ function M.select(opts, callback)
                 if async_preview_cancel then
                     async_preview_cancel()
                     async_preview_cancel = nil
+                end
+                if async_fetch_cancel then
+                    async_fetch_cancel()
+                    async_fetch_cancel = nil
                 end
             end,
         })

@@ -77,7 +77,7 @@ local function _escape_shell_arg(arg)
 	-- Only escape if it contains shell-special characters or spaces
 	if arg:match('[%s;&|$`"\'<>]') then
 		-- Wrap in single quotes and escape existing single quotes
-		arg = "'" .. arg:gsub("'", "'\\''") .. "'"
+		arg = "'" .. (arg:gsub("'", "'\\''")) .. "'"
 	end
 	return arg
 end

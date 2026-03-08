@@ -1,5 +1,7 @@
 local M = {}
 
+local fntools = require("loop.tools.fntools")
+
 ---@param path string
 function M.file_exists(path)
     ---@diagnostic disable-next-line: undefined-field
@@ -83,13 +85,7 @@ function M.async_load_text_file(path, opts, callback)
         finished = true
         vim.schedule(function()
             if not aborted then
-                if timer then
-                    if timer:is_active() then
-                        timer:stop()
-                    end
-                    timer:close()
-                    timer = nil
-                end
+                timer = fntools.stop_and_close_timer(timer)
                 if fd then
                     ---@diagnostic disable-next-line: undefined-field
                     uv.fs_close(fd)

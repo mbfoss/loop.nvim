@@ -11,6 +11,7 @@ local jsoncodec     = require('loop.json.codec')
 local jsonvalidator = require('loop.json.validator')
 local filetools     = require('loop.tools.file')
 local flock         = require('loop.tools.flock')
+local fntools       = require('loop.tools.fntools')
 local wssaveutil    = require('loop.ws.saveutil')
 local floatwin      = require('loop.tools.floatwin')
 local selector      = require('loop.tools.selector')
@@ -105,13 +106,7 @@ local function _close_workspace(quiet)
     taskmgr.clear_providers()
 
     if _ws_data then
-        if _ws_data.save_timer then
-            if _ws_data.save_timer:is_active() then
-                _ws_data.save_timer:stop()
-            end
-            _ws_data.save_timer:close()
-            _ws_data.save_timer = nil
-        end
+        _ws_data.save_timer = fntools.stop_and_close_timer(_ws_data.save_timer)
 
         _save_workspace()
 

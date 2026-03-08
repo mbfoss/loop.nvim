@@ -153,7 +153,6 @@ function M.show_floatwin(text, opts)
 
     vim.bo[buf].modifiable = false
     vim.bo[buf].bufhidden = "wipe"
-    --vim.bo[buf].filetype = "loopdebug-value"
 
     -- 5. Open Window
     local win = vim.api.nvim_open_win(buf, true, win_opts)
