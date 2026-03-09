@@ -1,44 +1,14 @@
 local M = {}
 
+local validator = require("loop.json.validator")
+local jsontools = require("loop.json.jsontools")
+
 -- Neovim's JSON encoder (perfect escaping)
 local function encode_one(v)
     return vim.json.encode(v)
 end
 
 local _indent = "  "
-
-local jsonschema = require("loop.json.validator")
-
----@param schema table|nil
----@param key string|number
----@param value any
----@return table|nil
-local function _resolve_subschema(schema, key, value)
-    if type(schema) ~= "table" then
-        return nil
-    end
-
-    -- 1. Direct property
-    if schema.properties and schema.properties[key] then
-        return schema.properties[key]
-    end
-
-    -- 2. oneOf resolution (full validation)
-    if schema.oneOf then
-        for _, candidate in ipairs(schema.oneOf) do
-            if jsonschema.validate(candidate, value) then
-                return candidate
-            end
-        end
-    end
-
-    -- 3. additionalProperties (fallback)
-    if type(schema.additionalProperties) == "table" then
-        return schema.additionalProperties
-    end
-
-    return nil
-end
 
 ---@param keys string[]
 ---@param schema table|nil        -- schema node for this table
@@ -81,8 +51,8 @@ end
 ---@param value string
 ---@param level number
 ---@param path string
----@param schema any
-local function _serialize(value, level, path, schema)
+---@param schema_map table<string, table>?
+local function _serialize(value, level, path, schema_map)
     local indent_str  = _indent:rep(level)
     local next_indent = _indent:rep(level + 1)
     local t           = type(value)
@@ -96,7 +66,8 @@ local function _serialize(value, level, path, schema)
 
             local parts = { "[" }
             for i = 1, #value do
-                table.insert(parts, "\n" .. next_indent .. _serialize(value[i], level + 1, path .. '[]/'))
+                local subpath = jsontools.join_path(path, tostring(i))
+                table.insert(parts, "\n" .. next_indent .. _serialize(value[i], level + 1, subpath, schema_map))
                 if i < #value then table.insert(parts, ",") end
             end
             table.insert(parts, "\n" .. indent_str .. "]")
@@ -107,13 +78,15 @@ local function _serialize(value, level, path, schema)
             for k in pairs(value) do
                 table.insert(keys, tostring(k))
             end
-            _order_keys(keys, schema)
+            if schema_map then
+                _order_keys(keys, schema_map[path])
+            end
             if #keys == 0 then return "{}" end
             local parts = { "{" }
             for _, k in ipairs(keys) do
+                local subpath = jsontools.join_path(path, tostring(k))
                 local key_json = type(k) == "string" and encode_one(k) or ('"' .. tostring(k) .. '"')
-                local subschema = _resolve_subschema(schema, k, value[k])
-                local val_json = _serialize(value[k], level + 1, path .. k .. '/', subschema)
+                local val_json = _serialize(value[k], level + 1, subpath, schema_map)
                 table.insert(parts, "\n" .. next_indent .. key_json .. ": " .. val_json .. ",")
             end
             -- Remove trailing comma
@@ -131,7 +104,13 @@ end
 ---@param schema any
 ---@return string
 local function json_encode_pretty(obj, schema)
-    return _serialize(obj, 0, "/", schema)
+    local schema_map
+    if schema then
+        _, _, schema_map = validator.validate(schema, obj, {
+            build_schema_map = true
+        })
+    end
+    return _serialize(obj, 0, "/", schema_map)
 end
 
 ---@param keys string[]

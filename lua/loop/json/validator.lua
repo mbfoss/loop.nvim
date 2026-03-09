@@ -234,7 +234,7 @@ end
 ---@param opts {build_schema_map:boolean?}?
 ---@return boolean valid
 ---@return loop.json.ValidationError[] errors
----@return table<string, table>?schema map
+---@return table<string, table>? schema map
 function M.validate(schema, data, opts)
     opts = opts or {}
     local schema_map

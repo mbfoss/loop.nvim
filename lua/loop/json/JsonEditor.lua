@@ -706,7 +706,7 @@ function JsonEditor:_add_new(item, where)
     local vt = parent.data.value_type ---@type string
     if vt == "array" then
         self:get_new_array_member(parent, function(value)
-            if value then
+            if value ~= nil then -- ~= nil is important to allow `false` to pass
                 self:_push_undo()
                 local last_pos = #parent.data.value + 1
                 local pos = insert_pos or last_pos
@@ -717,7 +717,7 @@ function JsonEditor:_add_new(item, where)
         end)
     elseif vt == "object" then
         self:get_new_object_member(parent, function(key, value)
-            if value then
+            if value ~= nil then -- ~= nil is important to allow `false` to pass
                 assert(type(key) == "string")
                 self:_push_undo()
                 parent.data.value[key] = value
