@@ -476,7 +476,7 @@ function Picker:clear_list()
     self:render_ui()
 end
 
-function Picker:add_new_lines(items)
+function Picker:add_new_lines(items, query)
     local prefix = "  "
     local lines = {}
     local extmarks = {}
@@ -491,23 +491,28 @@ function Picker:add_new_lines(items)
 
     for _, item in ipairs(items) do
         local label = item.label
-        if not label and item.label_chunks then
+        local label_chunks = item.label_chunks
+        if label then
+            label = label:gsub("\n", "")
+        elseif label_chunks then
             local parts = {}
             for _, chunk in ipairs(item.label_chunks) do
                 if chunk[1] then parts[#parts + 1] = chunk[1] end
             end
             label = table.concat(parts)
+            label = label:gsub("\n", "")
+        else
+            label = ""
         end
 
-        label = (label or ""):gsub("\n", "")
         table.insert(lines, prefix .. label)
         table.insert(self.items_data, item.data)
 
         local row = start_row + #lines - 1
         local col = #prefix
 
-        if item.label_chunks then
-            for _, chunk in ipairs(item.label_chunks) do
+        if label_chunks then
+            for _, chunk in ipairs(label_chunks) do
                 local text, hl = chunk[1], chunk[2]
                 if text and #text > 0 then
                     if hl then
@@ -575,7 +580,7 @@ function Picker:run_fetch(query)
     if self.opts.fetch then
         self:clear_list()
         local items, initial = self.opts.fetch(query)
-        self:add_new_lines(items)
+        self:add_new_lines(items, query)
         if #self.items_data > 0 then
             self:move_cursor(initial or 1, true, true)
         else
@@ -610,7 +615,7 @@ function Picker:run_fetch(query)
                 return
             end
 
-            self:add_new_lines(new_items)
+            self:add_new_lines(new_items, query)
             self:render_ui()
 
             if #self.items_data == #new_items and #self.items_data > 0 then

@@ -1,5 +1,6 @@
 local picker    = require("loop.tools.picker")
 local filetools = require("loop.tools.file")
+local strtools  = require("loop.tools.strtools")
 
 local M         = {}
 
@@ -60,7 +61,6 @@ local function _compute_width(items, padding)
         math.min(math.floor(cols * 0.8), desired)
     )
 end
-
 ---@param opts loop.selector.opts
 ---@return loop.Picker.Fetcher
 local function _create_fetcher(opts)
@@ -70,23 +70,33 @@ local function _create_fetcher(opts)
     return function(query)
         local filtered = {}
         local q = query:lower()
-
         for _, item in ipairs(items) do
             local label = item.label or ""
-            -- Basic substring matching
-            if label:lower():find(q, 1, true) then
+            -- fuzzy match returns success, score, positions
+            local ok, _, positions = strtools.fuzzy_match(label, q)
+            if ok then
+                -- build label_chunks for highlighting
+                local chunks = {}
+                local last = 0
+                for _, pos in ipairs(positions) do
+                    if pos > last + 1 then
+                        table.insert(chunks, { label:sub(last + 1, pos - 1) }) -- normal text
+                    end
+                    table.insert(chunks, { label:sub(pos, pos), "Label" })     -- highlight
+                    last = pos
+                end
+                if last < #label then
+                    table.insert(chunks, { label:sub(last + 1) })
+                end
                 table.insert(filtered, {
-                    label = item.label,
-                    label_chunks = item.label_chunks,
+                    label_chunks = chunks,
                     virt_lines = item.virt_lines,
-                    -- We pass the whole item as the data payload
                     data = item
                 })
             end
         end
 
-        -- Return the filtered list and the initial cursor position
-        -- The picker uses the second return value for the initial selection
+        -- return filtered items + initial selection index
         return filtered, initial_index
     end
 end

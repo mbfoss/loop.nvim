@@ -338,4 +338,52 @@ function M.create_line_buffered_feed(callback)
 	end
 end
 
+---@param text string
+---@param query string
+---@return boolean, number, integer[]  -- match success, score, match positions
+function M.fuzzy_match(text, query)
+	local tlen = #text
+	local qlen = #query
+
+	if qlen == 0 then
+		return true, 0, {}
+	end
+
+	local ti = 1
+	local qi = 1
+	local score = 0
+	local last = 0
+	local positions = {}
+
+	while ti <= tlen and qi <= qlen do
+		local tc = text:byte(ti)
+		local qc = query:byte(qi)
+
+		-- lowercase ASCII fast path
+		if tc >= 65 and tc <= 90 then tc = tc + 32 end
+		if qc >= 65 and qc <= 90 then qc = qc + 32 end
+
+		if tc == qc then
+			-- score consecutive matches higher
+			if last + 1 == ti then
+				score = score + 5
+			else
+				score = score + 1
+			end
+
+			last = ti
+			positions[#positions + 1] = ti -- store match position
+			qi = qi + 1
+		end
+
+		ti = ti + 1
+	end
+
+	if qi <= qlen then
+		return false, 0, {}
+	end
+
+	return true, score, positions
+end
+
 return M
