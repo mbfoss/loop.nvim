@@ -1,188 +1,54 @@
-local filetools  = require("loop.tools.file")
-local fntools    = require('loop.tools.fntools')
-local throttle   = require('loop.tools.throttle')
 local Spinner    = require("loop.tools.Spinner")
+local class      = require("loop.tools.class")
 
 ---@mod loop.picker
----@brief Simple floating picker with fuzzy filtering and optional preview.
-
----@class loop.Picker.Item
----@field label        string?             main displayed text (optional if label_chunks used)
----@field label_chunks {[1]:string, [2]:string?}[]?  optional, allows chunked labels with highlights
----@field virt_lines? {[1]:string, [2]:string?}[][] chunks: { { "text", "HighlightGroup?" }, ... }
----@field data         any                payload returned on select
-
----@alias loop.Picker.Callback fun(data:any|nil)
-
----@alias loop.Picker.Previewer fun(data:any):(string, string|nil)
---- Returns preview text and optional filetype
+---@brief Floating async picker with fuzzy filtering and optional preview.
 
 local M          = {}
+
+--------------------------------------------------------------------------------
+-- Namespaces
+--------------------------------------------------------------------------------
 
 local NS_CURSOR  = vim.api.nvim_create_namespace("LoopSelectorCursor")
 local NS_VIRT    = vim.api.nvim_create_namespace("LoopSelectorVirtText")
 local NS_SPINNER = vim.api.nvim_create_namespace("LoopSelectorSpinner")
-local NS_PREVIEW = vim.api.nvim_create_namespace("LoopSelectorPreview")
 
 --------------------------------------------------------------------------------
--- Utility functions
+-- Types
 --------------------------------------------------------------------------------
 
----@param lwin number
----@param lbuf integer
-local function _render_cursor(lwin, lbuf)
-    vim.api.nvim_buf_clear_namespace(lbuf, NS_CURSOR, 0, -1)
-    if vim.api.nvim_buf_line_count(lbuf) == 1 then
-        local first = vim.api.nvim_buf_get_lines(lbuf, 0, 1, false)[1]
-        if first == "" then
-            return
-        end
-    end
-    local row = vim.api.nvim_win_get_cursor(lwin)[1]
-    vim.api.nvim_buf_set_extmark(lbuf, NS_CURSOR, row - 1, 0, {
-        virt_text = { { "> ", "Special" } },
-        virt_text_pos = "overlay",
-        priority = 200,
-    })
-end
+---@class loop.Picker.Item
+---@field label string?
+---@field label_chunks {[1]:string,[2]:string?}[]?
+---@field virt_lines? {[1]:string,[2]:string?}[][]
+---@field data any
 
----@param lwin number
----@param lbuf number
----@param pbuf number
-local function _update_pos_hint(lwin, lbuf, pbuf)
-    vim.api.nvim_buf_clear_namespace(pbuf, NS_VIRT, 0, -1)
-    local cur = vim.api.nvim_win_get_cursor(lwin)[1]
-    local total = vim.api.nvim_buf_line_count(lbuf)
-    if cur and total > 0 then
-        local count_text = string.format("%d/%d", cur, total)
-        -- Set virtual text on the first line of the list window (prompt line is usually separate)
-        vim.api.nvim_buf_set_extmark(pbuf, NS_VIRT, 0, 0, {
-            virt_text = { { count_text, "Comment" } }, -- highlight group
-            virt_text_pos = "right_align",
-            hl_mode = "blend",
-            priority = 1,
-        })
-    end
-end
+---@alias loop.Picker.Callback fun(data:any|nil)
 
----@param buf integer
-local function _clear_list(buf)
-    vim.api.nvim_buf_clear_namespace(buf, NS_VIRT, 0, -1)
-    vim.api.nvim_buf_set_lines(buf, 0, -1, false, {})
-end
+---@class loop.Picker.AsyncFetcherOpts
+---@field list_width number
+---@field list_height number
 
----@param items loop.Picker.Item[]
----@param lwin number
----@param lbuf integer
-local function _add_to_list(items, lwin, lbuf)
-    local lines = {}
-    local extmarks = {}
-    local virt_extmarks = {}
-    local prefix = "  "
+---@class loop.Picker.AsyncPreviewOpts
+---@field preview_width number
+---@field preview_height number
 
-    local start = vim.api.nvim_buf_line_count(lbuf)
-    if start == 1 then
-        local first = vim.api.nvim_buf_get_lines(lbuf, 0, 1, false)[1]
-        if first == "" then
-            start = 0
-        end
-    end
+---@alias loop.Picker.AsyncFetcher fun(query:string,opts:loop.Picker.AsyncFetcherOpts,callback:fun(new_items:loop.Picker.Item[]?)):fun()?
+---@alias loop.Picker.AsyncPreviewLoader fun(data:any,opts:loop.Picker.AsyncPreviewOpts,callback:fun(preview:string?)):fun()?
 
-    for i, item in ipairs(items) do
-        lines[i] = prefix .. (item.label:gsub("\n", ""))
+---@class loop.Picker.opts
+---@field prompt string
+---@field async_fetch loop.Picker.AsyncFetcher
+---@field async_preview loop.Picker.AsyncPreviewLoader?
+---@field height_ratio number?
+---@field width_ratio number?
+---@field preview_ratio number?
+---@field list_wrap boolean?
 
-        local row = start + i - 1
-        local col = #prefix
-
-        if item.label_chunks then
-            for _, chunk in ipairs(item.label_chunks) do
-                local text, hl = chunk[1], chunk[2]
-                if text and #text > 0 then
-                    local len = #text
-                    if hl then
-                        extmarks[#extmarks + 1] = {
-                            row       = row,
-                            col_start = col,
-                            col_end   = col + len,
-                            hl_group  = hl
-                        }
-                    end
-                    col = col + len
-                end
-            end
-        end
-
-        if item.virt_lines and #item.virt_lines > 0 then
-            local vlines = {}
-            for _, line in ipairs(item.virt_lines) do
-                local vl = { { prefix } }
-                vim.list_extend(vl, line)
-                table.insert(vlines, vl)
-            end
-            virt_extmarks[#virt_extmarks + 1] = {
-                row  = row,
-                col  = 0,
-                opts = { virt_lines = vlines, hl_mode = "blend" }
-            }
-        end
-    end
-
-    -- Append instead of replace
-    local cursor = vim.api.nvim_win_get_cursor(lwin)
-    vim.api.nvim_buf_set_lines(lbuf, start, start, false, lines)
-    vim.api.nvim_win_set_cursor(lwin, cursor)
-
-    for _, mark in ipairs(extmarks) do
-        vim.api.nvim_buf_set_extmark(lbuf, NS_VIRT, mark.row, mark.col_start, {
-            end_col  = mark.col_end,
-            hl_group = mark.hl_group,
-        })
-    end
-
-    for _, mark in ipairs(virt_extmarks) do
-        vim.api.nvim_buf_set_extmark(lbuf, NS_VIRT, mark.row, mark.col, mark.opts)
-    end
-end
-
----@param max integer Total number of items
----@param cur integer Current 1-based index
----@param delta integer Direction (-1 for up, 1 for down)
----@return integer
-local function _move_wrap(max, cur, delta)
-    if max <= 0 then return 1 end
-    local new_pos = cur + delta
-    if new_pos < 1 then
-        return max -- Wrap from top to bottom
-    elseif new_pos > max then
-        return 1   -- Wrap from bottom to top
-    end
-    return new_pos
-end
----@param max integer
----@param cur integer
----@param delta integer
----@return integer
-local function _move_clamp(max, cur, delta)
-    if max == 0 then
-        return cur
-    end
-    return math.min(max, math.max(1, cur + delta))
-end
-
----@param items loop.Picker.Item[]
-local function _process_labels(items)
-    -- Precompute label from label_chunks
-    for _, item in ipairs(items) do
-        if item.label_chunks and #item.label_chunks > 0 then
-            item.label = table.concat(vim.tbl_map(function(c) return c[1] end, item.label_chunks))
-        end
-        if item.label then
-            item.label = item.label:gsub("\n", "")
-        else
-            item.label = ""
-        end
-    end
-end
+--------------------------------------------------------------------------------
+-- Layout
+--------------------------------------------------------------------------------
 
 ---@class loop.Picker.Layout
 ---@field prompt_row number
@@ -198,487 +64,582 @@ end
 ---@field prev_width number
 ---@field prev_height number
 
----@param opts {has_preview:boolean,height_ratio:number?,width_ratio:number?,list_ratio:number?}
+--------------------------------------------------------------------------------
+-- Utility
+--------------------------------------------------------------------------------
+
+---@param v number
+---@param min number
+---@param max number
+---@return number
+local function clamp(v, min, max)
+    return math.max(min, math.min(max, v))
+end
+
+--------------------------------------------------------------------------------
+-- Layout computation
+--------------------------------------------------------------------------------
+
+---@param opts {has_preview:boolean,height_ratio:number?,width_ratio:number?,preview_ratio:number?}
 ---@return loop.Picker.Layout
-local function _compute_horizontal_layout(opts)
-    local cols        = vim.o.columns
-    local lines       = vim.o.lines
+local function compute_layout(opts)
+    local cols = vim.o.columns
+    local lines = vim.o.lines
 
     local has_preview = opts.has_preview
-    local spacing     = has_preview and 2 or 0
+    local spacing = has_preview and 2 or 0
 
-    local function clamp(v, min, max)
-        return math.max(min, math.min(max, v))
-    end
-    -------------------------------------------------
-    -- WIDTH COMPUTATION
-    -------------------------------------------------
-    local width
-    local list_width
-    local prev_width = 0
+    local width = math.floor(cols * clamp(opts.width_ratio or .8, 0, 1))
 
-    local container_ratio = clamp(opts.width_ratio or 0.8, 0, 1)
-    width = math.floor(cols * container_ratio)
+    local list_ratio = clamp(opts.preview_ratio or (has_preview and .5 or 1), 0, 1)
+    local list_width = math.floor(width * list_ratio)
 
-    local list_ratio = clamp(opts.list_ratio or (has_preview and 0.5 or 1), 0, 1)
-    list_width = math.floor(width * list_ratio)
+    local prev_width = has_preview and clamp(width - list_width - spacing, 1, width) or 0
 
-    if has_preview then
-        prev_width = clamp(width - list_width - spacing, 1, width)
-    end
-
-
-    list_width = clamp(list_width, 1, cols)
-    prev_width = clamp(prev_width, 0, cols)
-
-    local used_width = list_width + spacing + prev_width
-
-    -------------------------------------------------
-    -- HEIGHT
-    -------------------------------------------------
-
-    local height_ratio = clamp(opts.height_ratio or .7, 0, 1)
-    local height = math.floor(lines * height_ratio)
-
-    height = clamp(height, math.floor(lines * 0.3), lines)
-
-    -------------------------------------------------
-    -- CENTERING
-    -------------------------------------------------
+    local height = math.floor(lines * clamp(opts.height_ratio or .7, 0, 1))
 
     local total_height = height + 3
+
     local row = math.floor((lines - total_height) / 2)
-    local col = math.floor((cols - used_width) / 2)
+    local col = math.floor((cols - (list_width + prev_width + spacing)) / 2)
 
-    local list_row = row + 3
-    local max_height = lines - list_row
-    height = clamp(height, 1, max_height)
-
-    -------------------------------------------------
-
-    ---@type loop.Picker.Layout
     return {
         prompt_row = row,
         prompt_col = col,
-        prompt_width = used_width,
+        prompt_width = list_width + prev_width + spacing,
         prompt_height = 1,
 
-        list_row = list_row,
+        list_row = row + 3,
         list_col = col,
         list_width = list_width,
         list_height = height,
 
-        prev_row = list_row,
+        prev_row = row + 3,
         prev_col = col + list_width + spacing,
         prev_width = prev_width,
-        prev_height = height,
+        prev_height = height
     }
+end
+
+--------------------------------------------------------------------------------
+-- Picker Class
+--------------------------------------------------------------------------------
+
+---@class loop.tools.Picker
+---@field new fun(self: loop.tools.Picker,opts:loop.Picker.opts,callback:loop.Picker.Callback) : loop.tools.Picker
+---@field opts loop.Picker.opts
+---@field callback loop.Picker.Callback
+---@field has_preview boolean
+---@field layout loop.Picker.Layout
+---@field pbuf integer
+---@field lbuf integer
+---@field vbuf integer|nil
+---@field pwin integer
+---@field lwin integer
+---@field vwin integer|nil
+---@field spinner loop.tools.Spinner|nil
+---@field closed boolean
+---@field items_data any[]
+---@field fetch_context integer
+---@field async_fetch_cancel fun()|nil
+---@field async_preview_cancel fun()|nil
+local Picker = class()
+
+--------------------------------------------------------------------------------
+-- Initialization
+--------------------------------------------------------------------------------
+
+---@param opts loop.Picker.opts
+---@param callback loop.Picker.Callback
+function Picker:init(opts, callback)
+    self.opts = opts
+    self.callback = callback
+
+    self.has_preview = type(opts.async_preview) == "function"
+
+    self.items_data = {}
+
+    self.fetch_context = 0
+    self.closed = false
+
+    self.async_fetch_cancel = nil
+    self.async_preview_cancel = nil
+
+    self.spinner = nil
+
+    self:setup_ui()
+end
+
+--------------------------------------------------------------------------------
+-- UI
+--------------------------------------------------------------------------------
+
+---@return nil
+function Picker:setup_ui()
+    local opts = self.opts
+
+    self.layout = compute_layout {
+        has_preview = self.has_preview,
+        height_ratio = opts.height_ratio,
+        width_ratio = opts.width_ratio,
+        preview_ratio = opts.preview_ratio
+    }
+
+    local title = opts.prompt and (" " .. opts.prompt .. " ") or ""
+
+    self.pbuf = vim.api.nvim_create_buf(false, true)
+    self.lbuf = vim.api.nvim_create_buf(false, true)
+    self.vbuf = self.has_preview and vim.api.nvim_create_buf(false, true) or nil
+
+    for _, b in ipairs({ self.pbuf, self.lbuf, self.vbuf }) do
+        if b then
+            vim.bo[b].buftype = "nofile"
+            vim.bo[b].bufhidden = "wipe"
+            vim.bo[b].swapfile = false
+            vim.bo[b].undolevels = -1
+        end
+    end
+
+    local base_cfg = {
+        relative = "editor",
+        style = "minimal",
+        border = "rounded"
+    }
+
+    self.pwin = vim.api.nvim_open_win(self.pbuf, true, vim.tbl_extend("force", base_cfg, {
+        row = self.layout.prompt_row,
+        col = self.layout.prompt_col,
+        width = self.layout.prompt_width,
+        height = 1,
+        title = title,
+        title_pos = "center"
+    }))
+
+    self.lwin = vim.api.nvim_open_win(self.lbuf, false, vim.tbl_extend("force", base_cfg, {
+        row = self.layout.list_row,
+        col = self.layout.list_col,
+        width = self.layout.list_width,
+        height = self.layout.list_height
+    }))
+
+    if self.vbuf then
+        self.vwin = vim.api.nvim_open_win(self.vbuf, false, vim.tbl_extend("force", base_cfg, {
+            row = self.layout.prev_row,
+            col = self.layout.prev_col,
+            width = self.layout.prev_width,
+            height = self.layout.prev_height
+        }))
+        vim.wo[self.vwin].wrap = true
+    end
+
+    local winhl = "NormalFloat:Normal,FloatBorder:LoopTransparentBorder,CursorLine:Visual"
+    for _, w in ipairs({ self.pwin, self.lwin, self.vwin }) do
+        if w then
+            vim.wo[w].winhighlight = winhl
+        end
+    end
+
+    vim.wo[self.pwin].wrap = false
+    vim.wo[self.lwin].wrap = self.opts.list_wrap ~= false
+end
+
+--------------------------------------------------------------------------------
+-- UI Rendering
+--------------------------------------------------------------------------------
+
+---@return nil
+function Picker:render_ui()
+    if not vim.api.nvim_buf_is_valid(self.lbuf) then
+        return
+    end
+
+    vim.api.nvim_buf_clear_namespace(self.lbuf, NS_CURSOR, 0, -1)
+    vim.api.nvim_buf_clear_namespace(self.pbuf, NS_CURSOR, 0, -1)
+
+    local total = #self.items_data
+    if total == 0 then
+        return
+    end
+
+    local cur = self:get_cursor()
+
+    ------------------------------------------------
+    -- Cursor marker
+    ------------------------------------------------
+
+    if total > 0 then
+        vim.api.nvim_buf_set_extmark(self.lbuf, NS_CURSOR, cur - 1, 0, {
+            virt_text = { { "> ", "Special" } },
+            virt_text_pos = "overlay",
+            priority = 200,
+        })
+    end
+
+    ------------------------------------------------
+    -- Position hint
+    ------------------------------------------------
+
+    if total > 0 and vim.api.nvim_buf_is_valid(self.pbuf) then
+        local text = string.format("%d/%d", cur, total)
+
+        vim.api.nvim_buf_set_extmark(self.pbuf, NS_CURSOR, 0, 0, {
+            virt_text = { { text, "Comment" } },
+            virt_text_pos = "right_align",
+            hl_mode = "blend",
+            priority = 1,
+        })
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Cursor
+--------------------------------------------------------------------------------
+
+---@return integer
+function Picker:get_cursor()
+    return vim.api.nvim_win_get_cursor(self.lwin)[1]
+end
+
+---@param row integer
+---@param force boolean?
+function Picker:move_cursor(row, force)
+    if not force then
+        if row == self:get_cursor() then return end
+    end
+
+    local total = #self.items_data
+    if total == 0 then return end
+
+    if row > total then row = 1 end
+    if row < 1 then row = total end
+
+    vim.api.nvim_win_set_cursor(self.lwin, { row, 0 })
+
+    self:render_ui()
+    self:update_preview()
+end
+
+--------------------------------------------------------------------------------
+-- Preview
+--------------------------------------------------------------------------------
+
+---@return nil
+function Picker:update_preview()
+    if not self.vbuf then return end
+
+    if self.async_preview_cancel then
+        self.async_preview_cancel()
+        self.async_preview_cancel = nil
+    end
+
+    local data = self.items_data[self:get_cursor()]
+
+    if not data then
+        vim.api.nvim_buf_set_lines(self.vbuf, 0, -1, false, {})
+        return
+    end
+
+    self.async_preview_cancel = self.opts.async_preview(
+        data,
+        {
+            preview_width = self.layout.prev_width,
+            preview_height = self.layout.prev_height
+        },
+        function(preview)
+            local lines = preview and vim.split(preview, "\n") or {}
+
+            if vim.api.nvim_buf_is_valid(self.vbuf) then
+                vim.api.nvim_buf_set_lines(self.vbuf, 0, -1, false, lines)
+            end
+        end
+    )
+end
+
+--------------------------------------------------------------------------------
+-- Spinner
+--------------------------------------------------------------------------------
+
+function Picker:start_spinner()
+    if self.spinner then return end
+
+    self.spinner = Spinner:new {
+        interval = 80,
+        on_update = function(frame)
+            if not vim.api.nvim_buf_is_valid(self.pbuf) then return end
+
+            vim.api.nvim_buf_clear_namespace(self.pbuf, NS_SPINNER, 0, -1)
+
+            vim.api.nvim_buf_set_extmark(self.pbuf, NS_SPINNER, 0, 0, {
+                virt_text = { { frame .. " ", "Comment" } },
+                virt_text_pos = "right_align"
+            })
+        end
+    }
+
+    self.spinner:start()
+end
+
+function Picker:stop_spinner()
+    if self.spinner then
+        self.spinner:stop()
+        self.spinner = nil
+    end
+
+    if vim.api.nvim_buf_is_valid(self.pbuf) then
+        vim.api.nvim_buf_clear_namespace(self.pbuf, NS_SPINNER, 0, -1)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- List manipulation
+--------------------------------------------------------------------------------
+
+function Picker:clear_list()
+    self.items_data = {}
+
+    vim.api.nvim_buf_set_lines(self.lbuf, 0, -1, false, {})
+    vim.api.nvim_buf_clear_namespace(self.lbuf, NS_VIRT, 0, -1)
+
+    if self.vbuf and vim.api.nvim_buf_is_valid(self.vbuf) then
+        vim.api.nvim_buf_set_lines(self.vbuf, 0, -1, false, {})
+    end
+
+    self:render_ui()
+end
+
+function Picker:add_new_lines(items)
+    local prefix = "  "
+    local lines = {}
+    local extmarks = {}
+    local virt_extmarks = {}
+
+    -- 1. Check if the buffer is currently "fresh" (one empty line)
+    local current_buf_count = vim.api.nvim_buf_line_count(self.lbuf)
+    local is_empty = current_buf_count == 1 and vim.api.nvim_buf_get_lines(self.lbuf, 0, 1, false)[1] == ""
+
+    -- 2. Determine where we start counting rows for highlights
+    local start_row = is_empty and 0 or current_buf_count
+
+    for _, item in ipairs(items) do
+        local label = item.label
+        if not label and item.label_chunks then
+            local parts = {}
+            for _, chunk in ipairs(item.label_chunks) do
+                if chunk[1] then parts[#parts + 1] = chunk[1] end
+            end
+            label = table.concat(parts)
+        end
+
+        label = (label or ""):gsub("\n", "")
+        table.insert(lines, prefix .. label)
+        table.insert(self.items_data, item.data)
+
+        local row = start_row + #lines - 1
+        local col = #prefix
+
+        if item.label_chunks then
+            for _, chunk in ipairs(item.label_chunks) do
+                local text, hl = chunk[1], chunk[2]
+                if text and #text > 0 then
+                    if hl then
+                        table.insert(extmarks, { row = row, col_start = col, col_end = col + #text, hl_group = hl })
+                    end
+                    col = col + #text
+                end
+            end
+        end
+
+        if item.virt_lines and #item.virt_lines > 0 then
+            local vlines = {}
+            for _, line in ipairs(item.virt_lines) do
+                local vl = { { prefix } }
+                vim.list_extend(vl, line)
+                table.insert(vlines, vl)
+            end
+            table.insert(virt_extmarks, { row = row, col = 0, opts = { virt_lines = vlines, hl_mode = "blend" } })
+        end
+    end
+
+    if #lines == 0 then return end
+
+    -- 3. Apply the changes to the buffer
+    if is_empty then
+        -- Replace the initial blank line entirely
+        vim.api.nvim_buf_set_lines(self.lbuf, 0, -1, false, lines)
+    else
+        -- Append to existing items
+        vim.api.nvim_buf_set_lines(self.lbuf, start_row, start_row, false, lines)
+    end
+
+    -- 4. Apply highlights and virtual lines
+    for _, mark in ipairs(extmarks) do
+        vim.api.nvim_buf_set_extmark(self.lbuf, NS_VIRT, mark.row, mark.col_start, {
+            end_col = mark.col_end,
+            hl_group = mark.hl_group,
+        })
+    end
+
+    for _, mark in ipairs(virt_extmarks) do
+        vim.api.nvim_buf_set_extmark(self.lbuf, NS_VIRT, mark.row, mark.col, mark.opts)
+    end
+
+    -- 5. Final validation
+    local final_count = vim.api.nvim_buf_line_count(self.lbuf)
+    assert(#self.items_data == final_count, string.format("Data (%d) != Buf (%d)", #self.items_data, final_count))
+end
+
+--------------------------------------------------------------------------------
+-- Fetch
+--------------------------------------------------------------------------------
+
+---@param query string
+function Picker:run_fetch(query)
+    if self.async_fetch_cancel then
+        self.async_fetch_cancel()
+        self.async_fetch_cancel = nil
+    end
+
+    self:stop_spinner()
+
+    if query == "" then
+        self:clear_list()
+        return
+    end
+
+    self.fetch_context = self.fetch_context + 1
+    local context = self.fetch_context
+
+    local waiting_first = true
+
+    self:start_spinner()
+
+    self.async_fetch_cancel = self.opts.async_fetch(
+        query,
+        {
+            list_width = self.layout.list_width,
+            list_height = self.layout.list_height
+        },
+        function(new_items)
+            if self.closed or context ~= self.fetch_context then return end
+
+            if waiting_first then
+                waiting_first = false
+                self.items_data = {}
+                vim.api.nvim_buf_set_lines(self.lbuf, 0, -1, false, {})
+            end
+
+            if new_items == nil then
+                self:stop_spinner()
+                return
+            end
+
+            self:add_new_lines(new_items)
+            self:render_ui()
+
+            if #self.items_data == #new_items and #self.items_data > 0 then
+                self:move_cursor(1, true)
+            end
+        end
+    )
+end
+
+--------------------------------------------------------------------------------
+-- Close
+--------------------------------------------------------------------------------
+
+---@param result any|nil
+function Picker:close(result)
+    if self.closed then return end
+    self.closed = true
+
+    self:stop_spinner()
+
+    if self.async_fetch_cancel then self.async_fetch_cancel() end
+    if self.async_preview_cancel then self.async_preview_cancel() end
+
+    for _, w in ipairs({ self.pwin, self.lwin, self.vwin }) do
+        if w and vim.api.nvim_win_is_valid(w) then
+            vim.api.nvim_win_close(w, true)
+        end
+    end
+
+    if result ~= nil then
+        vim.schedule(function()
+            self.callback(result)
+        end)
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Input
+--------------------------------------------------------------------------------
+
+function Picker:setup_input()
+    local key_opts = { buffer = self.pbuf, nowait = true, silent = true }
+
+    vim.keymap.set("i", "<CR>", function()
+        self:close(self.items_data[self:get_cursor()])
+    end, key_opts)
+
+    vim.keymap.set("i", "<Esc>", function() self:close(nil) end, key_opts)
+    vim.keymap.set("i", "<C-c>", function() self:close(nil) end, key_opts)
+
+    vim.keymap.set("i", "<Down>", function()
+        self:move_cursor(self:get_cursor() + 1)
+    end, key_opts)
+
+    vim.keymap.set("i", "<C-n>", function()
+        self:move_cursor(self:get_cursor() + 1)
+    end, key_opts)
+
+    vim.keymap.set("i", "<Up>", function()
+        self:move_cursor(self:get_cursor() - 1)
+    end, key_opts)
+
+    vim.keymap.set("i", "<C-p>", function()
+        self:move_cursor(self:get_cursor() - 1)
+    end, key_opts)
+
+    vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+        buffer = self.pbuf,
+        callback = function()
+            local query = vim.api.nvim_buf_get_lines(self.pbuf, 0, 1, false)[1] or ""
+            if query == "" then
+                self:clear_list()
+                return
+            end
+            self:run_fetch(query)
+        end
+    })
+end
+
+--------------------------------------------------------------------------------
+-- Start
+--------------------------------------------------------------------------------
+
+function Picker:start()
+    self:setup_input()
+    self:render_ui()
+
+    vim.api.nvim_set_current_win(self.pwin)
+
+    vim.schedule(function()
+        vim.cmd("startinsert!")
+    end)
 end
 
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------
 
----@class loop.Picker.AsyncFetcherOpts
----@field list_width number
----@fiel list_height number
-
----@class loop.Picker.AsyncPreviewOpts
----@field preview_width number
----@fiel preview_height number
-
----@alias loop.Picker.AsyncFetcher (fun(query:string,  opts:loop.Picker.AsyncFetcherOpts, callback:fun(new_items:loop.Picker.Item[]?)):fun())?
----@alias loop.Picker.AsyncPreviewLoader (fun(item_data:any, opts:loop.Picker.AsyncPreviewOpts, callback:fun(preview:string?)):fun())?
-
----@class loop.Picker.opts
----@field prompt string
----@field async_fetch loop.Picker.AsyncFetcher
----@field async_preview loop.Picker.AsyncPreviewLoader?
----@field height_ratio number?
----@field width_ratio number?
----@field preview_ratio number?
----@field list_wrap boolean?
-
 ---@param opts loop.Picker.opts
 ---@param callback loop.Picker.Callback
 function M.select(opts, callback)
     assert(type(opts.async_fetch) == "function")
-    local prompt = opts.prompt
-    local title = (prompt and prompt ~= "") and (" %s "):format(prompt) or ""
-    local has_preview = opts.async_preview ~= nil and type(opts.async_preview) == "function"
 
-    --------------------------------------------------------------------------
-    -- Buffers & windows
-    --------------------------------------------------------------------------
+    local picker = Picker:new(opts, callback)
 
-    local pbuf = vim.api.nvim_create_buf(false, true)
-    local lbuf = vim.api.nvim_create_buf(false, true)
-    local vbuf = has_preview and vim.api.nvim_create_buf(false, true) or nil
-
-    for _, b in ipairs({ pbuf, lbuf, vbuf }) do
-        if b then
-            vim.bo[b].buftype = "nofile"
-            vim.bo[b].bufhidden = "wipe"
-            vim.bo[b].undolevels = -1
-            vim.bo[b].swapfile = false
-        end
-    end
-
-    vim.cmd("highlight default LoopTransparentBorder guibg=NONE")
-
-    local base_cfg = {
-        relative = "editor",
-        style = "minimal",
-        border = "rounded",
-    }
-
-    local layout = _compute_horizontal_layout({
-        has_preview = has_preview,
-        height_ratio = opts.height_ratio,
-        width_ratio = opts.width_ratio,
-        preview_ratio = opts.preview_ratio,
-    })
-
-    local pwin = vim.api.nvim_open_win(pbuf, true, vim.tbl_extend("force", base_cfg, {
-        row = layout.prompt_row,
-        col = layout.prompt_col,
-        width = layout.prompt_width,
-        height = layout.prompt_height,
-        title = title,
-        title_pos = "center"
-    }))
-
-    local lwin = vim.api.nvim_open_win(lbuf, false, vim.tbl_extend("force", base_cfg, {
-        row = layout.list_row,
-        col = layout.list_col,
-        width = layout.list_width,
-        height = layout.list_height,
-    }))
-
-    local vwin
-    if vbuf then
-        vwin = vim.api.nvim_open_win(vbuf, false, vim.tbl_extend("force", base_cfg, {
-            row = layout.prev_row,
-            col = layout.prev_col,
-            width = layout.prev_width,
-            height = layout.prev_height,
-        }))
-        vim.wo[vwin].wrap = true
-    end
-
-    vim.wo[pwin].wrap = false
-
-    vim.wo[lwin].wrap = opts.list_wrap ~= false
-    vim.wo[lwin].scrolloff = 0
-
-    local winhl = "NormalFloat:Normal,FloatBorder:LoopTransparentBorder,CursorLine:Visual"
-    for _, w in ipairs({ pwin, lwin, vwin }) do
-        if w then
-            vim.wo[w].winhighlight = winhl
-        end
-    end
-
-    --------------------------------------------------------------------------
-    -- State
-    --------------------------------------------------------------------------
-
-    local items_data = {} ---@type any[]
-    local closed = false
-    local async_preview_cancel
-    local async_fetch_cancel
-    local async_fetch_context = 0
-    local vimreisze_autocmd_id
-    local spinner
-
-    local function render_spinner(frame)
-        if not vim.api.nvim_buf_is_valid(pbuf) then
-            return
-        end
-        vim.api.nvim_buf_clear_namespace(pbuf, NS_SPINNER, 0, -1)
-        vim.api.nvim_buf_set_extmark(pbuf, NS_SPINNER, 0, 0, {
-            virt_text = { { frame .. " ", "Comment" } },
-            virt_text_pos = "right_align",
-            hl_mode = "blend",
-            priority = 2,
-        })
-    end
-    local function start_spinner()
-        if spinner then return end
-        spinner = Spinner:new({
-            interval = 80,
-            on_update = function(frame)
-                render_spinner(frame)
-            end
-        })
-        spinner:start()
-    end
-    local function stop_spinner()
-        if spinner then
-            spinner:stop()
-            spinner = nil
-        end
-        if vim.api.nvim_buf_is_valid(pbuf) then
-            vim.api.nvim_buf_clear_namespace(pbuf, NS_SPINNER, 0, -1)
-        end
-    end
-
-    local function close(result)
-        stop_spinner()
-        if vimreisze_autocmd_id then
-            vim.api.nvim_del_autocmd(vimreisze_autocmd_id)
-            vimreisze_autocmd_id = nil
-        end
-        if async_preview_cancel then
-            async_preview_cancel()
-            async_preview_cancel = nil
-        end
-        if async_fetch_cancel then
-            async_fetch_cancel()
-            async_fetch_cancel = nil
-        end
-        if closed then return end
-        closed = true
-        if vim.api.nvim_get_current_win() == pwin then
-            vim.cmd("stopinsert")
-        end
-        vim.schedule(function()
-            for _, w in ipairs({ pwin, lwin, vwin }) do
-                if w and vim.api.nvim_win_is_valid(w) then
-                    vim.api.nvim_win_close(w, true)
-                end
-            end
-            if result ~= nil then
-                vim.schedule(function()
-                    callback(result)
-                end)
-            end
-        end)
-    end
-
-    local function get_cursor()
-        return vim.api.nvim_win_get_cursor(lwin)[1]
-    end
-
-    local function move_cursor(cur, force)
-        if not force then
-            local pos = vim.api.nvim_win_get_cursor(lwin)
-            if cur == pos[1] then return end
-        end
-        vim.api.nvim_win_set_cursor(lwin, { cur, 0 })
-        _render_cursor(lwin, lbuf)
-
-        vim.api.nvim_win_call(lwin, function()
-            local win_height = vim.api.nvim_win_get_height(0)
-            local current_winline = vim.fn.winline()
-
-            if current_winline <= 1 then
-                vim.cmd("normal! zt")
-            elseif current_winline >= win_height then
-                vim.cmd("normal! zb")
-            end
-        end)
-
-        if vbuf and vim.api.nvim_buf_is_valid(vbuf) then
-            if async_preview_cancel then
-                async_preview_cancel()
-                async_preview_cancel = nil
-            end
-            local data = items_data[cur]
-            if not data then
-                vim.api.nvim_buf_set_lines(vbuf, 0, -1, false, {})
-            else
-                async_preview_cancel = opts.async_preview(data, {
-                        preview_width = layout.prev_width,
-                        prev_width = layout.prev_height,
-                    },
-                    function(preview)
-                        local lines = preview and vim.fn.split(preview, "\n") or {}
-                        vim.api.nvim_buf_set_lines(vbuf, 0, -1, false, lines)
-                    end)
-            end
-        end
-    end
-
-    local function on_vim_resize()
-        assert(not closed) -- import to detect bugs with non deleted auto cmds
-        -- 1. Recalculate layout based on new screen dimensions
-        layout = _compute_horizontal_layout({
-            has_preview = has_preview,
-            height_ratio = opts.height_ratio,
-            width_ratio = opts.width_ratio,
-            preview_ratio = opts.preview_ratio,
-        })
-        -- 2. Apply new config to windows
-        local wins = {
-            { win = pwin, row = layout.prompt_row, col = layout.prompt_col, w = layout.prompt_width, h = layout.prompt_height },
-            { win = lwin, row = layout.list_row,   col = layout.list_col,   w = layout.list_width,   h = layout.list_height },
-        }
-        if vwin and vim.api.nvim_win_is_valid(vwin) then
-            table.insert(wins,
-                {
-                    win = vwin,
-                    row = layout.prev_row,
-                    col = layout.prev_col,
-                    w = layout.prev_width,
-                    h = layout
-                        .prev_height
-                })
-        end
-        for _, cfg in ipairs(wins) do
-            if vim.api.nvim_win_is_valid(cfg.win) then
-                vim.api.nvim_win_set_config(cfg.win, {
-                    relative = "editor", row = cfg.row, col = cfg.col, width = cfg.w, height = cfg.h,
-                })
-            end
-        end
-    end
-
-    vimreisze_autocmd_id = vim.api.nvim_create_autocmd("VimResized", {
-        callback = function()
-            vim.schedule(on_vim_resize)
-        end,
-    })
-
-    local key_opts = { buffer = pbuf, nowait = true, silent = true }
-
-    vim.keymap.set("i", "<CR>", function()
-        close(items_data[get_cursor()])
-    end, key_opts)
-
-    vim.keymap.set("i", "<Esc>", function() close(nil) end, key_opts)
-    vim.keymap.set("i", "<C-c>", function() close(nil) end, key_opts)
-
-    vim.keymap.set("i", "<Down>", function()
-        move_cursor(_move_wrap(#items_data, get_cursor(), 1))
-    end, key_opts)
-
-    vim.keymap.set("i", "<C-n>", function()
-        move_cursor(_move_wrap(#items_data, get_cursor(), 1))
-    end, key_opts)
-
-    vim.keymap.set("i", "<Up>", function()
-        move_cursor(_move_wrap(#items_data, get_cursor(), -1))
-    end, key_opts)
-
-    vim.keymap.set("i", "<C-p>", function()
-        move_cursor(_move_wrap(#items_data, get_cursor(), -1))
-    end, key_opts)
-
-    local page = math.max(1, math.floor(layout.list_height / 2))
-    vim.keymap.set("i", "<C-d>", function()
-        move_cursor(_move_clamp(#items_data, get_cursor(), page))
-    end, key_opts)
-
-    vim.keymap.set("i", "<C-u>", function()
-        move_cursor(_move_clamp(#items_data, get_cursor(), -page))
-    end, key_opts)
-
-    vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
-        buffer = pbuf,
-        callback = function()
-            if vim.api.nvim_buf_line_count(pbuf) == 0 then
-                vim.api.nvim_buf_set_lines(pbuf, 0, -1, false, { "" })
-            end
-            local plines = vim.api.nvim_buf_get_lines(pbuf, 0, -1, false)
-            -- If user somehow created multiple lines (pasting, C-j),
-            -- flatten them into one line and strip control chars.
-            local raw_query = table.concat(plines, " ")
-            local sanitized = raw_query:gsub("%c", "") -- Strip control chars
-            -- If the buffer looks different than the sanitized version, force-reset it
-            if #plines > 1 or raw_query ~= sanitized then
-                vim.api.nvim_buf_set_lines(pbuf, 0, -1, false, { sanitized })
-                -- Put cursor at the end of the line
-                vim.api.nvim_win_set_cursor(pwin, { 1, #sanitized })
-            end
-
-            local query = sanitized
-
-            local clear_items = function()
-                items_data = {}
-                _clear_list(lbuf)
-                move_cursor(1, true)
-                _update_pos_hint(lwin, lbuf, pbuf)
-            end
-
-            -- Async incremental fetch
-            if async_fetch_cancel then
-                async_fetch_cancel()
-                async_fetch_cancel = nil
-            end
-            stop_spinner()
-
-            if query == "" then
-                clear_items()
-                return
-            end
-
-            async_fetch_context = async_fetch_context + 1
-
-            ---@type number?
-            local context = async_fetch_context
-            local waiting_first = true
-
-            start_spinner()
-            async_fetch_cancel = opts.async_fetch(query, {
-                    list_width = math.max(1, layout.list_width - 3),
-                    list_height = math.max(1, layout.list_height),
-                },
-                function(new_items)
-                    if closed or context ~= async_fetch_context then return end
-                    if waiting_first then
-                        waiting_first = false
-                        clear_items()
-                    end
-                    if new_items == nil then
-                        context = nil
-                        stop_spinner()
-                        return
-                    end
-                    local was_empty = #items_data == 0
-                    _process_labels(new_items)
-                    for _, item in ipairs(new_items) do
-                        table.insert(items_data, item.data)
-                    end
-                    _add_to_list(new_items, lwin, lbuf)
-                    if was_empty then
-                        move_cursor(1, true)
-                    end
-                    _update_pos_hint(lwin, lbuf, pbuf)
-                end)
-        end,
-    })
-
-    vim.api.nvim_create_autocmd("BufLeave", {
-        buffer = pbuf,
-        once = true,
-        callback = function() close(nil) end,
-    })
-
-    for _, buf in ipairs({ pbuf, lbuf, vbuf }) do
-        if buf and buf > 0 then
-            vim.api.nvim_create_autocmd({ "BufDelete", "BufWipeout" }, {
-                buffer = buf,
-                once = true,
-                callback = function()
-                    -- Ensure we don't try to access the specific buffer again
-                    if buf == pbuf then pbuf = -1 end
-                    if buf == lbuf then lbuf = -1 end
-                    if buf == vbuf then vbuf = -1 end
-                    -- close() is idempotent, so calling it multiple times is safe
-                    vim.schedule(close)
-                end
-            })
-        end
-    end
-
-    vim.api.nvim_set_current_win(pwin)
-    vim.schedule(function()
-        if vim.api.nvim_win_is_valid(pwin)
-            and vim.api.nvim_get_current_win() == pwin
-            and vim.fn.mode() ~= "i" then
-            vim.cmd("startinsert!")
-        end
-    end)
+    picker:start()
 end
 
 return M
