@@ -402,7 +402,7 @@ function Picker:update_preview()
                         vim.api.nvim_buf_clear_namespace(self.vbuf, NS_PREVIEW, 0, -1)
                         vim.api.nvim_buf_set_extmark(self.vbuf, NS_PREVIEW, lnum - 1, 0, {
                             end_row = lnum, -- makes it "multiline" → enables hl_eol
-                            hl_group = "CursorLine",
+                            hl_group = "Visual",
                             hl_eol = true,
                             hl_mode = "blend",
                         })

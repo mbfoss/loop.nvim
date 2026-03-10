@@ -101,7 +101,7 @@ local function _create_fetcher(opts)
                 table.insert(filtered, {
                     label_chunks = chunks,
                     virt_lines = item.virt_lines,
-                    data = item.data
+                    data = item
                 })
             end
         end
@@ -119,16 +119,13 @@ local function _create_previewer(opts)
         return nil
     end
 
-    return function(item_data, _, callback)
-        local data = item_data.data -- Access the original item structure
-
+    return function(data, _, callback)
         -- 1. Use Formatter if provided
         if opts.formatter then
-            local content, ft = opts.formatter(data)
+            local content, ft = opts.formatter(data.data)
             callback(content, { filetype = ft })
             return _no_op
         end
-
         -- 2. Fallback to Async File Loader if filepath exists
         if data.filepath or data.file then
             local path = data.filepath or data.file
@@ -145,7 +142,6 @@ local function _create_previewer(opts)
             )
             return cancel_fn
         end
-
         -- 3. No preview available for this item
         callback(nil)
         return _no_op
@@ -173,7 +169,9 @@ function M.select(opts, callback)
         list_wrap     = opts.list_wrap,
     }
 
-    picker.select(picker_opts, callback)
+    picker.select(picker_opts, function (item)
+        callback(item and item.data)
+    end)
 
     -- Note: 'initial' index support would require modifying loop.picker
     -- to accept an initial query or selection state.
