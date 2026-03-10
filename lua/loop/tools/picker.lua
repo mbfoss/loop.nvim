@@ -151,6 +151,7 @@ end
 ---@field async_preview_context number
 ---@field async_preview_cancel fun()|nil
 ---@field preview_timer table|nil
+---@field self.resize_augroup number?
 local Picker = class()
 
 --------------------------------------------------------------------------------
@@ -261,6 +262,82 @@ function Picker:setup_ui()
 
     vim.wo[self.pwin].wrap = false
     vim.wo[self.lwin].wrap = self.opts.list_wrap ~= false
+
+    ---@type number?
+    local focus_augroup = vim.api.nvim_create_augroup("LoopPluginPickerFocus_" .. self.pbuf, { clear = true })
+    vim.api.nvim_create_autocmd("WinEnter", {
+        group = focus_augroup,
+        callback = function(args)
+            local win = vim.api.nvim_get_current_win()
+            if win ~= self.pwin and win ~= self.lwin and win ~= self.vwin then
+                vim.schedule(function()
+                    if focus_augroup then
+                        vim.api.nvim_del_augroup_by_id(focus_augroup)
+                        focus_augroup = nil
+                    end
+                    self:close(nil)
+                end)
+            end
+        end
+    })
+
+    assert(not self.resize_augroup)
+    self.resize_augroup = vim.api.nvim_create_augroup("LoopPluginPickerResize_" .. self.pbuf, { clear = true })
+    vim.api.nvim_create_autocmd("VimResized", {
+        group = self.resize_augroup,
+        callback = function()
+            vim.schedule(function()
+                if not self.closed then
+                    self:on_resize()
+                elseif self.resize_augroup then
+                    vim.api.nvim_del_augroup_by_id(self.resize_augroup)
+                    self.resize_augroup = nil
+                end
+            end)
+        end
+    })
+end
+
+function Picker:on_resize()
+    if self.closed then return end
+
+    self.layout = _compute_layout {
+        has_preview = self.has_preview,
+        height_ratio = self.opts.height_ratio,
+        width_ratio = self.opts.width_ratio,
+        preview_ratio = self.opts.preview_ratio
+    }
+
+    local base = {
+        relative = "editor",
+    }
+
+    if self.pwin and vim.api.nvim_win_is_valid(self.pwin) then
+        vim.api.nvim_win_set_config(self.pwin, vim.tbl_extend("force", base, {
+            row = self.layout.prompt_row,
+            col = self.layout.prompt_col,
+            width = self.layout.prompt_width,
+            height = 1,
+        }))
+    end
+
+    if self.lwin and vim.api.nvim_win_is_valid(self.lwin) then
+        vim.api.nvim_win_set_config(self.lwin, vim.tbl_extend("force", base, {
+            row = self.layout.list_row,
+            col = self.layout.list_col,
+            width = self.layout.list_width,
+            height = self.layout.list_height,
+        }))
+    end
+
+    if self.vwin and vim.api.nvim_win_is_valid(self.vwin) then
+        vim.api.nvim_win_set_config(self.vwin, vim.tbl_extend("force", base, {
+            row = self.layout.prev_row,
+            col = self.layout.prev_col,
+            width = self.layout.prev_width,
+            height = self.layout.prev_height,
+        }))
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -653,6 +730,11 @@ function Picker:close(result)
 
     if self.async_fetch_cancel then self.async_fetch_cancel() end
     if self.async_preview_cancel then self.async_preview_cancel() end
+
+    if self.resize_augroup then
+        vim.api.nvim_del_augroup_by_id(self.resize_augroup)
+        self.resize_augroup = nil
+    end
 
     for _, w in ipairs({ self.pwin, self.lwin, self.vwin }) do
         if w and vim.api.nvim_win_is_valid(w) then
