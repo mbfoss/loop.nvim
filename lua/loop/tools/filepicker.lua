@@ -66,35 +66,33 @@ end
 local function async_fd_search(query, fd_opts, fetch_opts, callback)
     assert(fd_opts.cwd, "CWD must be provided for file searching")
     local cmd, args, exclude_globs_handled = get_search_cmd(query, fd_opts)
-    -- 2. Pre-compile include globs into LPeg matchers
-    -- LPeg is significantly faster than Vim Regex for high-frequency string matching.
 
+    -- LPeg matchers for include/exclude globs
     local function to_matchers(globs)
         local matchers = {}
         for _, glob in ipairs(globs or {}) do
-            -- pcall handles invalid glob strings gracefully
             local ok, matcher = pcall(vim.glob.to_lpeg, glob)
             if ok then table.insert(matchers, matcher) end
         end
         return matchers
     end
 
-    -- Refactored block
     local include_matchers = to_matchers(fd_opts.include_globs)
     local exclude_matchers = (not exclude_globs_handled) and to_matchers(fd_opts.exclude_globs) or {}
 
     local process
     local read_stop = false
     local count = 0
-    local max_results = fd_opts.max_results or 10000
+    local max_results = fd_opts.max_results or 1000
 
     local buffered_feed = strtools.create_line_buffered_feed(function(lines)
         local items = {}
         for _, line in ipairs(lines) do
-            if read_stop then
-                return
-            end
+            if read_stop then return end
+
             line = line:gsub("^%.[/]", "")
+
+            -- Apply exclude globs
             local excluded = false
             for i = 1, #exclude_matchers do
                 if exclude_matchers[i]:match(line) then
@@ -102,33 +100,63 @@ local function async_fd_search(query, fd_opts, fetch_opts, callback)
                     break
                 end
             end
-            if not excluded then
-                -- LPeg Matching Logic
-                local allowed = (#include_matchers == 0)
-                if not allowed then
-                    for i = 1, #include_matchers do
-                        if include_matchers[i]:match(line) then
-                            allowed = true
-                            break
-                        end
-                    end
-                end
-                if allowed then
-                    if count < max_results then
-                        local path = vim.fs.joinpath(fd_opts.cwd, line)
-                        table.insert(items, {
-                            label = strtools.smart_crop_path(line, fetch_opts.list_width),
-                            data = path,
-                        })
-                        count = count + 1
-                    else
-                        process:kill()
-                        read_stop = true
+            if excluded then goto continue end
+
+            -- Apply include globs
+            local allowed = (#include_matchers == 0)
+            if not allowed then
+                for i = 1, #include_matchers do
+                    if include_matchers[i]:match(line) then
+                        allowed = true
                         break
                     end
                 end
             end
+            if not allowed then goto continue end
+
+            if count < max_results then
+                local path = vim.fs.joinpath(fd_opts.cwd, line)
+                local display = strtools.smart_crop_path(line, fetch_opts.list_width)
+
+                -- Build label_chunks with case-insensitive substring highlighting
+                local chunks = {}
+                if query and query ~= "" then
+                    local lower_display = display:lower()
+                    local lower_query = query:lower()
+                    local start_idx = 1
+
+                    while true do
+                        local s, e = lower_display:find(lower_query, start_idx, true)
+                        if not s then
+                            if start_idx <= #display then
+                                table.insert(chunks, { display:sub(start_idx) })
+                            end
+                            break
+                        end
+                        if s > start_idx then
+                            table.insert(chunks, { display:sub(start_idx, s - 1) })
+                        end
+                        table.insert(chunks, { display:sub(s, e), "Label" })
+                        start_idx = e + 1
+                    end
+                else
+                    table.insert(chunks, { display })
+                end
+
+                table.insert(items, {
+                    label_chunks = chunks, -- use chunks instead of label
+                    data = path,
+                })
+                count = count + 1
+            else
+                process:kill()
+                read_stop = true
+                break
+            end
+
+            ::continue::
         end
+
         if #items > 0 then
             vim.schedule(function()
                 callback(items)
@@ -141,21 +169,16 @@ local function async_fd_search(query, fd_opts, fetch_opts, callback)
         cmd = cmd,
         args = args,
         on_output = function(data, is_stderr)
-            if read_stop then
-                return
-            end
-            if not data then
-                return
-            end
+            if read_stop then return end
+            if not data then return end
             if is_stderr then
                 vim.notify_once(data, vim.log.levels.ERROR)
                 return
             end
             buffered_feed(data)
         end,
-        on_exit = function(code, signal)
+        on_exit = function()
             callback(nil)
-            -- Optional exit handling
         end,
     })
 
@@ -168,7 +191,6 @@ local function async_fd_search(query, fd_opts, fetch_opts, callback)
         if process then process:kill() end
     end
 end
-
 ---@class loop.filepicker.opts
 ---@field cwd string? Optional directory to start search (defaults to getcwd)
 ---@field include_globs string[]? Optional patterns to filter visible files

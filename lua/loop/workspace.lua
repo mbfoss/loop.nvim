@@ -543,7 +543,7 @@ function M.workspace_subcommands(args)
     _ensure_init()
     if #args == 0 then
         if _ws_data then
-            return { "info", "create", "open", "close", "configure", "save", "find_files" }
+            return { "info", "create", "open", "close", "configure", "save", "find_files", "grep_files" }
         else
             return { "create", "open" }
         end
@@ -580,6 +580,10 @@ function M.workspace_command(command)
     end
     if command == "find_files" then
         M.find_workspace_files()
+        return
+    end
+    if command == "grep_files" then
+        M.grep_workspace_files()
         return
     end
     vim.notify("Invalid command: " .. command)
@@ -804,6 +808,25 @@ function M.find_workspace_files()
     end
     local filepicker = require("loop.tools.filepicker")
     filepicker.open({
+        cwd = _ws_data.ws_dir,
+        include_globs = ws_config.files.include,
+        exclude_globs = ws_config.files.exclude,
+    })
+end
+
+function M.grep_workspace_files()
+    _ensure_init()
+    if not _ws_data then
+        _notify_no_ws()
+        return
+    end
+    local ws_config, config_err = _load_workspace_config(_ws_data.ws_dir)
+    if not ws_config then
+        vim.notify("Invalid workspace configuration")
+        return
+    end
+    local livegrep = require("loop.tools.livegrep")
+    livegrep.open({
         cwd = _ws_data.ws_dir,
         include_globs = ws_config.files.include,
         exclude_globs = ws_config.files.exclude,

@@ -63,48 +63,70 @@ local function async_grep_search(query, grep_opts, fetch_opts, callback)
     local cmd, args = get_grep_cmd(query, grep_opts)
     local count = 0
     local process
-
-    local max_results = grep_opts.max_results or 10000
+    local max_results = grep_opts.max_results or 1000
     local read_stop = false
+    local lower_query = query:lower()
 
     local buffered_feed = strtools.create_line_buffered_feed(function(lines)
         local items = {}
         for _, line in ipairs(lines) do
-            if read_stop then
-                return
-            end
-            -- Pattern matches filename:line:column:text OR filename:line:text
-            -- rg: file:line:col:content | grep: file:line:content
+            if read_stop then return end
+
+            -- Parse rg output: file:line:col:text
             local file, lnum, col, text = line:match("^(.-):(%d+):(%d+):(.*)$")
             if not file then
                 file, lnum, text = line:match("^(.-):(%d+):(.*)$")
                 col = "1"
             end
+            if not file or not lnum or not text then goto continue end
+
+            local abs_path = vim.fs.joinpath(grep_opts.cwd, file)
             local location = string.format("%s:%s", file, lnum)
             location = strtools.smart_crop_path(location, fetch_opts.list_width)
-            if file and lnum then
-                local abs_path = vim.fs.joinpath(grep_opts.cwd, file)
-                ---@type loop.SelectorItem
-                local item = {
-                    -- Display label: "path/to/file:12: content of the line"
-                    label_chunks = { { vim.fn.trim(text, "", 0), nil } },
-                    virt_lines = { { { location, "Comment" } } },
-                    file = abs_path,
-                    data = {
-                        filepath = abs_path,
-                        lnum = tonumber(lnum),
-                        col = tonumber(col),
-                    }
-                }
-                table.insert(items, item)
-                count = count + 1
+
+            -- Build label_chunks by highlighting all occurrences of the query
+            local chunks = {}
+            local start_idx = 1
+            text = vim.fn.trim(text, "", 0)
+            local lower_text = text:lower()
+            while true do
+                local s, e = lower_text:find(lower_query, start_idx, true)
+                if not s then
+                    if start_idx <= #text then
+                        table.insert(chunks, { text:sub(start_idx) })
+                    end
+                    break
+                end
+                if s > start_idx then
+                    table.insert(chunks, { text:sub(start_idx, s - 1) })
+                end
+                table.insert(chunks, { text:sub(s, e), "Label" }) -- your yellow highlight
+                start_idx = e + 1
             end
-            if count >= max_results then -- Cap results for performance
+
+            ---@type loop.SelectorItem
+            local item = {
+                label_chunks = chunks,
+                virt_lines = { { { location, "Comment" } } },
+                file = abs_path,
+                data = {
+                    filepath = abs_path,
+                    lnum = tonumber(lnum),
+                    col = tonumber(col),
+                }
+            }
+            table.insert(items, item)
+            count = count + 1
+
+            if count >= max_results then
                 process:kill()
                 read_stop = true
                 break
             end
+
+            ::continue::
         end
+
         if #items > 0 then
             vim.schedule(function() callback(items) end)
         end
@@ -115,21 +137,17 @@ local function async_grep_search(query, grep_opts, fetch_opts, callback)
         cwd = grep_opts.cwd,
         args = args,
         on_output = function(data, is_stderr)
-            if read_stop then
-                return
-            end
-            if not data then
-                return
-            end
+            if read_stop then return end
+            if not data then return end
             if is_stderr then
                 vim.notify_once(data, vim.log.levels.ERROR)
                 return
             end
             buffered_feed(data)
         end,
-        on_exit = function(code, signal)
+        on_exit = function()
             callback(nil)
-        end
+        end,
     })
 
     local start_ok, start_err = process:start()
@@ -145,7 +163,7 @@ end
 
 ---Opens a file picker using fd for discovery and LPeg for glob filtering.
 ---@param opts loop.livegrep.opts?
-function M.live_grep(opts)
+function M.open(opts)
     opts = opts or {}
     local cwd = opts.cwd or vim.fn.getcwd()
 
@@ -164,12 +182,13 @@ function M.live_grep(opts)
         end,
         async_preview = function(item_data, _, callback)
             local data = item_data
-            local cancel_fn = filetools.async_load_text_file(data.filepath, { max_size = 50 * 1024 * 1024, timeout = 3000 },
+            local cancel_fn = filetools.async_load_text_file(data.filepath,
+                { max_size = 50 * 1024 * 1024, timeout = 3000 },
                 function(load_err, content)
                     callback(content, {
-                         filepath = data.filepath,
-                         lnum = data.lnum,
-                         col = data.col
+                        filepath = data.filepath,
+                        lnum = data.lnum,
+                        col = data.col
                     })
                 end)
             return cancel_fn
