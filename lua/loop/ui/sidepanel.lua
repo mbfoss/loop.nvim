@@ -158,10 +158,24 @@ end
 -- Registration
 -- ======================================
 
-function M.clear_view_def()
+function M.reset_view_defs()
     M.hide()
-    _views = {}
-    _active_view = nil
+    ---@type loop.SideViewDef
+    local filetree_def = {
+        get_comp_buffers = function()
+            local CompBuffer = require("loop.buf.CompBuffer")
+            local FileTreeComp = require("loop.ui.FileTreeComp")
+            local compbuf = CompBuffer:new({ filetype = "loop-filetree", name = "File Tree", bufhidden = "wipe", listed = false })
+            local comp = FileTreeComp:new()
+            comp:link_to_buffer(compbuf:make_controller())
+            return { compbuf }
+        end,
+        get_ratio = function()
+            return {}
+        end
+    }
+    _views = { Files = filetree_def }
+    _active_view = "Files"
 end
 
 ---@param name string

@@ -35,6 +35,7 @@ local NS_PREVIEW = vim.api.nvim_create_namespace("LoopPlugin_PickerPreview")
 ---@class loop.Picker.AsyncPreviewOpts
 ---@field preview_width number
 ---@field preview_height number
+---@field antiflicker_delay number
 
 ---@class loop.Picker.QueryHistoryProvider
 ---@field load fun():string[]
@@ -54,7 +55,7 @@ local NS_PREVIEW = vim.api.nvim_create_namespace("LoopPlugin_PickerPreview")
 ---@field history_provider loop.Picker.QueryHistoryProvider?
 ---@field height_ratio number?
 ---@field width_ratio number?
----@field preview_ratio number?
+---@field list_width number?
 ---@field list_wrap boolean?
 
 --------------------------------------------------------------------------------
@@ -91,7 +92,7 @@ end
 -- Layout computation
 --------------------------------------------------------------------------------
 
----@param opts {has_preview:boolean,height_ratio:number?,width_ratio:number?,preview_ratio:number?}
+---@param opts {has_preview:boolean,height_ratio:number?,width_ratio:number?,list_width:number?}
 ---@return loop.Picker.Layout
 local function _compute_layout(opts)
     local cols = vim.o.columns
@@ -99,13 +100,31 @@ local function _compute_layout(opts)
 
     local has_preview = opts.has_preview
     local spacing = has_preview and 2 or 0
+    local half_spacing = math.floor(spacing / 2)
 
-    local width = math.floor(cols * _clamp(opts.width_ratio or .8, 0, 1))
-
-    local list_ratio = _clamp(opts.preview_ratio or (has_preview and .5 or 1), 0, 1)
-    local list_width = math.floor(width * list_ratio)
-
-    local prev_width = has_preview and _clamp(width - list_width - spacing, 1, width) or 0
+    local width
+    local list_width
+    local prev_width
+    if has_preview then
+        width = _clamp(math.floor(cols * (opts.width_ratio or 0.8)), 1, cols)
+        local half_width = math.floor(width / 2)
+        if opts.list_width then
+            list_width = _clamp(opts.list_width + 3, math.floor(half_width / 2), half_width)
+        else
+            list_width = half_width
+        end
+        list_width = list_width - half_spacing
+        prev_width =  _clamp(width - list_width - half_spacing, 1, width)
+    else
+        local max_with = math.floor(cols * (opts.width_ratio or 0.8))
+        if opts.list_width then
+            list_width = _clamp(opts.list_width  + 3, 30, max_with)
+        else
+            list_width = max_with
+        end
+        width = list_width
+        prev_width = 0
+    end
 
     local height = math.floor(lines * _clamp(opts.height_ratio or .7, 0, 1))
 
@@ -184,6 +203,7 @@ function Picker:init(opts, callback)
     self.async_preview_context = 0
     self.async_preview_cancel = nil
 
+    self.antiflicker_delay = 200
     self.spinner = nil
 
     self.history = {}
@@ -210,7 +230,7 @@ function Picker:setup_ui()
         has_preview = self.has_preview,
         height_ratio = opts.height_ratio,
         width_ratio = opts.width_ratio,
-        preview_ratio = opts.preview_ratio
+        list_width = opts.list_width
     }
 
     local title = opts.prompt and (" " .. opts.prompt .. " ") or ""
@@ -322,7 +342,7 @@ function Picker:on_resize()
         has_preview = self.has_preview,
         height_ratio = self.opts.height_ratio,
         width_ratio = self.opts.width_ratio,
-        preview_ratio = self.opts.preview_ratio
+        list_width = self.opts.list_width
     }
 
     local base = {
@@ -452,14 +472,8 @@ function Picker:update_preview()
         self.async_preview_cancel = nil
     end
 
+    self:request_clear_preview()
     local data = self.items_data[self:get_cursor()]
-
-    if not data then
-        self:request_clear_preview()
-        return
-    end
-
-    self:cancel_clear_preview_req()
 
     self.async_preview_context = self.async_preview_context + 1
     local context = self.async_preview_context
@@ -468,11 +482,12 @@ function Picker:update_preview()
         data,
         {
             preview_width = self.layout.prev_width,
-            preview_height = self.layout.prev_height
+            preview_height = self.layout.prev_height,
+            antiflicker_delay = self.antiflicker_delay,
         },
         function(preview, info)
             if self.closed or context ~= self.async_preview_context then return end
-
+            self:cancel_clear_preview_req()
             local lines = preview and vim.split(preview, "\n") or {}
             if vim.api.nvim_buf_is_valid(self.vbuf) then
                 vim.api.nvim_buf_set_lines(self.vbuf, 0, -1, false, lines)
@@ -553,7 +568,7 @@ function Picker:request_clear_preview()
         ---@diagnostic disable-next-line: undefined-field
         local timer = vim.loop.new_timer()
         self.preview_timer = timer
-        timer:start(100, 0, vim.schedule_wrap(function()
+        timer:start(self.antiflicker_delay, 0, vim.schedule_wrap(function()
             if self.closed then return end
             vim.api.nvim_buf_set_lines(self.vbuf, 0, -1, false, {})
             self.preview_timer = nil
@@ -701,7 +716,7 @@ function Picker:run_fetch(query)
         query,
         {
             list_width = math.max(1, self.layout.list_width - 2),
-            list_height = self.layout.list_height
+            list_height = self.layout.list_height,
         },
         function(new_items)
             if self.closed or context ~= self.async_fetch_context then return end

@@ -36,30 +36,31 @@ local function _no_op()
 end
 
 ---@param items loop.SelectorItem[]
----@param padding integer?
 ---@return integer
-local function _compute_width(items, padding)
-    local cols = vim.o.columns
+local function _compute_width(items)
     local maxw = 0
-
     for _, item in ipairs(items) do
-        maxw = math.max(maxw, vim.fn.strdisplaywidth(item.label) + 1)
+        if item.label then
+            maxw = math.max(maxw, vim.fn.strdisplaywidth(item.label))
+        end
+        if item.label_chunks then
+            local w = 0
+            for _, chunk in ipairs(item.label_chunks) do
+                w = w + vim.fn.strdisplaywidth(chunk[1])
+            end
+            maxw = math.max(maxw, w)
+        end
         if item.virt_lines then
             for _, vl in ipairs(item.virt_lines) do
                 local w = 0
                 for _, chunk in ipairs(vl) do
                     w = w + vim.fn.strdisplaywidth(chunk[1])
                 end
-                maxw = math.max(maxw, w + 1)
+                maxw = math.max(maxw, w)
             end
         end
     end
-
-    local desired = maxw + (padding or 2)
-    return math.max(
-        math.floor(cols * 0.2),
-        math.min(math.floor(cols * 0.8), desired)
-    )
+    return maxw
 end
 ---@param opts loop.selector.opts
 ---@return loop.Picker.Fetcher
@@ -155,21 +156,17 @@ end
 ---@param opts loop.selector.opts
 ---@param callback loop.SelectorCallback
 function M.select(opts, callback)
-    local width_ratio
-    if not opts.file_preview and not opts.formatter then
-        local width = _compute_width(opts.items)
-        width_ratio = width / vim.o.columns
-    end
+    local list_width = _compute_width(opts.items)
     -- Validate and prepare options for the underlying picker
     local picker_opts = {
         prompt        = opts.prompt,
         fetch         = _create_fetcher(opts),
         async_preview = _create_previewer(opts),
-        width_ratio   = width_ratio,
+        list_width    = list_width,
         list_wrap     = opts.list_wrap,
     }
 
-    picker.select(picker_opts, function (item)
+    picker.select(picker_opts, function(item)
         callback(item and item.data)
     end)
 

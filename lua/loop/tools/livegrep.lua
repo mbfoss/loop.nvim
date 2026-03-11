@@ -205,10 +205,7 @@ function M.open(opts)
     }, function(selected)
         if selected then
             -- Open file and jump to line/column
-            uitools.smart_open_file(selected.file)
-            if selected.lnum then
-                vim.api.nvim_win_set_cursor(0, { selected.lnum, (selected.col or 1) - 1 })
-            end
+            uitools.smart_open_file(selected.filepath, selected.lnum, selected.col - 1)
         end
     end)
 end

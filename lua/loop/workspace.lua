@@ -206,12 +206,14 @@ local function _configure_workspace(ws_dir)
         filepath = filepath,
         schema = schema,
     })
-    editor:set_on_save_handler(function()
+    local update_statusline = function()
         local config = _load_workspace_config(ws_dir)
         if config and config.name then
             statusline.set_workspace_name(config.name)
         end
-    end)
+    end
+    update_statusline()
+    editor:set_on_save_handler(update_statusline)
     editor:open()
 end
 
@@ -253,9 +255,8 @@ local function _load_workspace(dir)
         config_dir = _ws_data.config_dir,
     }
 
-    window.load_layout(config_dir)
-
     taskmgr.reset_providers(dir)
+    sidepanel.reset_view_defs()
 
     runner.on_workspace_open(ws_info, _ws_data.page_manager)
     extdata.on_workspace_load(ws_info, _ws_data.page_manager)
