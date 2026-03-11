@@ -281,7 +281,7 @@ function Picker:setup_ui()
     vim.wo[self.lwin].wrap = self.opts.list_wrap ~= false
 
     ---@type number?
-    local focus_augroup = vim.api.nvim_create_augroup("LoopPluginPickerFocus_" .. self.pbuf, { clear = true })
+    local focus_augroup = vim.api.nvim_create_augroup("LoopPlugin_PickerFocus_" .. self.pbuf, { clear = true })
     vim.api.nvim_create_autocmd("WinEnter", {
         group = focus_augroup,
         callback = function(args)
@@ -299,7 +299,7 @@ function Picker:setup_ui()
     })
 
     assert(not self.resize_augroup)
-    self.resize_augroup = vim.api.nvim_create_augroup("LoopPluginPickerResize_" .. self.pbuf, { clear = true })
+    self.resize_augroup = vim.api.nvim_create_augroup("LoopPlugin_PickerResize_" .. self.pbuf, { clear = true })
     vim.api.nvim_create_autocmd("VimResized", {
         group = self.resize_augroup,
         callback = function()

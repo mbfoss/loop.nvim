@@ -421,15 +421,9 @@ function M.hide_window()
 end
 
 ---@return boolean
-function M.toggle_window()
+function M.is_visible()
     assert(_init_done, _init_err_msg)
-    if _loop_win ~= -1 then
-        M.hide_window()
-        return false
-    else
-        M.show_window()
-        return true
-    end
+    return _loop_win ~= -1
 end
 
 function M.switch_page()
@@ -636,8 +630,13 @@ local function _add_tab_page(tab, opts)
         return { page = page:make_controller(), term_proc = proc }
     end
     if opts.type == "output" then
-        local output_buf = OutputBuffer:new({ filetype = "loop-output", name = opts.label, listed = false, bufhidden =
-        "hide" })
+        local output_buf = OutputBuffer:new({
+            filetype = "loop-output",
+            name = opts.label,
+            listed = false,
+            bufhidden =
+            "hide"
+        })
         local page = Page:new(output_buf)
         _assign_tab_page(tab, page, opts.activate)
         local ctrl = output_buf:make_controller()
@@ -751,28 +750,25 @@ function M.create_page_manager()
     return _create_page_manager()
 end
 
----@param config_dir string
-function M.save_layout(config_dir)
+---@param layout table
+function M.save_layout(layout)
     if _loop_win == -1 then
         return
     end
+    local editor_height = vim.o.lines - vim.o.cmdheight     -- subtract command line
     local height = vim.api.nvim_win_get_height(_loop_win)
-    local ratio = height / vim.o.lines
     -- only save of we are not the only window vertically
-    if ratio > 0.7 then
+    if height == editor_height then
         return
     end
+    local ratio = height / vim.o.lines
     _loop_win_height_ratio = ratio
-    local window_config = { height = _loop_win_height_ratio }
-    jsoncodec.save_to_file(vim.fs.joinpath(config_dir, "window.json"), window_config)
+    layout.height = ratio
 end
 
----@param config_dir string
-function M.load_layout(config_dir)
-    local loaded, conf = jsoncodec.load_from_file(vim.fs.joinpath(config_dir, "window.json"))
-    if loaded then
-        _loop_win_height_ratio = conf.height
-    end
+---@param layout table
+function M.load_layout(layout)
+    _loop_win_height_ratio = layout.height or .20
     if _loop_win ~= -1 and _loop_win_height_ratio then
         vim.api.nvim_win_set_height(_loop_win, math.floor(vim.o.lines * _loop_win_height_ratio))
     end

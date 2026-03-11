@@ -4,6 +4,7 @@ local extensions = require('loop.extensions')
 local taskproviders = require('loop.task.providers')
 local filetools = require('loop.tools.file')
 local jsoncodec = require('loop.json.codec')
+local sidepanel = require('loop.ui.sidepanel')
 
 ---@class loop.ExtentionContext
 ---@field ext_name string
@@ -113,6 +114,7 @@ local function _get_run_process_fn(ext_context, page_manager)
 			label = name,
 			type = "term",
 			term_args = start_args_cpy,
+			activate = true,
 		})
 		return page_data and page_data.term_proc, err_str
 	end
@@ -174,6 +176,9 @@ function M.on_workspace_load(wsinfo, page_manager)
 			state = _make_state_handler(ext_context.state),
 			register_user_command = function(lead_cmd, provider)
 				return _register_cmd_provider(ext_context, lead_cmd, provider)
+			end,
+			register_side_view = function (viewname, viewdef)
+				sidepanel.register_new_view(viewname, viewdef)
 			end,
 			register_task_type = _register_task_type_provider,
 			register_task_templates = _register_task_template_provider,

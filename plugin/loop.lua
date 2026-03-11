@@ -25,7 +25,7 @@ local function _is_workspace_dir(dir)
     return stat and stat.type == "directory"
 end
 
-local group = vim.api.nvim_create_augroup("LoopPluginOnVimEnter", { clear = true })
+local group = vim.api.nvim_create_augroup("LoopPlugin_OnVimEnter", { clear = true })
 vim.api.nvim_create_autocmd("VimEnter", {
     group = group,
     callback = function()

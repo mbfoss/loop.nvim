@@ -27,6 +27,10 @@ error('Cannot require a meta file')
 ---@field set fun(key:string, value:any)
 ---@field keys fun():string[]
 
+---@class loop.SideViewDef
+---@field get_comp_buffers fun():loop.comp.BaseBuffer[]
+---@field get_ratio fun():number[]
+
 ---@class loop.ExtensionData
 ---@field ws_dir string
 ---@field state loop.ExtensionState
@@ -34,6 +38,7 @@ error('Cannot require a meta file')
 ---@field register_task_type fun(task_type:string, provider:loop.TaskTypeProvider)
 ---@field register_task_templates fun(category:string, provider:loop.TaskTemplateProvider)
 ---@field register_user_command fun(lead_cmd:string, provider:loop.UserCommandProvider)
+---@field register_side_view fun(name:string,def:loop.SideViewDef)
 ---@field run_process fun(start_args:loop.tools.TermProc.StartArgs):loop.tools.TermProc?,string?
 
 ---@class loop.TaskTypeProvider
@@ -88,7 +93,6 @@ error('Cannot require a meta file')
 
 ---@class loop.PageOpts
 ---@field type "term"|"output"|"comp"|"repl"
----@field buftype string?
 ---@field label string
 ---@field activate boolean?
 ---@field term_args loop.tools.TermProc.StartArgs?

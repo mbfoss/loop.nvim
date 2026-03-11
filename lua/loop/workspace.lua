@@ -5,6 +5,7 @@ local logs          = require('loop.logs')
 local taskmgr       = require("loop.task.taskmgr")
 local variablesmgr  = require("loop.task.variablesmgr")
 local window        = require("loop.ui.window")
+local sidepanel     = require("loop.ui.sidepanel")
 local statusline    = require("loop.statusline")
 local runner        = require("loop.task.runner")
 local jsoncodec     = require('loop.json.codec')
@@ -83,11 +84,35 @@ local function _get_config_dir(workspace_dir)
     return dir
 end
 
+
+---@return table?
+local function _load_layout()
+    if not _ws_data then return end
+    local loaded, data = jsoncodec.load_from_file(vim.fs.joinpath(_ws_data.config_dir, "layout.json"))
+    if not loaded then return end
+    window.load_layout(data and data.window or {})
+    sidepanel.load_layout(data and data.sidepanel or {})
+    return data
+end
+
+local function _save_layout()
+    if not _ws_data then
+        return false
+    end
+    local filepath = vim.fs.joinpath(_ws_data.config_dir, "layout.json")
+    local loaded, data = jsoncodec.load_from_file(filepath)
+    local layout = loaded and data or {}
+    layout.window = layout.window or {}
+    layout.sidepanel = layout.sidepanel or {}
+    window.save_layout(layout.window)
+    sidepanel.save_layout(layout.sidepanel)
+    jsoncodec.save_to_file(filepath, layout)
+end
+
 local function _save_workspace()
     if not _ws_data then
         return false
     end
-    window.save_layout(_ws_data.config_dir)
     extdata.save(_ws_data.config_dir)
     return true
 end
@@ -252,6 +277,8 @@ local function _load_workspace(dir)
     if ws_config and ws_config.name then
         statusline.set_workspace_name(ws_config.name)
     end
+
+    _load_layout()
 
     return "ok", nil
 end
@@ -739,9 +766,7 @@ function M.ui_command(command)
         if _ws_data and _ws_data.page_manager then _ws_data.page_manager.delete_expired_groups() end
         extdata.clean_page_groups()
     elseif command == "save_layout" then
-        if _ws_data then
-            window.save_layout(_ws_data.config_dir)
-        end
+        _save_layout()
     else
         vim.notify("Invalid command: " .. command)
     end
@@ -750,16 +775,24 @@ end
 function M.show_window()
     _ensure_init()
     window.show_window()
+    sidepanel.show()
 end
 
 function M.hide_window()
     _ensure_init()
     window.hide_window()
+    sidepanel.hide()
 end
 
 function M.toggle_window()
     _ensure_init()
-    window.toggle_window()
+    if window.is_visible() then
+        window.hide_window()
+        sidepanel.hide()
+    else
+        window.show_window()
+        sidepanel.show()
+    end
 end
 
 function M.switch_page(group_label, page_label)

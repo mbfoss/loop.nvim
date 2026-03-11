@@ -136,7 +136,7 @@ local function _ensure_init()
     if _init_done then return end
     _init_done = true
 
-    local augroup = vim.api.nvim_create_augroup("loopplugin_extmarks", { clear = true })
+    local augroup = vim.api.nvim_create_augroup("LoopPlugin_ExtMarks", { clear = true })
 
     -- "BufWinEnter" most likely not needed, adding will cause double callback
     vim.api.nvim_create_autocmd({ "BufReadPost" }, {
