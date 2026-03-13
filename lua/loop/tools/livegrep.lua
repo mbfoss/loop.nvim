@@ -17,42 +17,26 @@ local filetools = require("loop.tools.file")
 ---@param opts loop.livegrep.opts
 ---@return string, string[]
 local function get_grep_cmd(query, opts)
-    if vim.fn.executable("rg") == 1 then
-        local args = {
-            "--column",
-            "--line-number",
-            "--no-heading",
-            "--color", "never",
-            "--smart-case",
-            "--fixed-strings",
-        }
-
-        if opts.exclude_globs then
-            for _, glob in ipairs(opts.exclude_globs) do
-                table.insert(args, "-g")
-                table.insert(args, "!" .. glob)
-            end
-        end
-
-        table.insert(args, "--")
-        table.insert(args, query)
-        table.insert(args, ".")
-        return "rg", args
-    end
-
-    -- Fallback to standard grep
-    local args = { "-RIn", "--exclude-dir=.git" }
+    local args = {
+        "--column",
+        "--line-number",
+        "--no-heading",
+        "--color", "never",
+        "--smart-case",
+        "--fixed-strings",
+    }
 
     if opts.exclude_globs then
         for _, glob in ipairs(opts.exclude_globs) do
-            table.insert(args, "--exclude-dir=" .. glob)
-            table.insert(args, "--exclude=" .. glob)
+            table.insert(args, "-g")
+            table.insert(args, "!" .. glob)
         end
     end
 
+    table.insert(args, "--")
     table.insert(args, query)
     table.insert(args, ".")
-    return "grep", args
+    return "rg", args
 end
 
 ---@param query string
@@ -62,11 +46,6 @@ end
 ---@return fun() cancel
 local function async_grep_search(query, grep_opts, fetch_opts, callback)
     local cmd, args = get_grep_cmd(query, grep_opts)
-    if vim.fn.executable(cmd) ~= 1 then
-        vim.notify_once(("Grep executable `%s` not found"):format(cmd), vim.log.levels.ERROR)
-        callback(nil)
-        return function() end
-    end
     local count = 0
     local process
     local max_results = grep_opts.max_results or 1000
