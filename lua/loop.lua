@@ -14,14 +14,19 @@ local M = {}
 ---@class loop.Config.Window
 ---@field symbols loop.Config.Window.Symbols
 
+---@class loop.Config.WorspaceFiles
+---@field always_excluded_globs string[]
+---@field include_data_dir boolean
+
 ---@class loop.Config
----@field workspace_data_dir string?
----@field window loop.Config.Window?
----@field macros table<string,(fun(ctx:loop.TaskContext,...):any,string|nil)>?
----@field debug boolean? Enable debug/verbose mode for development
----@field state_autosave_interval integer? Auto-save interval in minutes (default: 5 minutes).
----@field logs_count integer? Number of recent logs to show with :Loop logs (default: 50).
----@field use_fd_find boolean?
+---@field workspace_data_dir string
+---@field window loop.Config.Window
+---@field files loop.Config.WorspaceFiles
+---@field macros table<string,(fun(ctx:loop.TaskContext,...):any,string|nil)>
+---@field debug boolean Enable debug/verbose mode for development
+---@field state_autosave_interval integer Auto-save interval in minutes (default: 5 minutes).
+---@field logs_count integer Number of recent logs to show with :Loop logs (default: 50).
+---@field use_fd_find boolean
 
 -- IMPORTANT: keep this module light for lazy loading
 
@@ -29,6 +34,10 @@ local function _get_default_config()
     ---@type loop.Config
     return {
         workspace_data_dir = ".loop",
+        files = {
+            always_excluded_globs = { ".git/", "node_modules/", ".cache/" },
+            include_data_dir = false,
+        },
         window = {
             symbols = {
                 change  = "●",

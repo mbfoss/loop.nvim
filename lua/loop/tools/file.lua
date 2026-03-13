@@ -204,15 +204,11 @@ end
 local uv = vim.uv or vim.loop
 
 ---@param dir string
----@param query string
----@param include_globs string[]
 ---@param exclude_globs string[]
----@param max_results number
----@param on_chunk fun(chunk:string[])
+---@param on_file fun(path:string,name:string)
 ---@param on_done fun()
 ---@return function # cancel function
-function M.async_walk_dir(dir, query, include_globs, exclude_globs, max_results, on_chunk, on_done)
-    max_results = max_results or 1000
+function M.async_walk_dir(dir, exclude_globs, on_file, on_done)
     local results_count = 0
     local pending_dirs = { dir }
     local is_cancelled = false
@@ -224,19 +220,11 @@ function M.async_walk_dir(dir, query, include_globs, exclude_globs, max_results,
         return false
     end
 
-    local function is_included(path)
-        if not include_globs or #include_globs == 0 then return true end
-        for _, pat in ipairs(include_globs) do
-            if path:match(pat) then return true end
-        end
-        return false
-    end
-
     local function process_next_dir()
         -- 1. Check cancellation or completion immediately
         if is_cancelled then return end
 
-        if results_count >= max_results or #pending_dirs == 0 then
+        if #pending_dirs == 0 then
             vim.schedule(function()
                 if not is_cancelled then on_done() end
             end)
@@ -246,7 +234,8 @@ function M.async_walk_dir(dir, query, include_globs, exclude_globs, max_results,
         local path = table.remove(pending_dirs, 1)
 
         -- 2. Validate path before opening
-        local fd, err = uv.fs_scandir(path)
+        ---@diagnostic disable-next-line: undefined-field
+        local fd = uv.fs_scandir(path)
         if not fd then
             -- Skip inaccessible directories and move to next
             vim.schedule(process_next_dir)
@@ -256,6 +245,7 @@ function M.async_walk_dir(dir, query, include_globs, exclude_globs, max_results,
         local chunk = {}
         -- 3. Iterate through entries
         while true do
+            ---@diagnostic disable-next-line: undefined-field
             local name, type_ = uv.fs_scandir_next(fd)
             if not name then break end
 
@@ -268,27 +258,14 @@ function M.async_walk_dir(dir, query, include_globs, exclude_globs, max_results,
                 end
                 -- File logic
             elseif type_ == "file" then
-                if full_path:lower():find(query:lower(), 1, true)
-                    and is_included(full_path)
-                    and not is_excluded(full_path)
-                then
-                    table.insert(chunk, full_path)
-                    results_count = results_count + 1
+                if not is_excluded(full_path) then
+                    on_file(full_path, name)
                 end
             end
-
-            if results_count >= max_results then break end
         end
 
         -- 4. Explicitly signal completion of this directory to GC
         fd = nil
-
-        -- 5. Send results if any, then schedule next iteration
-        if #chunk > 0 then
-            vim.schedule(function()
-                if not is_cancelled then on_chunk(chunk) end
-            end)
-        end
 
         vim.schedule(process_next_dir)
     end

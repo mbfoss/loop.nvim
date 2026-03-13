@@ -12,22 +12,85 @@ local uv           = vim.loop
 
 ---@alias loop.comp.FileTree.ItemDef loop.comp.ItemTree.ItemDef
 
+---@class loop.comp.FileTreeOpts
+---@field root string
+---@field include_globs string[]
+---@field exclude_globs string[]
+
 ---@class loop.comp.FileTree : loop.comp.ItemTree
----@field new fun(self:loop.comp.FileTree,root:string):loop.comp.FileTree
+---@field new fun(self:loop.comp.FileTree,opts:loop.comp.FileTreeOpts):loop.comp.FileTree
 local FileTree     = class(ItemTreeComp)
 
 
----@param root string
-function FileTree:init(root)
+---@param opts loop.comp.FileTreeOpts
+function FileTree:init(opts)
+    vim.validate("opts", opts, "table")
+    vim.validate("opts.root", opts.root, "string")
+
     ItemTreeComp.init(self, {
         formatter = function(id, data)
             return self:_file_formatter(id, data)
         end
     })
 
-    self.root = vim.fs.normalize(root or vim.fn.getcwd())
+    self.root = vim.fs.normalize(opts.root)
+    self._include_patterns = self:_compile_globs(opts.include_globs)
+    self._exclude_patterns = self:_compile_globs(opts.exclude_globs)
 
     self:_set_root(self.root)
+end
+
+---@param globs string[]|nil
+---@return string[]|nil
+function FileTree:_compile_globs(globs)
+    if not globs or #globs == 0 then
+        return nil
+    end
+
+    local compiled = {}
+    for _, g in ipairs(globs) do
+        table.insert(compiled, vim.fn.glob2regpat(g))
+    end
+    return compiled
+end
+
+---@param path string
+---@param patterns string[]|nil
+---@return boolean
+function FileTree:_match_patterns(path, patterns)
+    if not patterns then
+        return false
+    end
+
+    for i = 1, #patterns do
+        if vim.fn.match(path, patterns[i]) ~= -1 then
+            return true
+        end
+    end
+
+    return false
+end
+
+---@param rel string
+---@param is_dir boolean
+---@return boolean
+function FileTree:_should_include(rel, is_dir)
+    if is_dir and rel:sub(-1) == "/" then
+        rel = rel:sub(1, #rel - 1)
+    end
+    if self:_match_patterns(rel, self._exclude_patterns) then
+        return false
+    end
+    if self:_match_patterns(rel .. '/', self._exclude_patterns) then
+        return false
+    end
+    if is_dir then
+        return true
+    end
+    if self._include_patterns then
+        return self:_match_patterns(rel, self._include_patterns)
+    end
+    return true
 end
 
 function FileTree:_set_root(path)
@@ -94,28 +157,35 @@ function FileTree:_read_dir(path, cb)
         local name, type = uv.fs_scandir_next(handle)
         if not name then break end
 
-        local full = path .. "/" .. name
+        local full = vim.fs.joinpath(path, name)
         local is_dir = type == "directory"
-
-        ---@type loop.comp.FileTree.ItemDef
-        local item = {
-            id = full,
-            parent_id = path,
-            expanded = false,
-            data = {
-                path = full,
-                name = name,
-                is_dir = is_dir
-            }
-        }
-
-        if is_dir then
-            item.children_callback = function(cb2)
-                self:_read_dir(full, cb2)
-            end
+        local rel = vim.fs.relpath(self.root, full)
+        if not rel then
+            vim.notify_once("directory scanning error")
+            goto continue
         end
+        if self:_should_include(rel, is_dir) then
+            ---@type loop.comp.FileTree.ItemDef
+            local item = {
+                id = full,
+                parent_id = path,
+                expanded = false,
+                data = {
+                    path = full,
+                    name = name,
+                    is_dir = is_dir
+                }
+            }
 
-        table.insert(children, item)
+            if is_dir then
+                item.children_callback = function(cb2)
+                    self:_read_dir(full, cb2)
+                end
+            end
+
+            table.insert(children, item)
+        end
+        ::continue::
     end
 
     table.sort(children, function(a, b)
@@ -145,17 +215,16 @@ function FileTree:reveal(path)
     if not path or path == "" then
         return
     end
-
     path = vim.fs.normalize(path)
-
     local root = self.root
-    if path ~= root and path:sub(1, #root + 1) ~= root .. "/" then
+    if path ~= root then
         return
     end
-
-    local rel = path:sub(#root + 2)
+    local rel = vim.fs.relpath(self.root, path)
+    if not rel then
+        return
+    end
     local parts = rel ~= "" and vim.split(rel, "/", { plain = true }) or {}
-
     self:_reveal_step(root, parts, 1)
 end
 
@@ -167,7 +236,7 @@ function FileTree:_reveal_step(parent, parts, idx)
         return
     end
 
-    local next_path = parent .. "/" .. parts[idx]
+    local next_path = vim.fs.joinpath(parent, parts[idx])
     local parent_item = self:get_item(parent)
     if not parent_item then return end
 
@@ -203,7 +272,7 @@ function FileTree:link_to_buffer(comp)
         end
     })
 
-    --
+    --[[
     -- track active buffer
     self.bufenter_autocmd_id = vim.api.nvim_create_autocmd("BufEnter", {
         callback = function()
@@ -216,6 +285,7 @@ function FileTree:link_to_buffer(comp)
             end
         end
     })
+    ]]
 end
 
 function FileTree:dispose()

@@ -80,7 +80,7 @@ local function _notify_no_ws()
 end
 
 local function _get_config_dir(workspace_dir)
-    local dir = vim.fs.joinpath(workspace_dir, loopconfig.workspace_data_dir or ".loop")
+    local dir = vim.fs.joinpath(workspace_dir, loopconfig.workspace_data_dir)
     return dir
 end
 
@@ -146,13 +146,34 @@ local function _load_workspace_config(ws_dir)
         ---@cast data_or_err string
         return nil, data_or_err
     end
-    local config = data_or_err
+    local config_node = data_or_err
     local schema = require('loop.ws.schema')
-    local valid, errors = jsonvalidator.validate(schema, config)
+    local valid, errors = jsonvalidator.validate(schema, config_node)
     if not valid then
         return nil, jsonvalidator.errors_to_string(errors)
     end
-    return config.workspace
+    ---@type loop.WorkspaceConfig
+    local ws_config = config_node.workspace
+    if not ws_config or not ws_config.files or not ws_config.files.exclude then
+        return nil, "Invalid workspace configuration"
+    end
+    -- add default exclude globs
+    local default_excludes = vim.fn.copy(loopconfig.files.always_excluded_globs)
+    if not loopconfig.files.include_data_dir then
+        local wsdir_pattern = loopconfig.workspace_data_dir
+        -- ensure trailing slash
+        if wsdir_pattern:sub(-1) ~= "/" then
+            wsdir_pattern = wsdir_pattern .. "/"
+        end
+        table.insert(default_excludes, wsdir_pattern)
+    end
+    local exclude_globs = ws_config.files.exclude
+    for _, glob in ipairs(default_excludes) do
+        if not vim.tbl_contains(exclude_globs, glob) then
+            table.insert(exclude_globs, glob)
+        end
+    end
+    return ws_config
 end
 
 ---@param ws_dir string
@@ -198,9 +219,18 @@ local function _register_builtin_sideviews(wsdir)
     ---@type loop.SideViewDef
     local filetree_def = {
         get_comp_buffers = function()
+            local ws_config = _load_workspace_config(wsdir)
+            if not ws_config then
+                vim.notify("Invalid worspace configuration")
+                return {}
+            end
             local CompBuffer = require("loop.buf.CompBuffer")
             local FileTreeComp = require("loop.ui.FileTreeComp")
-            local comp = FileTreeComp:new(wsdir)
+            local comp = FileTreeComp:new({
+                root = wsdir,
+                include_globs = ws_config.files.include,
+                exclude_globs = ws_config.files.exclude,
+            })
             local compbuf = CompBuffer:new({ filetype = "loop-filetree", name = "File Tree", listed = false })
             comp:link_to_buffer(compbuf:make_controller())
             compbuf:set_user_data(comp)

@@ -13,66 +13,139 @@ local picker = require('loop.tools.picker')
 ---@field exclude_globs string[] List of glob patterns for fd to ignore
 ---@field max_results number?
 
-local uv = vim.loop
-
-local function _build_label_chunks(display, query)
-    local chunks = {}
-    if query and query ~= "" then
-        local lower_display = display:lower()
-        local lower_query = query:lower()
-        local start_idx = 1
-
-        while true do
-            local s, e = lower_display:find(lower_query, start_idx, true)
-            if not s then
-                if start_idx <= #display then
-                    table.insert(chunks, { display:sub(start_idx) })
+---@param positions integer[] Flat table of pairs: {start1, end1, ...}
+---@param offset integer The shift from cropping (#display - #filename)
+---@return integer[] # Shifted pairs, discarding any where the start is cropped out
+local function _adjust_position_pairs(positions, offset)
+    if not positions or #positions == 0 then return {} end
+    local adjusted = {}
+    for i = 1, #positions, 2 do
+        local start_pos = positions[i]
+        local end_pos = positions[i + 1]
+        -- detect nil values
+        if start_pos ~= nil then
+            local p_start = start_pos + offset
+            if p_start >= 1 then
+                table.insert(adjusted, p_start)
+                if end_pos then
+                    table.insert(adjusted, end_pos + offset)
                 end
-                break
             end
-            if s > start_idx then
-                table.insert(chunks, { display:sub(start_idx, s - 1) })
-            end
-            table.insert(chunks, { display:sub(s, e), "Label" })
-            start_idx = e + 1
         end
-    else
-        table.insert(chunks, { display })
     end
+    return adjusted
+end
+
+---@param display string The (potentially cropped) path string
+---@param positions integer[] List of matched byte indices
+---@return table[] chunks List of { text, hl_group? }
+local function _build_label_chunks(display, positions)
+    if #positions == 0 then
+        return { { display } }
+    end
+
+    local chunks = {}
+    local pos_map = {}
+    for _, p in ipairs(positions) do
+        pos_map[p] = true
+    end
+
+    local current_chunk = ""
+    local last_was_match = pos_map[1] or false
+
+    for i = 1, #display do
+        local is_match = pos_map[i] or false
+
+        if is_match ~= last_was_match then
+            -- Flush the previous chunk
+            table.insert(chunks, last_was_match and { current_chunk, "Label" } or { current_chunk })
+            current_chunk = display:sub(i, i)
+            last_was_match = is_match
+        else
+            current_chunk = current_chunk .. display:sub(i, i)
+        end
+    end
+
+    -- Flush the final chunk
+    if current_chunk ~= "" then
+        table.insert(chunks, last_was_match and { current_chunk, "Label" } or { current_chunk })
+    end
+
     return chunks
 end
 
+---@param query string User input for fuzzy matching
+---@param fd_opts loop.filepicker.fdopts Configuration for directory walking
+---@param fetch_opts loop.Picker.AsyncFetcherOpts Layout constraints from the UI
+---@param callback fun(items:loop.SelectorItem[]?) Called when new items are ready
+---@return fun() cancel Function to stop the directory walk
 local function async_lua_search(query, fd_opts, fetch_opts, callback)
-    local cancel_fn = filetools.async_walk_dir(
+    assert(query ~= "")
+    local count = 0
+    local max_results = fd_opts.max_results or 1000
+    local items = {}
+
+    local cancel_fn
+    cancel_fn = filetools.async_walk_dir(
         fd_opts.cwd,
-        query,
-        fd_opts.include_globs,
         fd_opts.exclude_globs,
-        fd_opts.max_results,
-        function(chunk)
-            local items = {}
-            for _, path in ipairs(chunk) do
-                local display = path:gsub("^" .. fd_opts.cwd .. "[/\\]?", "")
-                table.insert(items,
-                    {
-                        label_chunks = _build_label_chunks(display, query),
-                        data = path
-                    })
+        function(full_path, filename)
+            if filename:sub(1) == '.' then
+                return
             end
-            callback(items)
+            -- 1. Get relative path for matching/display
+            local relative_path = full_path:sub(#fd_opts.cwd + 1)
+            -- 2. Fuzzy Match
+            local is_match, score, positions = strtools.fuzzy_match(filename, query)
+            if not is_match then
+                return
+            end
+
+            -- 3. Limit Check
+            if count >= max_results then
+                cancel_fn()
+                return
+            end
+
+            local display = strtools.smart_crop_path(relative_path, fetch_opts.list_width)
+            positions = _adjust_position_pairs(positions, #display - #filename)
+            local chunks = _build_label_chunks(display, positions)
+
+            -- 4. Prepare UI Item
+
+            table.insert(items, {
+                label_chunks = chunks,
+                data = full_path,
+                score = score, -- Store score if your picker supports sorting
+            })
+            count = count + 1
+
+            -- 5. Batch updates to the UI
+            if #items >= 20 then
+                local batch = items
+                items = {}
+                vim.schedule(function() callback(batch) end)
+            end
         end,
         function()
-            -- Finished
-            callback(nil)
+            -- Final Flush
+            if #items > 0 then
+                vim.schedule(function()
+                    callback(items)
+                    callback(nil)
+                end)
+            else
+                vim.schedule(function() callback(nil) end)
+            end
         end
     )
-    assert(type(cancel_fn) == "function")
+
     return cancel_fn
 end
 
 ---@param query string
 ---@param opts loop.filepicker.fdopts
----@return string?, string[]?
+---@return string, string[]
 local function get_search_cmd(query, opts)
     local args = { "--type", "f", "--fixed-strings", "--color", "never" }
     -- fd ignores hidden files by default; use --hidden if you wanted them.
@@ -135,10 +208,10 @@ local function async_fd_search(query, fd_opts, fetch_opts, callback)
 
             if count < max_results then
                 local path = vim.fs.joinpath(fd_opts.cwd, line)
+                local _, _, positions = strtools.fuzzy_match(line, query)
                 local display = strtools.smart_crop_path(line, fetch_opts.list_width)
-
-                -- Build label_chunks with case-insensitive substring highlighting
-                local chunks = _build_label_chunks(display, query)
+                positions = _adjust_position_pairs(positions, #display - #line)
+                local chunks = _build_label_chunks(display, positions)
                 table.insert(items, {
                     label_chunks = chunks, -- use chunks instead of label
                     data = path,
@@ -221,7 +294,7 @@ function M.open(opts)
             local fd_opts = {
                 cwd = opts.cwd or vim.fn.getcwd(),
                 include_globs = opts.include_globs or {},
-                exclude_globs = opts.exclude_globs or { ".git", "node_modules", "target" },
+                exclude_globs = opts.exclude_globs,
                 max_results = opts.max_results,
             }
             if loopconfig.use_fd_find then
