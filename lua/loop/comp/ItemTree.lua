@@ -488,7 +488,6 @@ function ItemTree:_on_render_request(buf)
     local flat, have_loading_nodes = _refresh_tree(self._tree, function()
         vim.schedule(function() self:_request_render() end)
     end)
-
     if have_loading_nodes and not self._no_delay_next_render then
         vim.defer_fn(function()
             self._no_delay_next_render = true
@@ -501,7 +500,6 @@ function ItemTree:_on_render_request(buf)
     local buffer_lines = {}
     local extmarks_data = {}
     local hl_ranges = {}
-    local new_flat_nodes = {} ---@type loop.tools.Tree.FlatNode[]
 
     -- HEADER (left chunk normal, right chunk as virtual text)
     if self._header then
@@ -510,10 +508,8 @@ function ItemTree:_on_render_request(buf)
         local right_chunk = self._header[2] or { "" }
         -- Full-line background
         table.insert(extmarks_data, {
-
-            row = row,
-            start_col = 0,
-            mark = {
+            row, 0,
+            {
                 line_hl_group = _header_hl_group,
             }
         })
@@ -523,21 +519,18 @@ function ItemTree:_on_render_request(buf)
         -- Left chunk highlight
         if left_chunk[2] then
             table.insert(extmarks_data, {
-                row = row,
-                start_col = 0,
-                mark = {
-                    end_col = #line,
-                    hl_group = left_chunk[2],
-                }
+                row, 0, {
+                end_col = #line,
+                hl_group = left_chunk[2],
+            }
             })
         end
         -- Right-aligned virtual text
         local right_text = right_chunk[1] or ""
         if #right_text > 0 then
             table.insert(extmarks_data, {
-                row = row,
-                start_col = 0, -- start_col ignored for virt_text
-                mark = {
+                row, 0, -- start_col ignored for virt_text
+                {
                     virt_text = { { right_text, right_chunk[2] } },
                     virt_text_pos = "right_align",
                     hl_mode = "combine",
@@ -546,104 +539,84 @@ function ItemTree:_on_render_request(buf)
         end
     end
 
-    for _, flatnode in ipairs(flat) do
-        local item_id = flatnode.id
-        local item = flatnode.data
+    self._flat = flat
 
-        -- icon
+    -- Cache these outside the loop to avoid repeated overhead
+    local t_insert = table.insert
+    local s_rep = string.rep
+
+    local indent_str = self._indent_string
+    local expand_char = self._expand_char
+    local collapse_char = self._collapse_char
+    local loading_char = self._loading_char
+    local expand_padding = s_rep(" ", vim.fn.strdisplaywidth(expand_char)) .. " "
+
+    -- Pre-generate indents for common depths (e.g., up to 20) to avoid s_rep
+    local indent_cache = {}
+    for i = 0, 20 do indent_cache[i] = s_rep(indent_str, i) end
+
+    for _, flatnode in ipairs(flat) do
+        local item = flatnode.data
+        local item_id = flatnode.id
+        local depth = flatnode.depth or 0
+
+        -- 2. FAST PREFIX CONSTRUCTION
         local icon = ""
         if item_id and (self._tree:have_children(item_id) or item.children_callback) then
-            if self._loading_char and item.children_loading then
-                icon = self._loading_char
-            elseif item.expanded then
-                icon = self._collapse_char
-            else
-                icon = self._expand_char
-            end
+            icon = (item.children_loading and loading_char)
+                or (item.expanded and collapse_char)
+                or expand_char
         end
 
-        -- prefix
-        local prefix = string.rep(self._indent_string, flatnode.depth or 0)
-        if icon ~= "" then
-            prefix = prefix .. icon .. " "
-        else
-            prefix = prefix .. string.rep(" ", vim.fn.strdisplaywidth(self._expand_char)) .. " "
-        end
+        local indent = indent_cache[depth] or s_rep(indent_str, depth)
+        local prefix = icon ~= "" and (indent .. icon .. " ") or (indent .. expand_padding)
+        local prefix_len = #prefix
 
-        local prefix_width = vim.fn.strdisplaywidth(prefix)
-        local empty_prefix = string.rep(" ", prefix_width)
-
-        -- formatter → normalized chunks
+        -- 3. ELIMINATE INNER FUNCTIONS & TABLE CHURN
+        -- Instead of a 'flush' closure, we handle line breaks inline
         local text_chunks, virt_chunks = self._formatter(item_id, item.userdata, item.expanded)
-        local chunks = _normalize_text_chunks(text_chunks)
 
-        -- line state
-        local cur_line = prefix
-        local cur_col = #prefix
-        local cur_hls = {}
-        local first_row = nil
+        local current_line = prefix
+        local current_col = prefix_len
+        local row_offset = #buffer_lines
 
-        local function flush()
-            table.insert(buffer_lines, cur_line)
-            table.insert(new_flat_nodes, flatnode)
+        for i = 1, #text_chunks do
+            local chunk = text_chunks[i]
+            local text, hl, is_nl = chunk[1], chunk[2], chunk[3]
+            local text_len = #text
 
-            local row = #buffer_lines - 1
-            first_row = first_row or row
-
-            for _, hl in ipairs(cur_hls) do
-                table.insert(hl_ranges, {
-                    hl = hl.group,
-                    row = row,
-                    start_col = hl.start_col,
-                    end_col = hl.end_col
-                })
-            end
-
-            cur_line = empty_prefix
-            cur_col = #empty_prefix
-            cur_hls = {}
-        end
-
-        -- render chunks
-        for _, chunk in ipairs(chunks) do
-            local text = chunk[1]
-            local hl_grp = chunk[2]
-            local is_nl = chunk[3]
-            local start_col = cur_col
-            cur_line = cur_line .. text
-            cur_col = cur_col + #text
-
-            if hl_grp and #text > 0 then
-                table.insert(cur_hls, {
-                    group = hl_grp,
-                    start_col = start_col,
-                    end_col = cur_col,
-                })
+            if text_len > 0 then
+                if hl then
+                    -- Record highlight as extmark immediately
+                    t_insert(extmarks_data, {
+                        row_offset, current_col,
+                        { end_col = current_col + text_len, hl_group = hl, priority = 10 }
+                    })
+                end
+                current_line = current_line .. text
+                current_col = current_col + text_len
             end
 
             if is_nl then
-                flush()
+                t_insert(buffer_lines, current_line)
+                -- Prep for next line (multi-line node support)
+                row_offset = row_offset + 1
+                current_line = s_rep(" ", prefix_len)
+                current_col = prefix_len
             end
         end
 
-        -- flush final line
-        flush()
+        -- Finalize the last (or only) line of this node
+        t_insert(buffer_lines, current_line)
 
-        -- virt_text
-        local vt = {}
-        for _, c in ipairs(virt_chunks or {}) do
-            table.insert(vt, c) -- each element is already {virt_text, hl}
-        end
-        if #vt > 0 and first_row then
-            table.insert(extmarks_data, {
-                row = first_row,
-                start_col = 0,
-                mark = { virt_text = vt, hl_mode = "combine" },
+        -- 4. BATCH VIRTUAL TEXT
+        if virt_chunks and #virt_chunks > 0 then
+            t_insert(extmarks_data, {
+                #buffer_lines - 1, 0,
+                { virt_text = virt_chunks, virt_text_pos = "right_align" }
             })
         end
     end
-
-    self._flat = new_flat_nodes
 
     vim.api.nvim_buf_clear_namespace(buf, _ns_id, 0, -1)
     vim.bo[buf].modifiable = true
@@ -651,7 +624,7 @@ function ItemTree:_on_render_request(buf)
     vim.bo[buf].modifiable = false
 
     for _, data in ipairs(extmarks_data) do
-        vim.api.nvim_buf_set_extmark(buf, _ns_id, data.row, data.start_col, data.mark)
+        vim.api.nvim_buf_set_extmark(buf, _ns_id, data[1], data[2], data[3])
     end
 
     -- apply highlight ranges
@@ -712,7 +685,7 @@ function ItemTree:_expand_recursive(id)
     local item = self:_get_data(id)
     if not item then return end
     -- recusive expand does not async fetched nodes (children_callback) for performance
-    if not item.expanded and self._tree:have_children(id) then
+    if not item.expanded and (self._tree:have_children(id) or item.children_callback) then
         item.expanded = true
         self._trackers:invoke("on_toggle", id, item.userdata, true)
     end
