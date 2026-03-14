@@ -128,12 +128,24 @@ end
 
 ---@param name string
 ---@param def loop.SideViewDef
+---@return loop.SideViewCtrl
 function M.register_new_view(name, def)
     assert(not _views[name], "View already registered: " .. name)
     _views[name] = def
     if not _active_view then
         _active_view = name
     end
+    ---@type loop.SideViewCtrl
+    return  {
+         show = function ()
+            M.show(name)
+         end
+    }
+end
+
+---@return boolean
+function M.have_views()
+    return next(_views) ~= nil
 end
 
 ---@return string[]
@@ -151,7 +163,7 @@ function M.show(name)
         name = _active_view
     end
     if not name then
-        vim.notify("No side view to show", vim.log.levels.ERROR)
+        vim.notify("No side panel available", vim.log.levels.ERROR)
         return
     end
     local def = _views[name]

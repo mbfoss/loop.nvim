@@ -178,7 +178,7 @@ function M.on_workspace_load(wsinfo, page_manager)
 				return _register_cmd_provider(ext_context, lead_cmd, provider)
 			end,
 			register_side_view = function (viewname, viewdef)
-				sidepanel.register_new_view(viewname, viewdef)
+				return sidepanel.register_new_view(viewname, viewdef)
 			end,
 			register_task_type = _register_task_type_provider,
 			register_task_templates = _register_task_template_provider,

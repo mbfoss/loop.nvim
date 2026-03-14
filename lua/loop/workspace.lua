@@ -529,7 +529,10 @@ end
 ---@return string[]
 function M.get_commands()
     _ensure_init()
-    local cmds = { "workspace", "log", "statuspanel", "sidepanel", "page" }
+    local cmds = { "workspace", "log", "statuspanel", "page" }
+    if sidepanel.have_views() then
+        table.insert(cmds, "sidepanel")
+    end
     if _ws_data then
         vim.list_extend(cmds, { "task", "var" })
         vim.list_extend(cmds, extdata.lead_commands())
@@ -748,17 +751,18 @@ end
 
 function M.statuspanel_subcommands(args)
     if #args == 0 then
-        return { "toggle", "show", "hide", "clean" }
+        return { "show", "hide", "clean" }
     end
     return {}
 end
 
 function M.sidepanel_subcommands(args)
     if #args == 0 then
-        return { "toggle", "show", "hide" }
+        return { "show", "hide" }
     end
     if #args == 1 and args[1] == "show" then
-        return sidepanel.view_names()
+        local view_names = sidepanel.view_names()
+        return #view_names > 1 and view_names or {}
     end
     return {}
 end
@@ -796,7 +800,7 @@ end
 
 function M.statuspanel_command(command)
     _ensure_init()
-    if not command or command == "toggle" then
+    if not command or command == "" then
         M.toggle_window()
     elseif command == "show" then
         M.show_window()
@@ -811,7 +815,7 @@ function M.statuspanel_command(command)
 end
 
 function M.sidepanel_command(command, name)
-    if command == nil or command == "" or command == "toggle" then
+    if command == nil or command == "" then
         sidepanel.toggle()
     elseif command == "show" then
         sidepanel.show(name)
