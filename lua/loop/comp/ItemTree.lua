@@ -25,7 +25,7 @@ local table_clear = require("table.clear")
 ---@field load_sequence number
 ---@field is_loading boolean|nil
 ---@field _cached_output {text: any, virt: any}? -- Cache storage
----@field _dirty boolean?                        -- Cache invalidation flag
+---@field dirty boolean?                        -- Cache invalidation flag
 
 ---@class loop.comp.ItemTree.Tracker
 ---@field on_selection? fun(id:any,data:any)
@@ -70,7 +70,7 @@ local function _itemdef_to_itemdata(item)
         expanded = item.expanded,
         reload_children = true,
         load_sequence = 1,
-        _dirty = true,
+        dirty = true,
     }
 end
 
@@ -326,7 +326,7 @@ function ItemTree:set_item_data(id, data)
     local base_data = self._tree:get_data(id)
     assert(base_data, "id not found: " .. tostring(id))
     base_data.userdata = data
-    base_data._dirty = true
+    base_data.dirty = true
     self._tree:set_item_data(id, base_data)
     self:_request_render()
 end
@@ -499,10 +499,10 @@ function ItemTree:_on_render_request(buf)
         local prefix_len = #prefix
 
         -- CACHE LOGIC START
-        if item._dirty or not item._cached_output then
+        if item.dirty or not item._cached_output then
             local text_chunks, virt_chunks = self._formatter(item_id, item.userdata, item.expanded)
             item._cached_output = { text = text_chunks, virt = virt_chunks }
-            item._dirty = false
+            item.dirty = false
         end
 
         local text_chunks = item._cached_output.text
@@ -584,7 +584,7 @@ function ItemTree:expand(id)
     local data = self._tree:get_data(id)
     if data then
         data.expanded = true
-        data._dirty = true -- state change may affect the formatter
+        data.dirty = true -- state change may affect the formatter
         if not self:_request_children(id, data) then
             self:_request_render()
         end
@@ -597,7 +597,7 @@ function ItemTree:collapse(id)
     local data = self._tree:get_data(id)
     if data then
         data.expanded = false
-        data._dirty = true -- state change may affect the formatter
+        data.dirty = true -- state change may affect the formatter
         self:_request_render()
         self._trackers:invoke("on_toggle", id, data.userdata, false)
     end
@@ -676,7 +676,7 @@ function ItemTree:_request_children(item_id, item_data)
     local tree = self._tree
     ---@param parent_id any
     ---@param loaded_children loop.comp.ItemTree.ItemDef[]
-    local set_children = function(parent_id, loaded_children)
+    local update_children = function(parent_id, loaded_children)
         local old_ids = {}
         for _, child in ipairs(tree:get_children(parent_id)) do
             old_ids[child.id] = true
@@ -691,39 +691,45 @@ function ItemTree:_request_children(item_id, item_data)
                     not existing_parent or existing_parent == parent_id,
                     "id exists under a different node: " .. tostring(child.id)
                 )
-                if child.data then child_basedata.userdata = child.data end
+                if child.data then
+                    child_basedata.userdata = child.data
+                    child_basedata.dirty = true
+                end
                 if child.expanded ~= nil then child_basedata.expanded = child.expanded end
-                child_basedata.children_callback = child.children_callback
-                if child_basedata.children_callback then
+                if child.children_callback then
+                    child_basedata.children_callback = child.children_callback
                     child_basedata.reload_children = true
                     child_basedata.load_sequence = child_basedata.load_sequence + 1
+                    self:_request_children(child.id, child_basedata)
                 else
                     tree:remove_children(child.id)
                 end
             else
-                tree:add_item(parent_id, child.id, _itemdef_to_itemdata(child))
+                self:add_item(parent_id, child)
             end
         end
         for id, _ in pairs(old_ids) do
             tree:remove_item(id)
         end
+        self:_request_render()
     end
     ---@type loop.comp.ItemTree.ItemData
     if item_data.children_callback and item_data.reload_children ~= false then
-        item_data.reload_children = false
-        item_data.children_loading = true
-        local sequence = item_data.load_sequence
-        vim.schedule(function()
-            if sequence ~= item_data.load_sequence or not item_data.children_callback then return end
-            item_data.children_callback(function(loaded_children)
-                if sequence ~= item_data.load_sequence then return end
-                if tree:get_data(item_id) then
-                    item_data.children_loading = false
-                    set_children(item_id, loaded_children)
-                    self:_request_render()
-                end
+        if item_data.expanded then
+            item_data.reload_children = false
+            item_data.children_loading = true
+            local sequence = item_data.load_sequence
+            vim.schedule(function()
+                if sequence ~= item_data.load_sequence or not item_data.children_callback then return end
+                item_data.children_callback(function(loaded_children)
+                    if sequence ~= item_data.load_sequence then return end
+                    if tree:get_data(item_id) then
+                        item_data.children_loading = false
+                        update_children(item_id, loaded_children)
+                    end
+                end)
             end)
-        end)
+        end
         return true
     end
     return false
