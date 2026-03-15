@@ -28,6 +28,7 @@ function FileTree:init(opts)
     vim.validate("opts.root", opts.root, "string")
 
     ItemTreeComp.init(self, {
+        transient_children_callbacks = true,
         formatter = function(id, data)
             return self:_file_formatter(id, data)
         end
@@ -221,6 +222,17 @@ function FileTree:reveal(path)
     if not rel then
         return
     end
+    -- 1. Collapse everything that isn't a parent of the target path
+    local items = self:get_items()
+    for _, item in ipairs(items) do
+        -- Don't collapse the root and don't collapse if the item is a parent of our target
+        -- We check if 'id' is a prefix of 'path'
+        if item.id ~= self.root and item.expanded then
+            if not vim.startswith(path, item.id) then
+                self:collapse(item.id)
+            end
+        end
+    end
     local parts = rel ~= "" and vim.split(rel, "/", { plain = true }) or {}
     self:_reveal_step(root, parts, 1)
 end
@@ -259,12 +271,8 @@ function FileTree:link_to_buffer(comp)
     ItemTreeComp.link_to_buffer(self, comp)
     self:add_tracker({
         on_selection = function(id, data)
-            if data.is_dir then
-                self:toggle_expand(id)
-            else
-                uitools.smart_open_file(data.path)
-            end
-        end
+            uitools.smart_open_file(data.path)
+        end,
     })
 
     -- track active buffer

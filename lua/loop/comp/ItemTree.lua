@@ -46,6 +46,7 @@ local table_clear = require("table.clear")
 ---@field indent_string string?
 ---@field render_delay_ms number?
 ---@field header string[][]?
+---@field transient_children_callbacks boolean?
 
 ---@class loop.comp.ItemTree
 local ItemTree = class()
@@ -91,6 +92,7 @@ function ItemTree:init(args)
     self._loading_char = args.enable_loading_indictaor and (args.loading_char or "⧗") or nil
     self._indent_string = args.indent_string or "  "
     self._render_delay_ms = args.render_delay_ms or 150
+    self._transient_children_callbacks = args.transient_children_callbacks
 
     self._tree = Tree:new()
     self._flat = {} ---@type loop.tools.Tree.FlatNode[]
@@ -550,6 +552,9 @@ function ItemTree:collapse(id)
     if data then
         data.expanded = false
         data.dirty = true -- state change may affect the formatter
+        if self._transient_children_callbacks then
+            self._tree:set_children(id, {})
+        end
         self:_request_render()
         self._trackers:invoke("on_toggle", id, data.userdata, false)
     end
@@ -586,6 +591,9 @@ function ItemTree:_collapse_recursive(id)
     if not item then return end
     if item.expanded then
         item.expanded = false
+        if self._transient_children_callbacks then
+            self._tree:set_children(id, {})
+        end
         self._trackers:invoke("on_toggle", id, item.userdata, false)
     end
 
@@ -666,8 +674,9 @@ function ItemTree:_request_children(item_id, item_data)
         self:_request_render()
     end
     ---@type loop.comp.ItemTree.ItemData
-    if item_data.children_callback and item_data.reload_children ~= false then
-        if item_data.expanded then
+    if item_data.children_callback then
+        local reload = self._transient_children_callbacks or item_data.reload_children ~= false
+        if item_data.expanded and reload then
             item_data.reload_children = false
             item_data.children_loading = true
             local sequence = item_data.load_sequence
