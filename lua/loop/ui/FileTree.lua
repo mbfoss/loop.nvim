@@ -1,8 +1,8 @@
-local class        = require("loop.tools.class")
-local uitools      = require("loop.tools.uitools")
-local ItemTreeComp = require("loop.comp.ItemTree")
+local class      = require("loop.tools.class")
+local uitools    = require("loop.tools.uitools")
+local TreeBuffer = require("loop.buf.TreeBuffer")
 
-local uv           = vim.loop
+local uv         = vim.loop
 
 ---@class loop.comp.FileTree.ItemData
 ---@field path string
@@ -17,21 +17,57 @@ local uv           = vim.loop
 ---@field include_globs string[]
 ---@field exclude_globs string[]
 
+-- at the top of your file
+local _dev_icons_attempt, devicons
+local file_icons = {
+    txt      = "",
+    md       = "",
+    markdown = "",
+    json     = "",
+    lua      = "",
+    py       = "",
+    js       = "",
+    ts       = "",
+    html     = "",
+    css      = "",
+    c        = "",
+    cpp      = "",
+    h        = "",
+    hpp      = "",
+    sh       = "",
+    rb       = "",
+    go       = "",
+    rs       = "",
+    java     = "",
+    kt       = "𝙆",
+    default  = "",
+}
+
 ---@class loop.comp.FileTree : loop.comp.ItemTree
 ---@field new fun(self:loop.comp.FileTree,opts:loop.comp.FileTreeOpts):loop.comp.FileTree
-local FileTree     = class(ItemTreeComp)
-
+local FileTree   = class()
 
 ---@param opts loop.comp.FileTreeOpts
 function FileTree:init(opts)
     vim.validate("opts", opts, "table")
     vim.validate("opts.root", opts.root, "string")
 
-    ItemTreeComp.init(self, {
-        transient_children_callbacks = true,
+    self._tree = TreeBuffer:new({
         formatter = function(id, data)
             return self:_file_formatter(id, data)
-        end
+        end,
+        base_opts = {
+            name = "Workspace Files",
+            filetype = "loop-filetree",
+            listed = false,
+            wipe_when_hidden = true,
+        }
+    })
+
+    self._tree:add_tracker({
+        on_selection = function(id, data)
+            uitools.smart_open_file(data.path)
+        end,
     })
 
     self.root = vim.fs.normalize(opts.root)
@@ -39,6 +75,11 @@ function FileTree:init(opts)
     self._exclude_patterns = self:_compile_globs(opts.exclude_globs)
 
     self:_set_root(self.root)
+end
+
+---@return loop.comp.BaseBuffer
+function FileTree:get_compbuffer()
+    return self._tree
 end
 
 ---@param globs string[]|nil
@@ -95,9 +136,9 @@ function FileTree:_should_include(rel, is_dir)
 end
 
 function FileTree:_set_root(path)
-    self:clear_items()
+    self._tree:clear_items()
 
-    ---@type loop.comp.FileTree.ItemDef
+    ---@type loop.comp.TreeBuffer.ItemDef
     local root_item = {
         id = path,
         expanded = true,
@@ -112,25 +153,46 @@ function FileTree:_set_root(path)
         self:_read_dir(path, cb)
     end
 
-    self:add_item(nil, root_item)
+    self._tree:add_item(nil, root_item)
 end
 
--- formatter
 ---@param id string
 ---@param data loop.comp.FileTree.ItemData
 function FileTree:_file_formatter(id, data)
     if not data then
         return {}, {}
     end
-
     local chunks = {}
-
-    local icon = data.is_dir and " " or " "
-    local hl = data.is_dir and "Directory" or (self._active_file_id == id) or "Normal"
-
-    table.insert(chunks, { icon, hl })
-    table.insert(chunks, { data.name, hl })
-
+    local icon, icon_hl, text_hl
+    if data.is_dir then
+        icon = " "
+        icon_hl = "Directory"
+        text_hl = icon_hl
+    else
+        local ext = data.name:match("%.([^.]+)$")
+        if not _dev_icons_attempt then
+            local loaded
+            loaded, devicons = pcall(require, "nvim-web-devicons")
+            if not loaded then devicons = nil end
+        end
+        -- try devicons first
+        if devicons then
+            local devicon_icon, devicon_hl = devicons.get_icon(data.name, ext, { default = false })
+            if devicon_icon then
+                icon = devicon_icon
+                icon_hl = devicon_hl or "Normal"
+            else
+                icon = file_icons[ext] or file_icons.default
+                icon_hl = "Normal"
+            end
+        else
+            icon = file_icons[ext] or file_icons.default
+            icon_hl = "Normal"
+        end
+    end
+    table.insert(chunks, { icon, icon_hl })
+    table.insert(chunks, { " " })
+    table.insert(chunks, { data.name, text_hl })
     return chunks, {}
 end
 
@@ -199,7 +261,7 @@ function FileTree:_read_dir(path, cb)
     cb(children)
 
     -- notify listeners waiting for this directory
-    local parent = self:get_item(path)
+    local parent = self._tree:get_item(path)
     if parent then
         local waiters = parent.data._children_waiters
         if waiters then
@@ -223,7 +285,7 @@ function FileTree:reveal(path)
         return
     end
     -- 1. Collapse everything that isn't a parent of the target path
-    local items = self:get_items()
+    local items = self._tree:get_items()
     for _, item in ipairs(items) do
         -- Don't collapse the root and don't collapse if the item is a parent of our target
         -- We check if 'id' is a prefix of 'path'
@@ -244,7 +306,7 @@ function FileTree:_reveal_step(parent, parts, idx)
     end
 
     local next_path = vim.fs.joinpath(parent, parts[idx])
-    local parent_item = self:get_item(parent)
+    local parent_item = self._tree:get_item(parent)
     if not parent_item then return end
 
     local function continue()
@@ -264,37 +326,6 @@ function FileTree:open(path)
     path = vim.fs.normalize(path)
     self.root = path
     self:_set_root(path)
-end
-
----@param comp loop.CompBufferController
-function FileTree:link_to_buffer(comp)
-    ItemTreeComp.link_to_buffer(self, comp)
-    self:add_tracker({
-        on_selection = function(id, data)
-            uitools.smart_open_file(data.path)
-        end,
-    })
-
-    -- track active buffer
-    self.bufenter_autocmd_id = vim.api.nvim_create_autocmd("BufEnter", {
-        callback = function()
-            local buf = vim.api.nvim_get_current_buf()
-            if uitools.is_regular_buffer(buf) then
-                local path = vim.api.nvim_buf_get_name(buf)
-                if path ~= "" then
-                    self:reveal(path)
-                end
-            end
-        end
-    })
-end
-
-function FileTree:dispose()
-    ItemTreeComp.dispose(self)
-    if self.bufenter_autocmd_id then
-        vim.api.nvim_del_autocmd(self.bufenter_autocmd_id)
-        self.bufenter_autocmd_id = nil
-    end
 end
 
 return FileTree

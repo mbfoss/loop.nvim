@@ -199,6 +199,11 @@ end
 ---@param ws_dir string
 local function _configure_workspace(ws_dir)
     local filepath, schema = _get_or_create_ws_config_file(ws_dir)
+    local existing_editor = JsonEditor.get_existing(filepath)
+    if existing_editor then
+        existing_editor:open()
+        return
+    end
     local editor = JsonEditor:new({
         name = "Workspace configuration",
         filepath = filepath,
@@ -216,28 +221,27 @@ local function _configure_workspace(ws_dir)
 end
 
 local function _register_builtin_sideviews(wsdir)
+    local ws_config = _load_workspace_config(wsdir)
+    if not ws_config then
+        vim.notify("Invalid worspace configuration")
+        return {}
+    end
+    local FileTree = require("loop.ui.FileTree")
+    local tree = FileTree:new({
+        root = wsdir,
+        include_globs = ws_config.files.include,
+        exclude_globs = ws_config.files.exclude,
+    })
     ---@type loop.SideViewDef
     local filetree_def = {
         get_comp_buffers = function()
-            local ws_config = _load_workspace_config(wsdir)
-            if not ws_config then
-                vim.notify("Invalid worspace configuration")
-                return {}
-            end
-            local CompBuffer = require("loop.buf.CompBuffer")
-            local FileTreeComp = require("loop.ui.FileTreeComp")
-            local comp = FileTreeComp:new({
-                root = wsdir,
-                include_globs = ws_config.files.include,
-                exclude_globs = ws_config.files.exclude,
-            })
-            local compbuf = CompBuffer:new({ filetype = "loop-filetree", name = "File Tree", listed = false })
-            comp:link_to_buffer(compbuf:make_controller())
-            compbuf:set_user_data(comp)
-            return { compbuf }
+            return { tree:get_compbuffer() }
         end,
         get_ratio = function()
             return {}
+        end,
+        on_hide = function ()
+            
         end
     }
     sidepanel.register_new_view("files", filetree_def)

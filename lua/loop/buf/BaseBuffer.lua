@@ -12,7 +12,7 @@ local throttle = require('loop.tools.throttle')
 ---@field name string
 ---@field filetype string
 ---@field listed boolean
----@field bufhidden ""|"hide"|"wipe"
+---@field wipe_when_hidden boolean
 
 ---@class loop.comp.BaseBuffer
 ---@field new fun(self: loop.comp.BaseBuffer, opts:loop.comp.BaseBufferOpts): loop.comp.BaseBuffer
@@ -23,14 +23,12 @@ function BaseBuffer:init(opts)
     vim.validate("opts", opts, "table")
     vim.validate("opts.name", opts.name, "string")
     vim.validate("opts.filetype", opts.filetype, "string")
-    vim.validate("opts.listed", opts.listed, {"nil", "boolean"})
-    vim.validate("opts.bufhidden", opts.bufhidden, "string")
-    assert(opts.bufhidden == "" or opts.bufhidden == "hide" or opts.bufhidden == "wipe",
-        "Invalid bufhidden value in opts")
+    vim.validate("opts.listed", opts.listed, { "nil", "boolean" })
+    vim.validate("opts.wipe_when_hidden", opts.wipe_when_hidden, "boolean")
     self._filetype = opts.filetype
     self._name = opts.name
-    self._listed = opts.listed or false
-    self._bufhidden_action = opts.bufhidden
+    self._listed = opts.listed
+    self._wipe_when_hidden = opts.wipe_when_hidden
     self._keymaps = {}
     self._buf = -1
 
@@ -97,6 +95,7 @@ function BaseBuffer:disable_change_events()
     self._no_change_events = true
 end
 
+---@private
 function BaseBuffer:_on_buf_enter()
     self:_apply_keymaps()
 end
@@ -138,6 +137,7 @@ function BaseBuffer:get_or_create_buf()
     return self._buf, true
 end
 
+---@protected
 function BaseBuffer:_setup_buf()
     assert(self._buf > 0)
     assert(type(self._filetype) == "string" and self._filetype ~= "")
@@ -156,10 +156,12 @@ function BaseBuffer:_setup_buf()
 
     vim.api.nvim_buf_set_name(buf, bufname)
 
+    assert(type(self._wipe_when_hidden) == "boolean")
+    assert(type(self._listed) == "boolean")
     do
         local b = vim.bo[buf]
         b.buftype = "nofile"
-        b.bufhidden = self._bufhidden_action
+        b.bufhidden = self._wipe_when_hidden and "wipe" or (self._listed and "" or "hide")
         b.filetype = self._filetype
         b.modifiable = false
         b.swapfile = false
@@ -213,6 +215,7 @@ function BaseBuffer:_apply_keymaps()
     end
 end
 
+---@private
 ---@param key string
 ---@param item loop.KeyMap
 function BaseBuffer:_apply_keymap(key, item)

@@ -47,8 +47,8 @@ local function _get_placeholder_buf()
     _placeholder_page = _placeholder_page or Page:new(BaseBuffer:new({
         name = "",
         filetype = "loop-empty",
-        bufhidden = "hide",
-        listed = false
+        listed = false,
+        wipe_when_hidden = false,
     }))
     local buf = _placeholder_page:get_or_create_buf()
     return buf
@@ -619,7 +619,7 @@ end
 ---@return loop.PageData?,string?
 local function _add_tab_page(tab, opts)
     if opts.type == "term" then
-        local basebuf = BaseBuffer:new({ filetype = "loop-term", name = opts.label, listed = false, bufhidden = "hide" })
+        local basebuf = BaseBuffer:new({ filetype = "loop-term", name = opts.label, listed = false, wipe_when_hidden = false, })
         local page = Page:new(basebuf)
         _assign_tab_page(tab, page, opts.activate)
         local proc, err = _create_term(page, opts.term_args)
@@ -634,7 +634,7 @@ local function _add_tab_page(tab, opts)
             filetype = "loop-output",
             name = opts.label,
             listed = false,
-            bufhidden = "hide"
+            wipe_when_hidden = false,
         })
         local page = Page:new(output_buf)
         _assign_tab_page(tab, page, opts.activate)
@@ -651,7 +651,7 @@ local function _add_tab_page(tab, opts)
         return { page = page:make_controller(), base_buf = ctrl, comp_buf = ctrl }
     end
     if opts.type == "repl" then
-        local repl_buf = ReplBuffer:new({ filetype = "loop-repl", name = opts.label, listed = false, bufhidden = "hide" })
+        local repl_buf = ReplBuffer:new({ filetype = "loop-repl", name = opts.label, listed = false, wipe_when_hidden = false, })
         local page = Page:new(repl_buf)
         _assign_tab_page(tab, page, opts.activate)
         ---@type loop.PageData

@@ -448,7 +448,7 @@ function ItemTree:_on_render_request(buf)
     end
 
     -- 2. FLATTEN TREE
-    self._tree:flatten_into(self._flat, function(_, data) return data.expanded ~= false end)
+    self._flat = self._tree:flatten(nil, function(_, data) return data.expanded ~= false end)
 
     local indent_str = self._indent_string
     local expand_char, collapse_char, loading_char = self._expand_char, self._collapse_char, self._loading_char

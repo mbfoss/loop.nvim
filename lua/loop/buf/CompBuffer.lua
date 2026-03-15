@@ -20,7 +20,7 @@ function CompBuffer:init(opts)
         name = opts.name,
         filetype = opts.filetype,
         listed = opts.listed,
-        bufhidden = opts.listed and "" or "wipe"
+        wipe_when_hidden = not opts.listed
     }
     BaseBuffer.init(self, base_opts)
     self._throttled_render = throttle.throttle_wrap(100, function()

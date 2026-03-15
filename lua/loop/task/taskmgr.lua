@@ -194,7 +194,11 @@ end
 function M.configure_tasks(config_dir)
     local tasks_file_schema = _build_taskfile_schema()
     local filepath = vim.fs.joinpath(config_dir, "tasks.json")
-
+    local existing_editor = JsonEditor.get_existing(filepath)
+    if existing_editor then
+        existing_editor:open()
+        return
+    end
     if not filetools.file_exists(filepath) then
         local schema_filepath = vim.fs.joinpath(config_dir, 'tasksschema.json')
         if not filetools.file_exists(schema_filepath) then

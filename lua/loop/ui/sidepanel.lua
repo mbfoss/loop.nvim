@@ -12,6 +12,7 @@ local _ui_auto_group = vim.api.nvim_create_augroup("LoopPlugin_SideView", { clea
 ---@class loop.SideViewDef
 ---@field get_comp_buffers fun():loop.comp.BaseBuffer[]
 ---@field get_ratio fun():number[]
+---@field on_hide fun()
 ---@field ratios? number[]
 ---@field width_ratio? number
 
@@ -20,9 +21,6 @@ local _views = {}
 
 ---@type string|nil
 local _active_view = nil
-
----@type loop.comp.BaseBuffer[]
-local _active_buffers = {}
 
 -- ======================================
 -- Window Helpers
@@ -103,20 +101,6 @@ local function apply_ratios(windows, ratios, width_ratio)
 end
 
 -- ======================================
--- Lifecycle
--- ======================================
-
-local function destroy_buffers()
-    for _, buf in ipairs(_active_buffers) do
-        if buf.destroy then
-            buf:destroy()
-        end
-    end
-
-    _active_buffers = {}
-end
-
--- ======================================
 -- Registration
 -- ======================================
 
@@ -136,10 +120,10 @@ function M.register_new_view(name, def)
         _active_view = name
     end
     ---@type loop.SideViewCtrl
-    return  {
-         show = function ()
+    return {
+        show = function()
             M.show(name)
-         end
+        end
     }
 end
 
@@ -173,8 +157,9 @@ function M.show(name)
         return
     end
 
+    local wins = get_managed_windows()
+
     if not name or name == _active_view then
-        local wins = get_managed_windows()
         if #wins > 0 then
             return
         end
@@ -182,7 +167,7 @@ function M.show(name)
 
     _active_view = name
 
-    if #_active_buffers > 0 then
+    if #wins > 0 then
         M.hide()
     end
 
@@ -236,8 +221,6 @@ function M.show(name)
         vim.api.nvim_set_current_win(original)
     end
 
-    _active_buffers = buffers
-
     -- Resize handling
     vim.api.nvim_clear_autocmds({ group = _ui_auto_group })
     vim.api.nvim_create_autocmd("VimResized", {
@@ -262,9 +245,18 @@ end
 function M.hide()
     local wins = get_managed_windows()
 
-    vim.api.nvim_clear_autocmds({ group = _ui_auto_group })
+    if #wins > 0 then
+        -- Call on_hide for the active view
+        if _active_view then
+            local def = _views[_active_view]
+            if def and def.on_hide then
+                def.on_hide()
+            end
+        end
+    end
 
-    destroy_buffers()
+    vim.api.nvim_clear_autocmds({ group = _ui_auto_group })
+    -- destroy_buffers()
     for _, win in ipairs(wins) do
         if vim.api.nvim_win_is_valid(win) then
             vim.api.nvim_win_close(win, true)

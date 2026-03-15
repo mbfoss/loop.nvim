@@ -1,5 +1,4 @@
 local class = require("loop.tools.class")
-local table_clear = require("table.clear")
 
 ---@class loop.tools.Tree.Item
 ---@field id any
@@ -12,6 +11,11 @@ local table_clear = require("table.clear")
 ---@field last_child any|nil
 ---@field next_sibling any|nil
 ---@field prev_sibling any|nil
+
+---@class loop.tools.Tree.FlatNode
+---@field id any
+---@field data any
+---@field depth integer
 
 ---@generic T
 ---@class loop.tools.Tree
@@ -404,6 +408,31 @@ function Tree:get_data(id)
 	return node and node.data or nil
 end
 
+--- Get the depth of a node (0 for root nodes)
+---@param id any
+---@return integer
+function Tree:get_depth(id)
+	if not id then return 0 end
+
+	local node = self._nodes[id]
+	if not node then
+		error("node does not exist: " .. tostring(id))
+	end
+
+	local depth = 0
+	local current_parent = node.parent_id
+
+	while current_parent ~= nil do
+		depth = depth + 1
+		local parent_node = self._nodes[current_parent]
+		-- Safety check for broken tree links
+		if not parent_node then break end
+		current_parent = parent_node.parent_id
+	end
+
+	return depth
+end
+
 ---@return loop.tools.Tree.Item[]
 function Tree:get_items()
 	local items = {}
@@ -472,72 +501,103 @@ function Tree:remove_children(id)
 	node.last_child = nil
 end
 
+---Walk a node and its descendants (depth-first).
+---@private
+---@param id any
+---@param depth integer
+---@param handler fun(id:any, data:any, depth:number):boolean?
+function Tree:_walk_node(id, depth, handler)
+	local node = self._nodes[id]
+	if not node then return end
+
+	if handler(id, node.data, depth) == false then
+		return
+	end
+
+	local child = node.first_child
+	while child do
+		self:_walk_node(child, depth + 1, handler)
+		child = self._nodes[child].next_sibling
+	end
+end
+
+---Walk a single node subtree.
+---@param id any
+---@param handler fun(id:any, data:any, depth:number):boolean?
+function Tree:walk_node(id, handler)
+	assert(id ~= nil, "id is required")
+	assert(self._nodes[id], "node does not exist")
+
+	self:_walk_node(id, 0, handler)
+end
+
+---Count descendants of a node (depth-first).
+---@param starting_id any
+---@param filter (fun(id:any, data:any):boolean?)?
+---@return integer
+function Tree:tree_size(starting_id, filter)
+	if not starting_id then
+		local count = 0
+		for _ in pairs(self._nodes) do
+			count = count + 1
+		end
+		return count
+	end
+	local id = starting_id
+	assert(self._nodes[id], "node does not exist")
+	local count = 0
+	self:_walk_node(id, 0, function(nid, data)
+		count = count + 1
+		if filter then
+			return filter(nid, data)
+		end
+		return true
+	end)
+	return count
+end
+
 --==============================================================
 -- Flattening (for UI)
 --==============================================================
 
----A flattened node structure (for UI rendering).
----@class loop.tools.Tree.FlatNode
----@field id any
----@field data any
----@field depth integer
-
----Flatten the tree in depth-first order.
----@param filter (fun(id:any, data:any):boolean?)?  Return false to skip children
+---Flatten the tree (or a subtree) in depth-first order.
+---@param starting_id any|nil  -- nil = whole tree
+---@param filter (fun(id:any, data:any):boolean?)?
 ---@return loop.tools.Tree.FlatNode[]
-function Tree:flatten(filter)
+function Tree:flatten(starting_id, filter)
 	local out = {}
-	self:flatten_into(out, filter)
-	return out
-end
 
----Flatten the tree in depth-first order.
----@param out loop.tools.Tree.FlatNode[]
----@param filter (fun(id:any, data:any):boolean?)?  Return false to skip children
-function Tree:flatten_into(out, filter)
-	table_clear(out)
-	-- Handler function for walk
 	local function handler(id, data, depth)
-		table.insert(out, {
+		out[#out + 1] = {
 			id = id,
 			data = data,
 			depth = depth,
-		})
-		-- Return filter result for children traversal
+		}
+
 		if filter then
 			return filter(id, data)
-		else
-			return true -- traverse children by default
 		end
+
+		return true
 	end
-	self:walk(handler)
+
+	if starting_id == nil then
+		local id = self._root_first
+		while id do
+			self:_walk_node(id, 0, handler)
+			id = self._nodes[id].next_sibling
+		end
+	else
+		assert(self._nodes[starting_id], "node does not exist")
+		self:walk_node(starting_id, handler)
+	end
+
+	return out
 end
 
----Walk the tree in depth-first order recursively.
----@param handler fun(id:any, data:any, depth:number):boolean Return false to skip children
-function Tree:walk(handler)
-	-- Internal recursive function
-	local function walk_node(current_id, depth)
-		local node = self._nodes[current_id]
-		if not node then return end
-
-		local keep_children = handler(current_id, node.data, depth)
-		if keep_children == false then return end
-
-		local child = node.first_child
-		while child do
-			walk_node(child, depth + 1)
-			child = self._nodes[child].next_sibling
-		end
-	end
-
-	-- Start from root nodes (depth = 0)
-	local id = self._root_first
-	while id do
-		walk_node(id, 0)
-		id = self._nodes[id].next_sibling
-	end
-end
+----------------------------------------------------------------
+-- Validation (for debugging)
+----------------------------------------------------------------
 
 ---Validate internal tree invariants.
 ---Throws error if any inconsistency is found.
@@ -549,9 +609,6 @@ function Tree:validate()
 		end
 	end
 
-	----------------------------------------------------------------
-	-- Validate root chain
-	----------------------------------------------------------------
 	local function validate_root_chain()
 		local id = self._root_first
 		local prev = nil
@@ -584,9 +641,7 @@ function Tree:validate()
 			tostring(prev), tostring(self._root_last))
 	end
 
-	----------------------------------------------------------------
 	-- Validate subtree recursively
-	----------------------------------------------------------------
 	local function walk(id)
 		assertf(not visited[id],
 			"Cycle or multiple-parent detected at node %s",
@@ -644,9 +699,7 @@ function Tree:validate()
 			tostring(node.last_child))
 	end
 
-	----------------------------------------------------------------
 	-- Run validations
-	----------------------------------------------------------------
 	validate_root_chain()
 
 	-- Walk all roots
@@ -656,9 +709,7 @@ function Tree:validate()
 		id = self._nodes[id].next_sibling
 	end
 
-	----------------------------------------------------------------
 	-- Ensure no unreachable nodes exist
-	----------------------------------------------------------------
 	for id, _ in pairs(self._nodes) do
 		assertf(visited[id],
 			"Node %s exists in _nodes but is not reachable from any root",

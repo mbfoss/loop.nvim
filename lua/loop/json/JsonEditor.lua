@@ -1,6 +1,5 @@
 local class = require("loop.tools.class")
-local ItemTreeComp = require("loop.comp.ItemTree")
-local CompBuffer = require("loop.buf.CompBuffer")
+local TreeBuffer = require("loop.buf.TreeBuffer")
 local floatwin = require("loop.tools.floatwin")
 local selector = require("loop.tools.selector")
 local filetools = require("loop.tools.file")
@@ -40,9 +39,7 @@ local uitools = require('loop.tools.uitools')
 ---@field _validation_errors loop.json.ValidationError[]
 ---@field _is_dirty boolean
 ---@field _on_save_handler fun()?
----@field _itemtree loop.comp.ItemTree
----@field _comp_buf loop.comp.CompBuffer
----@field _is_open boolean
+---@field _tree loop.comp.TreeBuffer
 local JsonEditor = class()
 
 local _open_editors = {}
@@ -171,7 +168,7 @@ local function _coerce_value(input, wanted_type)
     return input
 end
 
----@param item loop.comp.ItemTree.Item?
+---@param item loop.comp.TreeBuffer.Item?
 local function _show_node_help(item)
     if not item or not item.data then
         vim.notify("No node selected", vim.log.levels.WARN)
@@ -195,7 +192,7 @@ local function _show_node_help(item)
 
         -- Description as heading (if present)
         if schema.description and #schema.description > 0 then
-            table.insert(lines, schema.description )
+            table.insert(lines, schema.description)
             table.insert(lines, "") -- empty line for spacing
         end
 
@@ -300,8 +297,15 @@ local function _formatter(_, data, expanded)
     return text_chunks, virt_chunks
 end
 
+---@param filepath string
+---@return loop.JsonEditor
+function JsonEditor.get_existing(filepath)
+    return _open_editors[filepath]
+end
+
 ---@param opts loop.JsonEditorOpts
 function JsonEditor:init(opts)
+    assert(not _open_editors[opts.filepath], "File already open in another editor")
     self._opts = opts or {} ---@type loop.JsonEditorOpts
     self._undo_stack = {} ---@type table[]
     self._redo_stack = {} ---@type table[]
@@ -310,7 +314,7 @@ function JsonEditor:init(opts)
     self._filepath = opts.filepath
     self._schema = opts.schema
     self._fold_cache = {} ---@type table<string, boolean>
-    self._is_open = false
+    self:_setup()
 end
 
 ---@param handler fun()?
@@ -318,110 +322,91 @@ function JsonEditor:set_on_save_handler(handler)
     self._on_save_handler = handler
 end
 
----@param winid integer?
-function JsonEditor:open(winid)
-    if self._is_open then
-        local bufnr = self._comp_buf and self._comp_buf:get_buf()
-        if vim.api.nvim_buf_is_valid(bufnr) then
-            _show_buf(bufnr)
-        end
-        return
-    end
-    self._is_open = true
-
-    local existing_editor = _open_editors[self._filepath]
-    if existing_editor then
-        existing_editor:open()
-        return
-    end
-
+function JsonEditor:_setup()
     if not filetools.file_exists(self._filepath) then
         return
     end
 
     local name = self._opts.name or "JSON Editor"
 
-    ---@type loop.comp.ItemTree.InitArgs
+    ---@type loop.comp.TreeBufferOpts
     local opts = {
+        base_opts = {
+            name = name,
+            filetype = "loop-jsoneditor",
+            listed = true,
+            wipe_when_hidden = false,
+        },
         formatter = _formatter,
         render_delay_ms = 40,
-        header = { { name, "Title" }, { " (press g? for help)", "COmment" } }
+        header = { { name, "Title" }, { " (press g? for help)", "Comment" } },
     }
-    ---@diagnostic disable-next-line: undefined-field
-    self._itemtree = ItemTreeComp:new(opts)
+
+    assert(not self._tree)
+    self._tree = TreeBuffer:new(opts)
+    self._tree:get_or_create_buf()
 
     self:_reload_data()
 
-    self._itemtree:add_tracker({
+    self._tree:add_tracker({
+        on_delete = function()
+            _open_editors[self._filepath] = nil
+        end,
         on_toggle = function(_, data, expanded)
             self._fold_cache[data.path or ""] = expanded
         end,
     })
 
-    local buf = CompBuffer:new({
-        filetype = _buf_filetype,
-        name = name,
-        listed = true,
-    })
-
-    self._comp_buf = buf
-
-    buf:add_tracker({
-        on_delete = function()
-            _open_editors[self._filepath] = nil
-        end
-    })
     _open_editors[self._filepath] = self
-
     local function with_current_item(fn)
-        local item = self._itemtree:get_cur_item()
+        local item = self._tree:get_cur_item()
         if item then fn(item) end
     end
 
-    buf:add_keymap("c", {
+    self._tree:add_keymap("c", {
         desc = "Change value",
         callback = function() with_current_item(function(i) self:_edit_value(i) end) end,
     })
 
-    buf:add_keymap("C", {
+    self._tree:add_keymap("C", {
         desc = "Change string (multiline)",
         callback = function() with_current_item(function(i) self:_edit_value(i, true) end) end,
     })
 
-    buf:add_keymap("i", {
+    self._tree:add_keymap("i", {
         desc = "Add property/item",
         callback = function() with_current_item(function(i) self:_add_new(i, "under") end) end,
     })
 
-    buf:add_keymap("o", {
+    self._tree:add_keymap("o", {
         desc = "insert item (Add the parent node)",
         callback = function() with_current_item(function(i) self:_add_new(i, "after") end) end,
     })
 
-    buf:add_keymap("O", {
+    self._tree:add_keymap("O", {
         desc = "insert item (Add the parent node)",
         callback = function() with_current_item(function(i) self:_add_new(i, "before") end) end,
     })
 
-    buf:add_keymap("d", {
+    self._tree:add_keymap("d", {
         desc = "Delete",
         callback = function() with_current_item(function(i) self:_delete(i) end) end,
     })
 
-    buf:add_keymap("K", {
+    self._tree:add_keymap("K", {
         desc = "Show schema/help for current node (K)",
         callback = function() with_current_item(function(i) _show_node_help(i) end) end,
     })
 
-    buf:add_keymap("u", { desc = "Undo", callback = function() self:undo() end })
-    buf:add_keymap("<C-r>", { desc = "Redo", callback = function() self:redo() end })
-    buf:add_keymap("g?", { desc = "Help", callback = function() _show_help() end })
-    buf:add_keymap("ge", { desc = "Show errors", callback = function() self:_show_errors() end })
+    self._tree:add_keymap("u", { desc = "Undo", callback = function() self:undo() end })
+    self._tree:add_keymap("<C-r>", { desc = "Redo", callback = function() self:redo() end })
+    self._tree:add_keymap("g?", { desc = "Help", callback = function() _show_help() end })
+    self._tree:add_keymap("ge", { desc = "Show errors", callback = function() self:_show_errors() end })
+end
 
-    self._itemtree:link_to_buffer(buf:make_controller())
-
-    local bufid = buf:get_or_create_buf()
-    _show_buf(bufid)
+---@param winid integer?
+function JsonEditor:open(winid)
+    _show_buf(self._tree:get_or_create_buf())
 end
 
 function JsonEditor:_apply_changes()
@@ -471,7 +456,7 @@ end
 function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, errors)
     assert(type(tbl) == "table")
 
-    ---@type loop.comp.ItemTree.ItemDef[]
+    ---@type loop.comp.TreeBuffer.ItemDef[]
     local items = {}
 
     if vim.islist(tbl) then
@@ -480,7 +465,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
             local p = jsontools.join_path(path, str_i)
             local schema = self._schema_map[p]
             local e = errors[p]
-            ---@type loop.comp.ItemTree.ItemDef
+            ---@type loop.comp.TreeBuffer.ItemDef
             local item = {
                 id = p,
                 expanded = self._fold_cache[p] ~= false,
@@ -506,7 +491,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
             local p = jsontools.join_path(path, k)
             local schema = self._schema_map[p]
             local e = errors[p]
-            ---@type loop.comp.ItemTree.ItemDef
+            ---@type loop.comp.TreeBuffer.ItemDef
             local item = {
                 id = p,
                 parent_id = parent_id,
@@ -526,7 +511,7 @@ function JsonEditor:_upsert_tree_items(tbl, path, parent_id, parent_schema, erro
         end
     end
 
-    self._itemtree:set_children(parent_id, items)
+    self._tree:set_children(parent_id, items)
 
     for _, item in ipairs(items) do
         if type(item.data.value) == "table" then
@@ -544,7 +529,7 @@ end
 ---@param path string
 ---@return any
 function JsonEditor:value_at(path)
-    local item = self._itemtree:get_item(path)
+    local item = self._tree:get_item(path)
     if not item then return nil end
     return item.data.value
 end
@@ -616,7 +601,7 @@ function JsonEditor:_request_value(path, name, value_type, schema, old_value, on
     floatwin.input_at_cursor(input_opts, on_input)
 end
 
----@param item loop.comp.ItemTree.Item
+---@param item loop.comp.TreeBuffer.Item
 ---@param multiline_string? boolean
 function JsonEditor:_edit_value(item, multiline_string)
     local path = item.data.path ---@type string
@@ -657,10 +642,10 @@ function JsonEditor:_set_value(path, new_value)
         obj = self._data
         key = parts[1]
     else
-        local parent_id = self._itemtree:get_parent_id(path)
+        local parent_id = self._tree:get_parent_id(path)
         if parent_id then
-            ---@type loop.comp.ItemTree.Item?
-            local par_item = self._itemtree:get_item(parent_id)
+            ---@type loop.comp.TreeBuffer.Item?
+            local par_item = self._tree:get_item(parent_id)
             if par_item then
                 local last = parts[#parts]
                 obj = par_item.data.value
@@ -678,7 +663,7 @@ function JsonEditor:_set_value(path, new_value)
     end
 end
 
----@param item loop.comp.ItemTree.Item
+---@param item loop.comp.TreeBuffer.Item
 ---@param where "under"|"before"|"after"
 function JsonEditor:_add_new(item, where)
     local insert_pos
@@ -690,7 +675,7 @@ function JsonEditor:_add_new(item, where)
         if #parts < 2 then return end
         local item_key = table.remove(parts, #parts)
         local parent_path = jsontools.join_path_parts(parts)
-        local par_item = self._itemtree:get_item(parent_path)
+        local par_item = self._tree:get_item(parent_path)
         if not par_item then return end
         parent = par_item
         if parent.data.value_type == "array" then
@@ -727,7 +712,7 @@ function JsonEditor:_add_new(item, where)
     end
 end
 
----@param item loop.comp.ItemTree.Item
+---@param item loop.comp.TreeBuffer.Item
 ---@param callback fun(alue:any)
 function JsonEditor:get_new_array_member(item, callback)
     local vt = item.data.value_type ---@type string
@@ -741,7 +726,7 @@ function JsonEditor:get_new_array_member(item, callback)
     end
 end
 
----@param item loop.comp.ItemTree.Item
+---@param item loop.comp.TreeBuffer.Item
 ---@param callback fun(key:string?,value:any)
 function JsonEditor:get_new_object_member(item, callback)
     local vt = item.data.value_type ---@type string
@@ -753,7 +738,7 @@ function JsonEditor:get_new_object_member(item, callback)
     end
 end
 
----@param item loop.comp.ItemTree.Item
+---@param item loop.comp.TreeBuffer.Item
 function JsonEditor:_delete(item)
     if not item or not item.data or item.data.path == "" then
         vim.notify("Cannot delete root node", vim.log.levels.WARN)
@@ -765,7 +750,7 @@ function JsonEditor:_delete(item)
 
     local key = parts[#parts] ---@type string
 
-    local parent_item = self._itemtree:get_parent_item(item.data.path)
+    local parent_item = self._tree:get_parent_item(item.data.path)
     if not parent_item then return end
 
     local parent = parent_item.data.value
@@ -825,7 +810,7 @@ function JsonEditor:_get_new_value(path, schema, callback)
     end
 end
 
----@param item loop.comp.ItemTree.Item
+---@param item loop.comp.TreeBuffer.Item
 ---@param schema table|nil
 ---@param callback fun(key:string, value:any)
 function JsonEditor:_get_object_new_value(item, schema, callback)

@@ -37,3 +37,30 @@ local function _save_layout()
     sidepanel.save_layout(layout.sidepanel)
     jsoncodec.save_to_file(filepath, layout)
 end
+
+
+---@param comp loop.CompBufferController
+function FileTree:link_to_buffer(comp)
+    ItemTreeComp.link_to_buffer(self, comp)
+
+    -- track active buffer
+    self.bufenter_autocmd_id = vim.api.nvim_create_autocmd("BufEnter", {
+        callback = function()
+            local buf = vim.api.nvim_get_current_buf()
+            if uitools.is_regular_buffer(buf) then
+                local path = vim.api.nvim_buf_get_name(buf)
+                if path ~= "" then
+                    self:reveal(path)
+                end
+            end
+        end
+    })
+end
+
+function FileTree:dispose()
+    ItemTreeComp.dispose(self)
+    if self.bufenter_autocmd_id then
+        vim.api.nvim_del_autocmd(self.bufenter_autocmd_id)
+        self.bufenter_autocmd_id = nil
+    end
+end

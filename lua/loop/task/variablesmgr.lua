@@ -59,7 +59,11 @@ end
 function M.configure_variables(config_dir)
     local schema = require("loop.task.variablesschema")
     local filepath = vim.fs.joinpath(config_dir, "variables.json")
-
+    local existing_editor = JsonEditor.get_existing(filepath)
+    if existing_editor then
+        existing_editor:open()
+        return
+    end
     if not filetools.file_exists(filepath) then
         local schema_filepath = vim.fs.joinpath(config_dir, 'variablesschema.json')
         if not filetools.file_exists(schema_filepath) then
