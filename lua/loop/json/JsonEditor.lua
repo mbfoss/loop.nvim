@@ -339,7 +339,7 @@ function JsonEditor:_setup()
         },
         formatter = _formatter,
         render_delay_ms = 40,
-        header = { { name, "Title" }, { " (press g? for help)", "Comment" } },
+        header = { { name, "Title" }, { " (press g? for help)", "Comment", true } },
     }
 
     assert(not self._tree)

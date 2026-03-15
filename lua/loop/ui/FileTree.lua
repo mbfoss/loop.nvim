@@ -12,7 +12,7 @@ local uv         = vim.loop
 ---@field icon_hl string
 ---@field _children_waiters fun(children:loop.comp.FileTree.ItemDef[])[]?
 
----@alias loop.comp.FileTree.ItemDef loop.comp.ItemTree.ItemDef
+---@alias loop.comp.FileTree.ItemDef loop.comp.TreeBuffer.ItemData
 
 ---@class loop.comp.FileTreeOpts
 ---@field root string
@@ -45,7 +45,7 @@ local file_icons = {
     default  = "",
 }
 
----@class loop.comp.FileTree : loop.comp.ItemTree
+---@class loop.comp.FileTree
 ---@field new fun(self:loop.comp.FileTree,opts:loop.comp.FileTreeOpts):loop.comp.FileTree
 local FileTree   = class()
 

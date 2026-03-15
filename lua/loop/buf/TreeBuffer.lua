@@ -44,7 +44,7 @@ local strtools = require('loop.tools.strtools')
 ---@field loading_char string?
 ---@field indent_string string?
 ---@field render_delay_ms number?
----@field header string[][]?
+---@field header {[1]:string,[2]:string,[3]:boolean?}[]?
 ---@field transient_children_callbacks boolean?
 
 ---@class loop.comp.TreeBuffer.Tracker : loop.comp.Tracker
@@ -53,7 +53,7 @@ local strtools = require('loop.tools.strtools')
 
 local _ns_id = vim.api.nvim_create_namespace('LoopPluginTreeBuffer')
 
-local _header_hl_group = "LoopLuginTreeBufferHeader"
+local _header_hl_group = "Winbar"
 vim.api.nvim_set_hl(0, _header_hl_group, {
     bg = (function()
         local ok, hl = pcall(vim.api.nvim_get_hl, 0, { name = "WinBar", link = false })
@@ -286,23 +286,27 @@ function TreeBuffer:_full_render()
     -- Handle Header (if exists)
     if self._header then
         local row = 0
-        local left, right = self._header[1] or {}, self._header[2] or {}
-        local line = left[1] or ""
-
-        t_insert(buffer_lines, line)
-        t_insert(self._flat_ids, {}) -- array unsed as unique id
+        local left_text = ""
+        -- Apply the background highlight to the whole line
         t_insert(extmarks_data, { row, 0, { line_hl_group = _header_hl_group } })
-
-        if left[2] then
-            t_insert(hl_calls, { hl = left[2], row = row, s_col = 0, e_col = #line })
+        for _, part in ipairs(self._header) do
+            local text, hl, right_align = part[1], part[2], part[3]
+            if not right_align then
+                local start_col = #left_text
+                left_text = left_text .. text
+                if hl then
+                    t_insert(hl_calls, { hl = hl, row = row, s_col = start_col, e_col = #left_text })
+                end
+            else
+                t_insert(extmarks_data, { row, 0, {
+                    virt_text = { { text, hl } },
+                    virt_text_pos = "right_align",
+                    hl_mode = "combine",
+                } })
+            end
         end
-        if right[1] and #right[1] > 0 then
-            t_insert(extmarks_data, { row, 0, {
-                virt_text = { { right[1], right[2] } },
-                virt_text_pos = "right_align",
-                hl_mode = "combine",
-            } })
-        end
+        t_insert(buffer_lines, left_text)
+        t_insert(self._flat_ids, {}) -- Header placeholder
     end
 
     local flat = self._tree:flatten(nil, _filter)
@@ -419,13 +423,29 @@ function TreeBuffer:set_children(parent_id, children)
     for _, c in ipairs(children) do
         table.insert(baseitems, { id = c.id, data = _itemdef_to_itemdata(c) })
     end
-    
+
     -- We need the size BEFORE updating the tree to know how many lines to remove
     local old_visible_size = self._tree:tree_size(parent_id, _filter)
     self._tree:set_children(parent_id, baseitems)
 
     local buf = self:get_buf()
     if buf <= 0 then return end
+
+    -- 2. Handle the "New Root" Case (parent_id is nil)
+    if parent_id == nil then
+        -- When parent is nil, we replace/append the entire tree content
+        -- but we must preserve the header if it exists.
+        local header_offset = self._header and 1 or 0
+        local new_flat = self._tree:flatten(nil, _filter)
+
+        -- We treat the entire buffer (minus header) as the range to replace
+        -- old_visible_size in this context is the current length of flat_ids
+        local current_tree_size = #self._flat_ids - header_offset
+        if current_tree_size < 0 then current_tree_size = 0 end
+
+        self:_render_range(header_offset + 1, current_tree_size, new_flat)
+        return
+    end
 
     -- 2. Find the parent index IMMEDIATELY before buffer surgery
     local parent_idx = -1
@@ -447,7 +467,7 @@ function TreeBuffer:set_children(parent_id, children)
     end
 
     -- 4. Perform the surgery
-    -- Note: old_visible_size includes the parent. 
+    -- Note: old_visible_size includes the parent.
     -- flatten(parent_id) also includes the parent.
     self:_render_range(parent_idx, old_visible_size, new_flat)
 end
@@ -676,6 +696,122 @@ function TreeBuffer:clear_items()
 
     -- 3. Trigger a full render to clear the buffer lines and metadata
     self:_full_render()
+end
+
+---@return loop.comp.TreeBuffer.Item[]
+function TreeBuffer:get_children(parent_id)
+    local items = {}
+    local tree_items = self._tree:get_children(parent_id)
+
+    for _, treeitem in ipairs(tree_items) do
+        ---@type loop.comp.TreeBuffer.ItemData
+        local data = treeitem.data
+        ---@type loop.comp.TreeBuffer.Item
+        local item = {
+            id = treeitem.id,
+            data = data.userdata,
+            expanded = data.expanded
+        }
+        table.insert(items, item)
+    end
+    return items
+end
+
+---@param id any
+---@return boolean
+function TreeBuffer:have_item(id)
+    return self._tree:have_item(id)
+end
+
+---Removes a specific item and all its descendants from the tree and buffer.
+---@param id any The ID of the item to remove.
+---@return boolean success
+function TreeBuffer:remove_item(id)
+    if not self._tree:have_item(id) then return false end
+
+    local buf = self:get_buf()
+    local parent_id = self._tree:get_parent_id(id)
+
+    -- 1. Determine visual impact before logic change
+    local idx = -1
+    for i, fid in ipairs(self._flat_ids) do
+        if fid == id then
+            idx = i
+            break
+        end
+    end
+
+    -- Calculate total lines to remove (item + its visible subtree)
+    local visible_size = 0
+    if idx ~= -1 then
+        visible_size = self._tree:tree_size(id, _filter)
+    end
+
+    -- 2. Update the logical tree
+    self._tree:remove_item(id)
+
+    -- 3. Update the Buffer
+    if idx ~= -1 and buf > 0 then
+        -- Remove the lines from the buffer and update internal state
+        -- We pass an empty table to _render_range to delete the lines
+        self:_render_range(idx, visible_size, {})
+
+        -- 4. Re-render the parent if it was the last child
+        -- This updates the parent's icon (e.g., removing the "▼" if no children left)
+        if parent_id ~= nil then
+            local p_idx = -1
+            for i, fid in ipairs(self._flat_ids) do
+                if fid == parent_id then
+                    p_idx = i
+                    break
+                end
+            end
+
+            if p_idx ~= -1 then
+                local p_data = self:_get_data(parent_id)
+                local p_depth = self._tree:get_depth(parent_id)
+                self:_render_range(p_idx, 1, { { id = parent_id, data = p_data, depth = p_depth } })
+            end
+        end
+    end
+
+    return true
+end
+
+---Removes all children of a node from the tree and updates the buffer.
+---@param id any The ID of the parent node whose children should be removed.
+---@return boolean success
+function TreeBuffer:remove_children(id)
+    if not self._tree:have_item(id) then return false end
+
+    -- 1. Determine how many visible lines to remove
+    -- We calculate the size of the subtree (excluding the parent itself)
+    local visible_subtree_size = self._tree:tree_size(id, _filter) - 1
+
+    -- 2. Update the logical tree
+    self._tree:remove_children(id)
+
+    -- 3. Update the Buffer
+    local idx = -1
+    for i, fid in ipairs(self._flat_ids) do
+        if fid == id then
+            idx = i
+            break
+        end
+    end
+
+    -- If the node is visible in the buffer, we need to perform surgery
+    if idx ~= -1 then
+        local data = self:_get_data(id)
+        local depth = self._tree:get_depth(id)
+
+        -- We re-render the parent node (at idx) and replace
+        -- (1 + visible_subtree_size) lines with just the 1 parent line.
+        local node_flat = { id = id, data = data, depth = depth }
+        self:_render_range(idx, 1 + visible_subtree_size, { node_flat })
+    end
+
+    return true
 end
 
 return TreeBuffer
